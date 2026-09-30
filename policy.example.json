@@ -1,0 +1,30 @@
+{
+  "allowedUserIds": [],
+  "guildScope": "listed",
+  "guildIds": [],
+  "channelScope": "listed",
+  "channelIds": [],
+  "scopes": [],
+  "triggers": {
+    "matchNames": true,
+    "names": [
+      "DotBot",
+      "dot"
+    ],
+    "replyToBot": true
+  },
+  "proactive": [],
+  "context": {
+    "enabled": false,
+    "capture": "addressed",
+    "maxMessages": 500,
+    "perChannel": 50,
+    "ttlMinutes": 30,
+    "contentLimit": 1000,
+    "includeBots": false
+  },
+  "mcpEvents": {
+    "enabled": false,
+    "allowAllMessages": false
+  }
+}

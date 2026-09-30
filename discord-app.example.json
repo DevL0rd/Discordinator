@@ -1,0 +1,10 @@
+{
+  "installationContext": "guild",
+  "scopes": ["bot", "applications.commands"],
+  "requestedPermissions": "8",
+  "permissionName": "Administrator",
+  "messageContentIntent": true,
+  "serverMembersIntent": false,
+  "presenceIntent": false,
+  "applicationId": "replace-locally-if-installing-later"
+}
