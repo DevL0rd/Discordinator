@@ -8,7 +8,7 @@ export const scope = z.enum([
   'roles.read', 'roles.write', 'moderation.write', 'events.read',
   'events.write', 'commands.write', 'invites.read', 'invites.write',
   'guild.write', 'audit.read', 'automod.read', 'automod.write',
-  'expressions.read', 'expressions.write', 'voice.write',
+  'expressions.read', 'expressions.write', 'voice.write', 'media.read', 'media.write', 'interactions.write',
 ]);
 export type Scope = z.infer<typeof scope>;
 export const policySchema = z.object({
@@ -35,6 +35,13 @@ export const policySchema = z.object({
   mcpEvents: z.object({
     enabled: z.boolean().default(false),
     allowAllMessages: z.boolean().default(false),
+  }).strict().prefault({}),
+  media: z.object({
+    enabled: z.boolean().default(false),
+    capture: z.enum(['addressed', 'all']).default('addressed'),
+    maxAttachments: z.number().int().min(1).max(1000).default(500),
+    ttlMinutes: z.number().int().min(1).max(60).default(30),
+    maxFileBytes: z.number().int().min(1).max(8 * 1024 * 1024).default(2 * 1024 * 1024),
   }).strict().prefault({}),
   proactive: z.array(z.object({
     channelId: snowflake,

@@ -1,6 +1,6 @@
 # Capability reference
 
-The server exposes 78 tools: six bridge/discovery tools, three context tools and 69 fixed Discord operations. This is the implemented surface, not a claim of complete Discord API coverage. Tool discovery returns the exact Zod-derived JSON schemas, defaults and bounds. All unknown input fields are rejected.
+The server exposes 87 tools: six bridge/discovery tools, three context tools, seven media tools, one correlated control tool and 70 fixed Discord operations. This is the implemented surface, not a claim of complete Discord API coverage. Tool discovery returns the exact Zod-derived JSON schemas, defaults and bounds. All unknown input fields are rejected.
 
 ## Bridge and discovery tools
 
@@ -29,6 +29,7 @@ Snowflakes and permission bitfields are strings. Message text is bounded to 2,00
 | `discord_message_unpin` | `messages.write` | `channelId`, `messageId` | **Confirm** | Unpin a message with confirmation. |
 | `discord_reaction_add` | `reactions.write` | `channelId`, `messageId`, `emoji` | Trigger | Add a reaction to a whitelisted user or bot message. |
 | `discord_reaction_remove_own` | `reactions.write` | `channelId`, `messageId`, `emoji` | Trigger | Remove only the bot’s own reaction. |
+| `discord_reaction_users` | `messages.read` | `channelId`, `messageId`, `emoji`, `limit`, `before` | Read | Read a bounded reaction-user page; `before` maps to Discord's `after`. |
 | `discord_poll_create` | `messages.write` | `channelId`, `poll` | Trigger | Create a poll in the originating channel. |
 | `discord_poll_end` | `messages.write` | `channelId`, `messageId` | **Confirm** | End a bot-authored poll with confirmation. |
 | `discord_poll_voters` | `messages.read` | `channelId`, `messageId`, `answerId`, `limit`, `before` | Read | Read a bounded page of voters for one answer. |
@@ -137,12 +138,33 @@ Invites require Create Instant Invite and list/revoke permissions; creation is a
 
 ## Coverage gaps and deliberate exclusions
 
-There is no unlimited capability, raw REST passthrough or user-account automation. Coverage excludes arbitrary user OAuth endpoints, ownership transfer, friendship/group DMs, mass messaging, arbitrary webhook creation/execution/token access, crossposting/forwarding, automatic member-event replies, role/everyone mention notifications, voice/audio transport, streaming, attachments uploads/downloads, arbitrary embeds/components/modals/autocomplete/context-menu interactions, arbitrary command registration/permission OAuth, full AutoMod trigger/action editing, sticker uploads, soundboard management, stage instances, guild templates, commerce/entitlements and complete profile customization.
+There is no unlimited capability, raw REST passthrough or user-account automation. Coverage excludes arbitrary user OAuth endpoints, ownership transfer, friendship/group DMs, mass messaging, arbitrary webhook creation/execution/token access, crossposting/forwarding, automatic member-event replies, role/everyone mention notifications, voice/audio transport, streaming, arbitrary embeds/components/autocomplete/context-menu interactions, arbitrary command registration/permission OAuth, full AutoMod trigger/action editing, sticker uploads, soundboard management, stage instances, guild templates, commerce/entitlements and complete profile customization. Media supports a finite safe format set and client byte handoff; controls support buttons, single-choice string selects and text-input modals. Arbitrary URLs, local paths, HTML/SVG uploads and executable/archive uploads are excluded.
 
-Only message-create events and this bot's /dot slash interactions are actionable origins. Non-addressed DMs, reactions, member joins/leaves, edits and other Gateway event kinds do not produce a response event. General attachment metadata is readable within approved message reads, but no local filesystem or remote URL fetch tool exists. Read objects are projected and may omit API fields; use tool schemas/reference code to assess the exact supported surface.
+Message-create triggers, this bot's /dot slash invocations and verified actor-bound child controls are actionable origins. Non-addressed DMs, reactions, member joins/leaves, edits and unrelated interactions do not produce a response event. General attachment metadata is readable within approved message reads; safe retrieval refreshes a verified source handle and only fetches its fixed Discord CDN path. No supplied URL or filesystem fetch exists. Read objects are projected and may omit API fields; use tool schemas/reference code to assess the exact supported surface.
 
 Administrator cannot make absent tools appear, grant privileged intents or remove Discord's hierarchy/API/policy restrictions. Every operation still needs permissions and a valid resource type. No live Discord integration has been validated in this build; later authorized integration may expose permission, channel-type, quota or API changes requiring an in-scope update.
 
 ## Context and official MCP Events
 
 `context_recent`, `context_user` and `context_search` add bounded local context reads with `messages.read` and a live allowed trigger. The webhook event `discord.message.created` has addressed/all filters and authenticated `events/list`, `events/subscribe` and `events/unsubscribe` methods, separate from tools. See [Events and context](mcp-events.md) for schemas, opt-ins, durable lifecycle and honest search/delivery limits. Replies to fetched bot-authored messages also count as addressing; arbitrary references, edits, reactions and observation payloads do not.
+
+## Media, source replies and correlated controls
+
+| Tool | Scopes | Guard and coverage |
+| :-- | :-- | :-- |
+| `media_search` | `media.read`, `messages.read` | Live trigger; newest local attachment/image matches, user/channel/message/time/ID filters, opaque pagination |
+| `media_history` | `media.read`, `messages.read` | Live trigger; one Discord channel history page or exact message; explicit pagination/truncation references |
+| `media_attachment_read` | `media.read`, `messages.read` | Live trigger/source handle; freshly verified CDN-only bounded chunks; small images also yield MCP image content |
+| `media_upload_begin` | `media.write`, `messages.write` | Live trigger; bounded reservation, filename/MIME/size/SHA-256 |
+| `media_upload_chunk` | `media.write`, `messages.write` | Same event/upload; ordered canonical base64, at most 128 KiB decoded |
+| `media_upload_seal` | `media.write`, `messages.write` | Size/hash/format/dimension verification |
+| `discord_media_reply` | `media.write`, `messages.write`; additionally read scopes for source handles | Live trigger/idempotency; up to three sealed files and three verified source links, origin-only reply |
+| `discord_prompt` | `interactions.write`, `messages.write` | Live trigger/idempotency; single-use actor/source-bound buttons/select/modal launch |
+
+See [files and controls](media-and-controls.md) for schemas, format limits, privileged intent, resource/SSRF checks and honest host editing limitations. Sending attachments requires Attach Files as well as channel/thread send permissions. Incoming reads need View Channel/Read Message History and applicable Message Content access. Emoji arguments accept Unicode emoji sequences or `name:snowflake` for a custom emoji; Discord enforces emoji availability and Use External Emojis where applicable. Reactions remain outbound actions, not request triggers.
+
+## Second-release breadth audit
+
+The fixed operation families cover practical conversations, messages/pins/polls/reactions, channel/thread/forum management and overwrites, members/moderation, roles, voice state, guild settings/audit/invites/commands, external scheduled events, expressions and keyword AutoMod. This release fills the deferred file transfer, source-linked reply, attachment lookup/retrieval, correlated control and reaction-user read surfaces. Role creation/assignment already had typed confirmed endpoints; creation now requires a nonempty name and defaults explicitly to permission bits `"0"`, and local validation exercises fresh confirmation, exact bindings and cross-guild denial. Role permissions use string bitfields; managed roles, positions at/above the bot and ownership remain Discord-enforced restrictions. Administrator does not bypass hierarchy or grant a permission the bot cannot manage.
+
+Useful remaining gaps include advanced channel/role attributes, reaction moderation/clear-all, message-global platform search, private-thread discovery, richer scheduled event types, full AutoMod triggers/actions and the explicitly excluded families above. Full-page role/emoji lists can be projected to 100 objects; the API does not provide pagination for every collection. These are deliberate finite schemas, not an undisclosed raw API escape hatch. Capability availability must be established by actual tool discovery plus Discord permissions, not by assuming any absent endpoint exists.

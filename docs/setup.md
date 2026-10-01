@@ -38,6 +38,7 @@ The process reads configuration once. Stop it, edit local files and restart to c
 | `triggers.matchNames` | Enables alias matching; requires local Message Content intent flag |
 | `triggers.replyToBot` | Allows same-channel replies only after fetching and verifying this bot authored the referenced message; defaults true |
 | `context` | Opt-in bounded context index: addressed or all-message capture, retention and size bounds |
+| `media` | Opt-in attachment index/capture, retention/count/file bounds; scopes remain mandatory |
 | `mcpEvents` | Opt-in verified webhook subscriptions; unaddressed all-message delivery is a separate switch |
 | `triggers.names` | Up to 10 literal names/aliases, 2–32 characters each; no regex syntax |
 | `proactive` | Entries containing `channelId` and `scopes: ["message.send"]`; no wildcard, guild-wide or DM grant |
@@ -87,3 +88,5 @@ Gateway heartbeat/resume/reconnect and REST bucket/global rate-limit waits come 
 `dotbot_status` reports Gateway readiness/reconnection state, scope modes and counts without credentials or whitelist IDs. For unknown mutation outcomes, follow [journal recovery](architecture.md#idempotency-and-recovery).
 
 Optional context capture and official MCP Events are described in [Events and context](mcp-events.md). Context indexing can observe unlisted guild members without authorizing them. Full guild text capture needs the same two Message Content intent switches as name matching. Subscription secrets/outbox data live only in ignored `.data/`; keep those files private and preserve unresolved state during recovery.
+
+[Files and controls](media-and-controls.md) documents the separate media opt-in, `media.read`/`media.write`/`interactions.write` grants, attachment visibility under Message Content, safe client editing handoff and ephemeral controls. Existing policies without the new fields remain media-disabled; merge fields explicitly instead of replacing your whitelist. No upgrade invokes the bot, creates credentials or starts a service.

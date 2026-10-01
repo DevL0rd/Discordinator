@@ -5,7 +5,11 @@ import { operations } from '../discord/catalog.js';
 import type { Operation } from '../discord/operations.js';
 import { mentions } from '../discord/operations.js';
 import type { Policy } from './policy.js';
-import type { EventContext, EventQueue } from './queue.js';
+import type { Delivery, EventContext, EventQueue } from './queue.js';
+import { MediaAccess } from '../media/access.js';
+import { MediaService } from '../media/service.js';
+import { jumpUrl } from '../media/index.js';
+import { Flows } from '../interactions/flows.js';
 import type { Journal } from './journal.js';
 import { ContextIndex } from './context.js';
 import type { Approvals } from './approvals.js';
@@ -18,10 +22,16 @@ export interface MutationInput {
 
 export class Bridge {
   readonly context: ContextIndex;
+  readonly media: MediaService;
+  readonly flows: Flows;
   constructor(
     readonly policy: Policy, readonly queue: EventQueue, readonly journal: Journal,
     readonly approvals: Approvals, readonly api: Api,
-  ) { this.context = new ContextIndex(policy, queue); }
+  ) {
+    this.context = new ContextIndex(policy, queue);
+    this.media = new MediaService(new MediaAccess(policy, queue, api));
+    this.flows = new Flows(policy, queue, api);
+  }
 
   private event(id: string): EventContext {
     const context = this.queue.context(id);
@@ -78,6 +88,45 @@ export class Bridge {
       if (context.respond) return project(await context.respond(input.content));
       return this.send(context.event.channelId, input.content, input.idempotencyKey, context.event.messageId);
     });
+  }
+
+  async mediaReply(input: MutationInput & { content: string; uploadIds: string[]; sourceIds: string[] }): Promise<unknown> {
+    this.media.access.event(input.eventId, true);
+    const files = this.media.uploads.ready(input.eventId, input.uploadIds);
+    const fingerprint = { ...input, operation: 'media_reply', files: files.map(file => ({ name: file.name, sha256: file.sha256 })) };
+    return this.journal.execute(input.idempotencyKey, fingerprint, async () => {
+      this.media.access.event(input.eventId, true);
+      const sources = await Promise.all(input.sourceIds.map(id => this.media.fresh(input.eventId, id)));
+      const content = [input.content, ...sources.map(source => `<${jumpUrl(source)}>`)].filter(Boolean).join('\n');
+      if (content.length > 2000 || !content && !files.length) throw new Error('Reply is empty or exceeds Discord content limit');
+      return this.deliver(input.eventId, { content, files }, input.idempotencyKey);
+    });
+  }
+
+  async prompt(input: MutationInput & import('../interactions/schema.js').Prompt): Promise<unknown> {
+    this.flows.authorize(input.eventId);
+    const { eventId, idempotencyKey: _key, approvalId: _approval, ...prompt } = input;
+    return this.journal.execute(input.idempotencyKey, { operation: 'prompt', ...input }, async () => {
+      const flow = this.flows.prepare(eventId, prompt);
+      const reply = await this.deliver(input.eventId, { content: input.content, components: flow.components }, input.idempotencyKey) as { id: string };
+      this.flows.bind(flow.id, reply.id);
+      return { id: reply.id, flowId: flow.id, expiresAt: flow.expiresAt };
+    });
+  }
+
+  async deliver(eventId: string, delivery: Delivery, key: string): Promise<unknown> {
+    const context = this.event(eventId);
+    this.policy.assertScope('messages.write');
+    this.policy.assertResponse(context.event, context.event.channelId);
+    if (context.deliver) return context.deliver(delivery);
+    if (context.event.kind === 'interaction') throw new Error('Interaction delivery is unavailable');
+    const nonce = createHash('sha256').update(key).digest('hex').slice(0, 24);
+    const result = await this.api.postFiles(`/channels/${context.event.channelId}/messages`, {
+      content: delivery.content, components: delivery.components, allowed_mentions: mentions, nonce, enforce_nonce: true,
+      attachments: delivery.files?.map((file, id) => ({ id, filename: file.name })),
+      message_reference: { message_id: context.event.messageId, fail_if_not_exists: true },
+    }, delivery.files) as { id: string; channel_id: string };
+    return { id: result.id, channel_id: result.channel_id };
   }
 
   async dm(input: MutationInput & { content: string }): Promise<unknown> {

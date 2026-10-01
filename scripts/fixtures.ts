@@ -19,6 +19,7 @@ export class FakeApi implements Api {
   }
   get(route: string) { return this.request('GET', route); }
   post(route: string, body: unknown) { return this.request('POST', route, body); }
+  postFiles(route: string, body: unknown, files: import('../src/core/queue.js').Delivery['files']) { return this.request('FILES', route, { body, files }); }
   patch(route: string, body: unknown) { return this.request('PATCH', route, body); }
   put(route: string, body?: unknown) { return this.request('PUT', route, body); }
   delete(route: string) { return this.request('DELETE', route); }

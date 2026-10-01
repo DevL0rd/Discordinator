@@ -14,7 +14,7 @@
 <h3 align="center">Your Discord bot, within reach of dot.</h3>
 
 <p align="center">
-  DotBot gives an authenticated MCP client 78 typed tools for a real Discord bot.<br>
+  DotBot gives an authenticated MCP client 87 typed tools for a real Discord bot.<br>
   Whitelisted people address it. Your connected dot polls requests or explicitly subscribes through a supported ChatGPT host.
 </p>
 
@@ -72,6 +72,7 @@ This runs in the foreground and connects to Discord. Ctrl+C stops it. The MCP en
 | `triggers` | Explicit mention, bounded name/alias matching, or verified reply to this bot |
 | `context` | Optional bounded recent-message index; observation never authorizes responses |
 | `mcpEvents` | Optional verified durable webhook subscriptions; all-message delivery is separately opt-in |
+| `media` | Optional bounded attachment index and file-size controls; capture never authorizes a response |
 | `proactive` | Individually approved send destinations; empty disables proactive sends |
 | `DOTBOT_GUILD_MEMBERS` | Optional Server Members intent for member listing; disabled by default |
 | `DOTBOT_AUTH_MODE` | Local bearer credential or external OAuth JWT resource validation |
@@ -84,12 +85,14 @@ See [setup and permissions](docs/setup.md) for full configuration, Administrator
 
 ## 🧰 What dot can do
 
-The bridge exposes 69 Discord operations, six bridge/discovery tools and three bounded context tools. Each has a bounded input schema. Discord operations also require an explicit capability scope. Discord remains the authority for permissions, hierarchy, resource types and API limits.
+The bridge exposes 70 Discord operations, six bridge/discovery tools, three bounded context tools, seven media tools and one correlated interaction tool. Each has a bounded input schema. Discord operations also require an explicit capability scope. Discord remains the authority for permissions, hierarchy, resource types and API limits.
 
 | Area | Implemented capabilities |
 | :-- | :-- |
 | Context & delivery | Recent channel/thread context, same-user cross-channel context, retained-text search; explicit polls and MCP 2.0 verified webhook subscriptions |
 | Conversations | Captured-event replies, ephemeral `/dot` responses, DM the originating user, controlled proactive sends |
+| Files & images | Safe bounded file/image/GIF uploads, verified source links, latest/specific/multiple attachment lookup and chunked retrieval for client-side editing |
+| Interactive requests | Actor-bound single-use buttons, string selects, modal launch/custom input; correlated child events with live parent checks |
 | Messages | History, individual messages, pins, bot-message edits, confirmed deletion/bulk deletion, reactions |
 | Polls | Create, end bot-authored polls, read voters |
 | Channels & threads | Inspect/create/edit/delete channels; permission overwrites; active/archived threads; forum posts; archive/lock; thread membership |
@@ -110,6 +113,8 @@ The bridge exposes 69 Discord operations, six bridge/discovery tools and three b
 **Whitelist first, trigger second.** Unlisted users are rejected before trigger text, command options or reply references are examined. An allowed user must mention the bot directly in message text, use a configured name/alias, or reply to a fetched message verified to be authored by this bot in the same channel. Missing, deleted or mismatched references fail closed. `triggers.replyToBot` controls that last option. `DOT, help` matches `dot`; `anecdotal`, `dotnet`, `dot2` and `_dot_` do not. Boundaries account for Unicode letters/numbers and underscores. Literal occurrences inside quotes/code count; this is text matching, not intent inference. Unaddressed DMs and ordinary conversation stay quiet. Bots, webhooks, reactions, edits and unrelated commands never create requests. Optional all-message observations may index non-whitelisted guild users or deliver their data to an opted-in subscriber; they never receive an actionable trigger ID or authorize a response.
 
 An explicit invocation of this bot’s `/dot` command also counts as addressing it. Only allowed users in approved origins get an ephemeral deferred response. Every user-driven write needs an unexpired captured `eventId`; MCP callers cannot supply an actor ID or forge an origin. The same checks cover replies, DMs, interactions, threads, message edits, reactions and indirect actions. Outbound mentions are disabled, and DMs can only target the originating whitelisted person.
+
+Verified controls from the bot's own prompt can produce a correlated child request only for the originating allowed user. The actual prompt message, application, channel and live parent must match. Modal input and button selections never approve sensitive actions. [Files and controls](docs/media-and-controls.md) explains the bounds, client editing handoff and source checks.
 
 Content-producing channel tools stay in the originating channel/thread. Guild administration stays in the originating guild. Destructive and permission-changing tools return an exact preview and a two-minute approval ID; the same user must explicitly approve it through a new addressed Discord message or `/dot` invocation in the same channel. The MCP client then repeats the original operation with that approval ID. Model-supplied confirmation cannot replace this step.
 

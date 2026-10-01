@@ -5,6 +5,12 @@ export interface EventInput extends Origin {
   kind: 'message' | 'interaction';
   text: string;
   name?: string;
+  sourceEventId?: string;
+}
+export interface Delivery {
+  content: string;
+  files?: { data: Buffer; name: string; contentType: string }[];
+  components?: import('discord.js').APIActionRowComponent<import('discord.js').APIComponentInMessageActionRow>[];
 }
 export interface BotEvent extends EventInput {
   id: string;
@@ -15,6 +21,7 @@ export interface EventContext {
   event: BotEvent;
   expiresAt: number;
   respond?: (text: string) => Promise<unknown>;
+  deliver?: (payload: Delivery) => Promise<unknown>;
 }
 
 export class EventQueue {
@@ -36,7 +43,7 @@ export class EventQueue {
     for (const [key, expires] of this.seen) if (expires <= current) this.seen.delete(key);
   }
 
-  add(key: string, input: EventInput, respond?: EventContext['respond']): BotEvent | null {
+  add(key: string, input: EventInput, respond?: EventContext['respond'], deliver?: EventContext['deliver']): BotEvent | null {
     this.prune();
     if (this.seen.has(key)) return null;
     if (this.seen.size >= this.capacity * 4) { this.droppedOnDedupeLimit++; return null; }
@@ -45,7 +52,7 @@ export class EventQueue {
       ...input, text: input.text.slice(0, 4000), id: randomUUID(),
       cursor: ++this.sequence, receivedAt: new Date(this.now()).toISOString(),
     };
-    this.items.push({ event, expiresAt: this.now() + this.ttlMs, ...(respond ? { respond } : {}) });
+    this.items.push({ event, expiresAt: this.now() + this.ttlMs, ...(respond ? { respond } : {}), ...(deliver ? { deliver } : {}) });
     if (this.items.length > this.capacity) this.discardedThrough = this.items.shift()!.event.cursor;
     for (const wake of this.waiters) wake();
     return event;
@@ -55,6 +62,10 @@ export class EventQueue {
     this.prune();
     const item = this.items.find(item => item.event.id === id);
     if (!item) throw new Error('Event expired, dropped, or unknown');
+    if (item.event.sourceEventId) {
+      const parent = this.context(item.event.sourceEventId).event;
+      if (parent.actorId !== item.event.actorId || parent.channelId !== item.event.channelId || parent.guildId !== item.event.guildId) throw new Error('Correlated event source mismatch');
+    }
     return item;
   }
 

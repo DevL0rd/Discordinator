@@ -31,7 +31,7 @@ export const memberOperations = [
   define('roles_list', 'Read guild roles and permission bitfields.', 'roles.read', 'guild', guild,
     (a, c) => c.api.get(`/guilds/${a.guildId}/roles`)),
   define('role_create', 'Create a role, including explicit permission bits, with confirmation.', 'roles.write', 'guild',
-    { ...guild, ...roleSettings }, (a, c) => c.api.post(`/guilds/${a.guildId}/roles`, {
+    { ...guild, ...roleSettings, name: shortName, permissions: z.string().regex(/^\d{1,25}$/).default('0') }, (a, c) => c.api.post(`/guilds/${a.guildId}/roles`, {
       name: a.name, permissions: a.permissions, color: a.color, hoist: a.hoist, mentionable: a.mentionable,
     }), sensitive),
   define('role_edit', 'Edit a role or its permissions, with confirmation.', 'roles.write', 'guild',

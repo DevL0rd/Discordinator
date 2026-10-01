@@ -1,4 +1,4 @@
-import { Client, Events, GatewayIntentBits, MessageFlags, Partials } from 'discord.js';
+import { Client, Events, GatewayIntentBits, Partials } from 'discord.js';
 import type { Message, ChatInputCommandInteraction } from 'discord.js';
 import type { Config } from '../core/config.js';
 import type { Policy } from '../core/policy.js';
@@ -11,6 +11,9 @@ import { replyToBot } from './replies.js';
 import { payload } from '../events/schema.js';
 import type { EventsService } from '../events/service.js';
 import type { Api } from './api.js';
+import type { MediaService } from '../media/service.js';
+import type { Flows } from '../interactions/flows.js';
+import { captureInteraction, handleControl } from '../interactions/gateway.js';
 
 export function gatewayIntents(config: Config): number[] {
   const intents = [GatewayIntentBits.Guilds, GatewayIntentBits.GuildMessages, GatewayIntentBits.DirectMessages];
@@ -27,7 +30,7 @@ export class Gateway {
   private activeMessages = 0;
   private droppedMessages = 0;
 
-  constructor(readonly config: Config, readonly policy: Policy, readonly queue: EventQueue, readonly approvals: Approvals, readonly api: Api, readonly context?: ContextIndex, readonly events?: EventsService) {
+  constructor(readonly config: Config, readonly policy: Policy, readonly queue: EventQueue, readonly approvals: Approvals, readonly api: Api, readonly context?: ContextIndex, readonly events?: EventsService, readonly media?: MediaService, readonly flows?: Flows) {
     this.triggers = new Triggers(policy);
     this.client = new Client({ intents: gatewayIntents(config), partials: [Partials.Channel],
       allowedMentions: { parse: [], repliedUser: false }, rest: { retries: 0, timeout: 15_000 } });
@@ -36,13 +39,18 @@ export class Gateway {
 
   private bindEvents(): void {
     this.client.on(Events.MessageCreate, message => this.safely(() => this.message(message)));
-    this.client.on(Events.MessageDelete, message => this.context?.remove(message.id));
-    this.client.on(Events.MessageBulkDelete, messages => { for (const id of messages.keys()) this.context?.remove(id); });
+    this.client.on(Events.MessageDelete, message => this.remove(message.id));
+    this.client.on(Events.MessageBulkDelete, messages => { for (const id of messages.keys()) this.remove(id); });
     this.client.on(Events.MessageUpdate, (_old, message) => {
       if (!message.partial) this.context?.update(message.id, message.content, this.config.DOTBOT_MESSAGE_CONTENT === 'true' || !message.guildId);
+      this.media?.index.remove(message.id);
+      if (!message.partial) this.observeMedia(message, false);
     });
     this.client.on(Events.InteractionCreate, interaction => {
       if (interaction.isChatInputCommand()) this.safely(() => this.interaction(interaction));
+      if (this.flows && (interaction.isButton() || interaction.isStringSelectMenu() || interaction.isModalSubmit())) {
+        this.safely(() => handleControl(interaction, this.flows!, this.policy, this.queue));
+      }
     });
     this.client.once(Events.ClientReady, client => { this.api.botId = client.user.id; this.state = 'ready'; });
     this.client.on(Events.ShardReconnecting, () => { this.state = 'reconnecting'; });
@@ -51,6 +59,19 @@ export class Gateway {
     this.client.on(Events.ShardDisconnect, () => { this.state = 'disconnected'; });
     this.client.on(Events.Error, () => { this.state = 'error'; console.error('Discord client error; inspect configuration and connectivity'); });
     this.client.on(Events.ShardError, () => { this.state = 'error'; });
+  }
+
+  private remove(id: string): void { this.context?.remove(id); this.media?.index.remove(id); }
+
+  private observeMedia(message: Message, addressed: boolean): void {
+    if (!this.media) return;
+    try {
+      this.media.index.ingest({ id: message.id, channel_id: message.channelId, author: { id: message.author.id },
+        timestamp: new Date(message.createdTimestamp).toISOString(), attachments: [...message.attachments.values()].map(file => ({
+          id: file.id, filename: file.name, size: file.size, content_type: file.contentType ?? undefined, url: file.url,
+          width: file.width, height: file.height,
+        })) }, message.guildId, addressed);
+    } catch { return; }
   }
 
   private async safely(action: () => Promise<void>): Promise<void> {
@@ -76,6 +97,7 @@ export class Gateway {
 
   private async capture(message: Message): Promise<void> {
     const trigger = await this.authorizedTrigger(message);
+    this.observeMedia(message, trigger !== null);
     if (!this.policy.config.context.enabled && !this.policy.config.mcpEvents.enabled) return;
     const observed = observe(message, this.config.DOTBOT_MESSAGE_CONTENT === 'true');
     // Scope and observation authorization are independent from trigger authorization.
@@ -116,17 +138,8 @@ export class Gateway {
     };
     this.policy.assertOrigin(event);
     this.policy.assertScope('messages.write');
-    let ready: Promise<unknown> = Promise.resolve();
-    const queued = this.queue.add(`interaction:${interaction.id}`, event, async content => {
-      await ready;
-      this.policy.assertOrigin(event);
-      this.queue.context(queued!.id);
-      const reply = await interaction.editReply({ content, allowedMentions: { parse: [], repliedUser: false } });
-      return { id: reply.id, channel_id: reply.channelId };
-    });
+    const queued = await captureInteraction(interaction, event, this.policy, this.queue);
     if (!queued) return;
-    ready = interaction.deferReply({ flags: MessageFlags.Ephemeral });
-    await ready;
     const approvalId = this.triggers.approvalId(event.text, this.api.botId, true);
     if (approvalId) this.approvals.confirm(event, approvalId);
   }

@@ -1,6 +1,6 @@
 {
   "name": "dotbot",
-  "version": "1.0.0",
+  "version": "2.0.0",
   "private": true,
   "description": "A headless Discord bot bridge for authenticated MCP clients.",
   "type": "module",
@@ -12,12 +12,15 @@
     "start": "node --env-file=.env dist/src/main.js",
     "check": "tsc --noEmit",
     "validate": "tsx scripts/validate.ts",
+    "validate:banner": "tsx scripts/check-banner.ts",
     "complexity": "eslint src scripts"
   },
   "dependencies": {
     "@modelcontextprotocol/node": "^2.1.0",
     "@modelcontextprotocol/server": "^2.2.0",
     "discord.js": "14.27.0",
+    "file-type": "^22.1.1",
+    "image-size": "^2.0.4",
     "ipaddr.js": "^2.5.0",
     "jose": "6.2.12",
     "standardwebhooks": "^1.1.1",
@@ -27,6 +30,7 @@
     "@modelcontextprotocol/client": "^2.2.0",
     "@types/node": "^22.0.0",
     "eslint": "^10.11.0",
+    "playwright-core": "^1.63.0",
     "tsx": "^4.0.0",
     "typescript": "^5.9.0",
     "typescript-eslint": "^8.0.0"

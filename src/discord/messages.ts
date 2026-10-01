@@ -1,7 +1,8 @@
 import { z } from 'zod';
 import { define, channel, message, pagination, text, mentions, origin, query, write, sensitive } from './operations.js';
 
-const emoji = z.string().min(1).max(100).refine(value => !/[\s/]/u.test(value));
+export const emoji = z.string().min(1).max(100).refine(value =>
+  /^[a-zA-Z0-9_]{2,32}:\d{17,20}$/.test(value) || /^(?:\p{Extended_Pictographic}|\p{Regional_Indicator}|[0-9#*]\uFE0F?\u20E3)[\p{Extended_Pictographic}\p{Regional_Indicator}\p{Emoji_Modifier}\u200D\uFE0F\u20E3]*$/u.test(value));
 const poll = z.object({
   question: z.string().min(1).max(300),
   answers: z.array(z.string().min(1).max(55)).min(2).max(10),
@@ -39,6 +40,9 @@ export const messageOperations = [
     }, write),
   define('reaction_remove_own', 'Remove only the bot’s own reaction.', 'reactions.write', 'channel',
     { ...message, emoji }, (a, c) => c.api.delete(`/channels/${a.channelId}/messages/${a.messageId}/reactions/${encodeURIComponent(a.emoji)}/@me`), write),
+  define('reaction_users', 'Read a bounded page of users for one Unicode or name:id custom emoji reaction.', 'messages.read', 'channel',
+    { ...message, emoji, ...pagination }, (a, c) => c.api.get(`/channels/${a.channelId}/messages/${a.messageId}/reactions/${encodeURIComponent(a.emoji)}`,
+      query({ limit: a.limit, after: a.before }))),
   define('poll_create', 'Create a poll in the originating channel.', 'messages.write', 'channel',
     { ...channel, poll }, (a, c) => {
       c.policy.assertResponse(origin(c).event, a.channelId);

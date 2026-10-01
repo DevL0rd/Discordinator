@@ -26,5 +26,12 @@
   "mcpEvents": {
     "enabled": false,
     "allowAllMessages": false
+  },
+  "media": {
+    "enabled": false,
+    "capture": "addressed",
+    "maxAttachments": 500,
+    "ttlMinutes": 30,
+    "maxFileBytes": 2097152
   }
 }

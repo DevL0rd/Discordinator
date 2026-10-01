@@ -8,6 +8,7 @@ import { EventsService } from '../src/events/service.js';
 import { SubscriptionStore } from '../src/events/store.js';
 import { HttpServer } from '../src/mcp/http.js';
 import { fakeConfig, fixture } from './fixtures.js';
+import { operations } from '../src/discord/catalog.js';
 
 async function denialChecks(url: string, token: string): Promise<void> {
   assert.equal((await fetch(url, { method: 'POST', body: '{}' })).status, 401);
@@ -36,7 +37,15 @@ export async function checkHttp(directory: string): Promise<void> {
     const transport = new StreamableHTTPClientTransport(new URL(url), { requestInit: { headers: { Authorization: `Bearer ${config.DOTBOT_MCP_TOKEN}` } } });
     await client.connect(transport);
     const listed = await client.listTools();
-    assert.ok(listed.tools.length > 60);
+    assert.equal(listed.tools.length, operations.length + 17);
+    for (const name of ['media_search', 'media_history', 'media_attachment_read', 'media_upload_begin', 'discord_media_reply', 'discord_prompt']) {
+      assert.ok(listed.tools.some(tool => tool.name === name));
+    }
+    const blockedMedia = await client.callTool({ name: 'media_search', arguments: { eventId: f.event.id, url: 'https://127.0.0.1/private' } });
+    assert.equal(blockedMedia.isError, true);
+    const blockedPrompt = await client.callTool({ name: 'discord_prompt', arguments: { eventId: f.event.id, idempotencyKey: 'blocked-prompt',
+      content: 'Choose', mode: 'buttons', options: [{ key: 'a', label: 'A' }], actorId: 'forged' } });
+    assert.equal(blockedPrompt.isError, true);
     const polled = await client.callTool({ name: 'events_poll', arguments: { after: 0, waitMs: 0 } });
     assert.equal(polled.isError, undefined);
     const page = JSON.parse((polled.content as { text: string }[])[0]!.text);

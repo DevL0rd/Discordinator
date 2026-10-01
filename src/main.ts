@@ -30,7 +30,7 @@ async function run(config: import('./core/config.js').Config, policyConfig: impo
   const store = new SubscriptionStore('.data/subscriptions.json');
   await store.load();
   const events = new EventsService(store, policy, new Authenticator(config).ownerAllowed);
-  const gateway = new Gateway(config, policy, queue, approvals, api, bridge.context, events);
+  const gateway = new Gateway(config, policy, queue, approvals, api, bridge.context, events, bridge.media, bridge.flows);
   const http = new HttpServer(config, bridge, () => ({ ...gateway.status(), events: events.status() }), events);
   let stopping: Promise<void> | undefined;
   const stop = () => stopping ??= shutdown(gateway, http, events, release);

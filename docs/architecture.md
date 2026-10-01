@@ -34,10 +34,14 @@ flowchart LR
 | `src/discord/` | Gateway capture, safe output projection, fixed typed operation families |
 | `src/core/context.ts` | Bounded context ingestion/search, separate from action origins |
 | `src/events/` | Durable owner/filter/expiry state, verified SSRF-safe HTTPS callbacks, signatures and retry outbox |
+| `src/media/` | Bounded upload memory, safe format checks, scoped attachment index/handles, refreshed CDN-only retrieval |
+| `src/interactions/` | Typed prompts, single-use actor/message/application bindings, immediate modal launch and child event capture |
 | `src/mcp/` | Authenticated HTTP transport, OAuth resource validation and tool registration |
 | `scripts/` | Practical offline validation with disposable fixtures |
 
 The bot receives messages and its own `/dot` interactions. It checks user IDs before trigger text or reply-reference fetches. A reply must resolve to a message by this bot in the same channel/guild. Accepted message events are captured only on creation. Bot/webhook messages never become triggers or webhook events. Optional context indexing can include bot messages; message edits/deletes update/remove retained context without triggering actions. A slash command is an explicit reference to the application and is gated by its name/application ID, whitelist, origin and messages.write scope before an ephemeral defer. The response closure awaits defer completion, retains the interaction internally and rechecks authorization before editing. No interaction token or raw Discord object is serialized to MCP.
+
+Attachment observation has its own disabled-by-default policy, separate from context and delivery. Metadata never becomes an origin. Media reads require an allowed live event, approved resources in that origin's guild (or its exact DM), and opaque event-bound handles. Uploads remain bounded memory; only fingerprints/outcome IDs enter the send journal. Verified controls add child origins bound to the same actor/channel/guild and actual prompt message. The queue resolves the live parent again; child requests cannot extend authority beyond its lifetime. Button/modal values never enter the approval parser. See [files and controls](media-and-controls.md).
 
 Every mutation resolves a live server-owned event ID, rechecks the user and capabilities, verifies its resource target, and goes through the journal. Replies and content-producing operations stay in the triggering channel; admin actions stay in the triggering guild. DMs can only target the triggering whitelisted author. New reactions and pins additionally require a whitelisted message author or this bot. Deletions/moderation can affect other members after explicit confirmation; they never auto-DM the target. Proactive text sends require a separately approved guild-channel grant and have no arbitrary recipient or actor parameter.
 

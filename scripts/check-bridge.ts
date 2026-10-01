@@ -65,6 +65,12 @@ function checkQueue(): void {
   now = 101;
   assert.equal(queue.snapshot(0, 25).events.length, 0);
   assert.notEqual(queue.add('one', event), null);
+  const source = queue.add('parent', event)!;
+  now = 150;
+  const child = queue.add('child', { ...event, kind: 'interaction', sourceEventId: source.id })!;
+  assert.ok(queue.context(child.id));
+  now = 202;
+  assert.throws(() => queue.context(child.id));
 }
 
 export async function checkBridge(directory: string): Promise<void> {

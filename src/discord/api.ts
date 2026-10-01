@@ -8,6 +8,7 @@ export interface Api {
   botId: string;
   get(route: string, query?: URLSearchParams): Promise<unknown>;
   post(route: string, body: unknown): Promise<unknown>;
+  postFiles(route: string, body: unknown, files: import('../core/queue.js').Delivery['files']): Promise<unknown>;
   patch(route: string, body: unknown, reason?: string): Promise<unknown>;
   put(route: string, body?: unknown, reason?: string): Promise<unknown>;
   delete(route: string, reason?: string): Promise<unknown>;
@@ -24,13 +25,14 @@ export class DiscordApi implements Api {
     this.rest = new REST({ version: '10', retries: 0, timeout: 15_000 }).setToken(token);
   }
 
-  private async request(method: 'GET' | 'POST' | 'PATCH' | 'PUT' | 'DELETE', route: string, body?: unknown, query?: URLSearchParams, reason?: string) {
+  private async request(method: 'GET' | 'POST' | 'PATCH' | 'PUT' | 'DELETE', route: string, body?: unknown, query?: URLSearchParams, reason?: string, files?: import('../core/queue.js').Delivery['files']) {
     if (this.invalid) throw new Error('Discord authentication failed; restart after correcting credentials');
     try {
       return await this.rest.request({
         method: methods[method], fullRoute: route as `/${string}`,
         ...(body === undefined ? {} : { body }), ...(query ? { query } : {}),
         ...(reason ? { reason } : {}),
+        ...(files?.length ? { files } : {}),
       });
     } catch (error) {
       const status = (error as { status?: number }).status;
@@ -41,6 +43,7 @@ export class DiscordApi implements Api {
 
   get(route: string, query?: URLSearchParams) { return this.request('GET', route, undefined, query); }
   post(route: string, body: unknown) { return this.request('POST', route, body); }
+  postFiles(route: string, body: unknown, files: import('../core/queue.js').Delivery['files']) { return this.request('POST', route, body, undefined, undefined, files); }
   patch(route: string, body: unknown, reason?: string) { return this.request('PATCH', route, body, undefined, reason); }
   put(route: string, body?: unknown, reason?: string) { return this.request('PUT', route, body, undefined, reason); }
   delete(route: string, reason?: string) { return this.request('DELETE', route, undefined, undefined, reason); }
