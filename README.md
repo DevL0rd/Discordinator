@@ -1,6 +1,8 @@
 <a id="top"></a>
 
-<h1 align="center">DotBot</h1>
+<p align="center">
+  <img alt="DotBot — your Discord bot, within reach of dot. Authenticated MCP through a policy gate." src="docs/media/banner.svg" width="100%">
+</p>
 
 <p align="center">
   <a href="https://github.com/DevL0rd/DotBot/actions/workflows/complexity.yml"><img alt="Complexity" src="https://img.shields.io/github/actions/workflow/status/DevL0rd/DotBot/complexity.yml?branch=main&style=for-the-badge&label=complexity"></a>
@@ -151,6 +153,79 @@ No. DotBot serializes mutations and persists hashed idempotency keys before the 
 Run `npm run check`, `npm run build`, `npm run validate` and `npm run complexity`. Validation uses in-process Discord mocks and a temporary authenticated loopback MCP server, then cleans up. It does not log in to Discord. GitHub Actions runs only code-complexity checking; there are no deployment, integration-test or credential jobs. [Validation details](docs/validation.md) record the practical limits.
 
 </details>
+
+---
+
+<a id="more"></a>
+
+## 🧰 More from DevL0rd
+
+Other Plasma projects made to sit on the same desktop. Click a banner to open it on GitHub.
+
+<p align="center">
+  <a href="https://github.com/DevL0rd/Konveyor">
+    <picture>
+      <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/DevL0rd/Konveyor/main/docs/media/banner-dark.svg">
+      <source media="(prefers-color-scheme: light)" srcset="https://raw.githubusercontent.com/DevL0rd/Konveyor/main/docs/media/banner-light.svg">
+      <img alt="Konveyor — scrolling tiling for KDE Plasma" src="https://raw.githubusercontent.com/DevL0rd/Konveyor/main/docs/media/banner-dark.svg" width="600">
+    </picture>
+  </a>
+  <br>
+  <a href="https://github.com/DevL0rd/Konveyor"><b>Konveyor</b></a> · Your windows, on a conveyor belt.
+</p>
+
+<p align="center">
+  <a href="https://github.com/DevL0rd/RVC-Voice-Changer">
+    <picture>
+      <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/DevL0rd/Konveyor/main/docs/media/more/rvc-voice-changer-dark.svg">
+      <source media="(prefers-color-scheme: light)" srcset="https://raw.githubusercontent.com/DevL0rd/Konveyor/main/docs/media/more/rvc-voice-changer-light.svg">
+      <img alt="RVC Voice Changer — Real-time AI voice changing for Plasma" src="https://raw.githubusercontent.com/DevL0rd/Konveyor/main/docs/media/more/rvc-voice-changer-dark.svg" width="600">
+    </picture>
+  </a>
+  <br>
+  <a href="https://github.com/DevL0rd/RVC-Voice-Changer"><b>RVC Voice Changer</b></a> · Sound like anyone, in every app.
+</p>
+
+<p align="center">
+  <a href="https://github.com/DevL0rd/KBoard">
+    <picture>
+      <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/DevL0rd/Konveyor/main/docs/media/more/kboard-dark.svg">
+      <source media="(prefers-color-scheme: light)" srcset="https://raw.githubusercontent.com/DevL0rd/Konveyor/main/docs/media/more/kboard-light.svg">
+      <img alt="KBoard — The on-screen keyboard for Plasma" src="https://raw.githubusercontent.com/DevL0rd/Konveyor/main/docs/media/more/kboard-dark.svg" width="600">
+    </picture>
+  </a>
+  <br>
+  <a href="https://github.com/DevL0rd/KBoard"><b>KBoard</b></a> · Type, glide and talk, right on your desktop.
+</p>
+
+<p align="center">
+  <a href="https://github.com/DevL0rd/Android-Daemon">
+    <picture>
+      <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/DevL0rd/Konveyor/main/docs/media/more/android-daemon-dark.svg">
+      <source media="(prefers-color-scheme: light)" srcset="https://raw.githubusercontent.com/DevL0rd/Konveyor/main/docs/media/more/android-daemon-light.svg">
+      <img alt="Android-Daemon — Your Android phone, part of your Plasma desktop" src="https://raw.githubusercontent.com/DevL0rd/Konveyor/main/docs/media/more/android-daemon-dark.svg" width="600">
+    </picture>
+  </a>
+  <br>
+  <a href="https://github.com/DevL0rd/Android-Daemon"><b>Android-Daemon</b></a> · Your phone, right on your desktop.
+</p>
+
+<p align="center">
+  <a href="https://github.com/DevL0rd/Syncthing-Monitor">
+    <picture>
+      <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/DevL0rd/Konveyor/main/docs/media/more/syncthing-monitor-dark.svg">
+      <source media="(prefers-color-scheme: light)" srcset="https://raw.githubusercontent.com/DevL0rd/Konveyor/main/docs/media/more/syncthing-monitor-light.svg">
+      <img alt="Syncthing Monitor — Syncthing, live in your Plasma panel" src="https://raw.githubusercontent.com/DevL0rd/Konveyor/main/docs/media/more/syncthing-monitor-dark.svg" width="600">
+    </picture>
+  </a>
+  <br>
+  <a href="https://github.com/DevL0rd/Syncthing-Monitor"><b>Syncthing Monitor</b></a> · Your sync, at a glance.
+</p>
+
+
+
+
+---
 
 <p align="center">Released under the <a href="LICENSE">MIT license</a>.</p>
 <p align="center"><a href="#top">Back to top ⬆</a></p>
