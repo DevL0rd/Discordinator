@@ -1,6 +1,6 @@
 # Setup and permissions
 
-Start with [the README](../README.md). Installation only downloads npm dependencies and builds the server. It does not acquire credentials, configure OAuth, install a Discord application or start a service.
+Start with [Connect your dot](getting-started.md). Installation only downloads npm dependencies and builds the server. It does not acquire credentials, configure OAuth, install a Discord application or start a service.
 
 ## Runtime files
 
@@ -20,28 +20,15 @@ Copy-Item .env.example .env
 Copy-Item policy.example.json policy.json
 ```
 
-Skip the policy copy if you already have a configured local policy. This laptop’s ignored policy has been separately prepared; it is intentionally absent from the public repository. No credentials are supplied with the project.
+Skip either copy if that local file already exists. Preserve your configured policy and whitelist. No credentials are supplied with the project.
 
-Set a real **bot** credential locally when you later authorize connecting. Never use a user account token. Set a separate random MCP credential of at least 32 characters for bearer mode. Do not reuse the Discord credential. Placeholder values are rejected. No OpenAI API key or model account is required by DotBot itself.
+Set a real **bot** credential locally. Never use a user account token. The recommended tunnel mode needs no DotBot MCP credential; OpenAI runtime credentials belong to `tunnel-client`. Advanced bearer/OAuth configuration is in [connection](connection.md). Placeholder bot credentials are rejected.
 
 The process reads configuration once. Stop it, edit local files and restart to change policy. Node’s `--env-file=.env` reads the environment file; existing process environment values take precedence. Always run from the project directory so relative policy and journal paths resolve there.
 
 ## Policy
 
-| Field | Meaning |
-| :-- | :-- |
-| `allowedUserIds` | Up to 100 quoted Discord user IDs; empty silently rejects every Discord requester |
-| `guildScope` | `listed` checks `guildIds`; `all` allows every guild accessible to the bot |
-| `channelScope` | `listed` checks exact `channelIds`; `all` allows every accessible channel/thread |
-| `guildIds`, `channelIds` | Quoted IDs used in listed mode; threads need their own ID, not only their parent |
-| `scopes` | Capability names from [capabilities](capabilities.md); an absent capability is denied |
-| `triggers.matchNames` | Enables alias matching; requires local Message Content intent flag |
-| `triggers.replyToBot` | Allows same-channel replies only after fetching and verifying this bot authored the referenced message; defaults true |
-| `context` | Opt-in bounded context index: addressed or all-message capture, retention and size bounds |
-| `media` | Opt-in attachment index/capture, retention/count/file bounds; scopes remain mandatory |
-| `mcpEvents` | Opt-in verified webhook subscriptions; unaddressed all-message delivery is a separate switch |
-| `triggers.names` | Up to 10 literal names/aliases, 2–32 characters each; no regex syntax |
-| `proactive` | Entries containing `channelId` and `scopes: ["message.send"]`; no wildcard, guild-wide or DM grant |
+See [configuration](configuration.md#policy-defaults) for every policy field and default. Keep the whitelist exact and capability grants deliberate.
 
 To avoid ID enumeration, set both scope modes to `all` in the full policy. This is explicit access to current and future joined resources. The whitelist stays exact and mandatory. Capability scopes stay explicit. Approved event provenance still constrains each mutation. The authenticated `discord_guilds_list` tool can discover guild IDs; `discord_channels_list` can discover channels. Discord permissions can make otherwise approved resources inaccessible.
 
@@ -53,12 +40,12 @@ In listed mode, a newly created channel/thread is **not** automatically added to
 
 The baseline is `Guilds`, `GuildMessages` and `DirectMessages`, with the channel partial needed for DMs. No presence, typing, reaction or member-event listener is registered.
 
-For name/alias triggers, do all of these **later, before connecting**:
+For the default Message Content intent and name/alias triggers:
 
 1. Open the [Developer Portal](https://discord.com/developers/applications) and select your application.
 2. On **Bot**, find **Privileged Gateway Intents**. Turn on **Message Content Intent** and save.
 3. If the portal requires a review/approval, complete it; a local flag cannot grant platform access.
-4. Put `DOTBOT_MESSAGE_CONTENT=true` in `.env` and `triggers.matchNames=true` in `policy.json`; supply the names.
+4. Keep the default `DOTBOT_MESSAGE_CONTENT=true` (no environment entry is needed) and set `triggers.matchNames=true` in `policy.json`; supply the names. The public policy already enables `DotBot`/`dot` aliases.
 5. Restart DotBot. It requests `GatewayIntentBits.MessageContent` during identification.
 
 Mention-only mode uses `triggers.matchNames=false` and can use `DOTBOT_MESSAGE_CONTENT=false`. The explicit mention must occur in message text; an inherited reply mention is not enough. A reply-to-bot trigger independently fetches and verifies the referenced author/message/channel/guild after whitelist checks; missing/deleted targets fail closed. Even DMs must address the bot through text or a verified reply. Message edits are not triggers. Name matching can match quoted/code text because it is literal text detection. [Discord’s Gateway reference](https://docs.discord.com/developers/events/gateway) explains intent filtering and privileged access.
@@ -87,6 +74,6 @@ Gateway heartbeat/resume/reconnect and REST bucket/global rate-limit waits come 
 
 `dotbot_status` reports Gateway readiness/reconnection state, scope modes and counts without credentials or whitelist IDs. For unknown mutation outcomes, follow [journal recovery](architecture.md#idempotency-and-recovery).
 
-Optional context capture and official MCP Events are described in [Events and context](mcp-events.md). Context indexing can observe unlisted guild members without authorizing them. Full guild text capture needs the same two Message Content intent switches as name matching. Subscription secrets/outbox data live only in ignored `.data/`; keep those files private and preserve unresolved state during recovery.
+Optional context capture and official MCP Events are described in [Events and context](mcp-events.md). Context indexing can observe unlisted guild members without authorizing them. Full guild text capture needs the Message Content intent in both the runtime and Discord portal as name matching. Subscription secrets/outbox data live only in ignored `.data/`; keep those files private and preserve unresolved state during recovery.
 
 [Files and controls](media-and-controls.md) documents the separate media opt-in, `media.read`/`media.write`/`interactions.write` grants, attachment visibility under Message Content, safe client editing handoff and ephemeral controls. Existing policies without the new fields remain media-disabled; merge fields explicitly instead of replacing your whitelist. No upgrade invokes the bot, creates credentials or starts a service.

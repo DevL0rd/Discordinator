@@ -10,20 +10,30 @@ import { checkEvents, checkCancellation } from './check-events.js';
 import { checkAuth } from './check-auth.js';
 import { checkMedia } from './check-media.js';
 import { checkControls } from './check-controls.js';
+import { checkTunnel } from './check-tunnel.js';
 
 await mkdir('.data', { recursive: true, mode: 0o700 });
 const directory = await mkdtemp(join('.data', 'validation-'));
 try {
-  await checkPolicy(directory);
-  await checkBridge(directory);
-  await checkHttp(directory);
-  await checkAuth();
-  await checkContext(directory);
-  await checkEvents(directory);
-  await checkCancellation(directory);
-  await checkMedia(directory);
-  await checkControls(directory);
-  console.log(`Local validation passed: policy/triggers, Gateway mocks, approvals, idempotency, queue and authenticated MCP (${operations.length + 17} tools), context, MCP Events, safe media/retrieval and correlated controls. No Discord connection.`);
+    await checkHttp(directory);
+    await checkAuth();
+    await checkTunnel(directory);
+    if (process.argv.includes('--connection')) {
+        console.log(
+            'Connection validation passed: bearer HTTP, offline OAuth JWTs and loopback-only tunnel mode. No external connections.',
+        );
+    } else {
+        await checkPolicy(directory);
+        await checkBridge(directory);
+        await checkContext(directory);
+        await checkEvents(directory);
+        await checkCancellation(directory);
+        await checkMedia(directory);
+        await checkControls(directory);
+        console.log(
+            `Local validation passed: policy/triggers, Gateway mocks, approvals, idempotency, queue and bearer/OAuth/local-tunnel MCP (${operations.length + 17} tools), context, MCP Events, safe media/retrieval and correlated controls. No Discord connection.`,
+        );
+    }
 } finally {
-  await rm(directory, { recursive: true, force: true });
+    await rm(directory, { recursive: true, force: true });
 }

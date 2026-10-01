@@ -5,19 +5,19 @@ import type { Policy } from '../core/policy.js';
 import type { Api } from './api.js';
 
 export interface OperationContext {
-  api: Api;
-  policy: Policy;
-  origin?: EventContext;
+    api: Api;
+    policy: Policy;
+    origin?: EventContext;
 }
 export interface Operation {
-  name: string;
-  description: string;
-  scope: Scope;
-  target: 'guild' | 'channel';
-  mutates: boolean;
-  sensitive: boolean;
-  schema: z.ZodObject;
-  run: (input: unknown, context: OperationContext) => Promise<unknown>;
+    name: string;
+    description: string;
+    scope: Scope;
+    target: 'guild' | 'channel';
+    mutates: boolean;
+    sensitive: boolean;
+    schema: z.ZodObject;
+    run: (input: unknown, context: OperationContext) => Promise<unknown>;
 }
 
 export const channel = { channelId: snowflake };
@@ -31,26 +31,36 @@ export const reason = z.string().min(1).max(300);
 export const mentions = { parse: [], replied_user: false };
 
 export function define<S extends z.ZodRawShape>(
-  name: string, description: string, scope: Scope, target: Operation['target'],
-  shape: S, run: (input: z.infer<z.ZodObject<S>>, context: OperationContext) => Promise<unknown>,
-  options: { mutates?: boolean; sensitive?: boolean } = {},
+    name: string,
+    description: string,
+    access: Pick<Operation, 'scope' | 'target'>,
+    shape: S,
+    run: (input: z.infer<z.ZodObject<S>>, context: OperationContext) => Promise<unknown>,
+    options: { mutates?: boolean; sensitive?: boolean } = {},
 ): Operation {
-  const schema = z.object(shape).strict();
-  return {
-    name, description, scope, target, schema, mutates: options.mutates ?? false,
-    sensitive: options.sensitive ?? false,
-    run: (input, context) => run(schema.parse(input), context),
-  };
+    const schema = z.object(shape).strict();
+    return {
+        name,
+        description,
+        ...access,
+        schema,
+        mutates: options.mutates ?? false,
+        sensitive: options.sensitive ?? false,
+        run: (input, context) => run(schema.parse(input), context),
+    };
 }
 
 export function query(input: Record<string, unknown>): URLSearchParams {
-  return new URLSearchParams(Object.entries(input).filter(([, value]) => value !== undefined)
-    .map(([key, value]) => [key, String(value)]));
+    return new URLSearchParams(
+        Object.entries(input)
+            .filter(([, value]) => value !== undefined)
+            .map(([key, value]) => [key, String(value)]),
+    );
 }
 
 export function origin(context: OperationContext): EventContext {
-  if (!context.origin) throw new Error('Captured triggering event is required');
-  return context.origin;
+    if (!context.origin) throw new Error('Captured triggering event is required');
+    return context.origin;
 }
 
 export const write = { mutates: true };

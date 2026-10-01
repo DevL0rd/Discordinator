@@ -1,14 +1,23 @@
-# Connection and handoff
+# Connection reference
 
-DotBot is a headless MCP server. It does not contain an LLM or call OpenAI. The connected client chooses whether and when to read events and invoke operations.
+For the recommended private connection, follow [Connect your dot](getting-started.md). DotBot is a headless MCP server; the connected dot chooses when to read events and invoke operations. DotBot contains no LLM and makes no model calls.
 
-## Local client
+## Recommended: Secure MCP Tunnel
 
-The transport uses the official MCP v2 HTTP handler (2026-07-28 and legacy stateless tools fallback) at `http://127.0.0.1:8787/mcp`. POST is supported; GET, HTTP sessions and legacy HTTP+SSE are not. Modern requests carry the SDK protocol metadata envelope. MCP Events use outbound verified webhooks; they do not depend on an inbound SSE stream. Each request, including initialization and tool listing, must carry authentication. Neither a session ID nor possession of an event ID is an authentication credential.
+Default `tunnel` mode accepts only local requests from the same trusted host/network namespace. Configure `tunnel-client` to target `http://127.0.0.1:8787/mcp`, then choose **Connection → Tunnel** when adding the plugin. OpenAI's runtime credential and organization/workspace permissions secure the managed tunnel; the host boundary secures the local listener. DotBot does not assume injection of a static bearer token. See [OpenAI's tunnel guide](https://developers.openai.com/api/docs/guides/secure-mcp-tunnels) and [the local security boundary](security.md#local-tunnel-boundary).
 
-In bearer mode, send the locally configured `DOTBOT_MCP_TOKEN` in `Authorization: Bearer …`. Credentials in query parameters are never accepted. Do not put real credential values in client configuration checked into git.
+## Advanced: local bearer clients
 
-For a local Codex client, the current [MCP configuration reference](https://learn.chatgpt.com/docs/extend/mcp?surface=cli) supports an environment-variable credential reference:
+Clients that can supply custom Authorization headers can use an independent DotBot bearer credential. Configure locally:
+
+```dotenv
+DOTBOT_AUTH_MODE=bearer
+DOTBOT_MCP_TOKEN=replace-with-independent-random-secret-locally
+```
+
+Generate a separate random secret of at least 32 characters and replace the placeholder locally; do not reuse the Discord token. Send it as `Authorization: Bearer …` on every MCP request. Query-string credentials are not accepted.
+
+For a local Codex client, the [MCP configuration reference](https://learn.chatgpt.com/docs/extend/mcp?surface=cli) documents an environment-variable credential reference:
 
 ```toml
 [mcp_servers.dotbot]
@@ -17,15 +26,17 @@ bearer_token_env_var = "DOTBOT_MCP_TOKEN"
 tool_timeout_sec = 60
 ```
 
-This snippet is documentation only. Nothing edits a Codex/ChatGPT account, global configuration or another session. The client must receive its secret through its own protected environment. Local dot/computer tool availability and configuration depend on the supported OpenAI surface; a server installed here does not automatically add tools to a hosted dot.
+The client needs that secret in its own protected environment. DotBot does not edit global client/account configuration. This path is for clients with custom-header support; ChatGPT cannot present a customer-supplied static API key to a normal public MCP connection. See [OpenAI authentication](https://developers.openai.com/plugins/build/auth).
 
-## ChatGPT and remote clients
+## Advanced: public HTTPS and external OAuth
 
-ChatGPT needs a remotely reachable connection, not the laptop’s loopback URL. Use a supported **Secure MCP Tunnel** for private connections, or a separately secured HTTPS reverse proxy that forwards to loopback. This build creates neither. Tunnel availability, permissions and developer-mode access are separate host requirements. Follow [OpenAI’s tunnel guide](https://developers.openai.com/api/docs/guides/secure-mcp-tunnels); the tunnel does not automatically configure an OAuth provider.
+Use this option only when you need a public connection and have a compatible OAuth 2.1 authorization server. DotBot verifies external access JWTs; it is **not an authorization server** and cannot create the provider, perform account registration or issue tokens.
 
-Keep DotBot’s upstream listener on loopback. Do not publish it with unauthenticated ingress. A remote proxy must provide HTTPS, preserve Authorization, limit bodies/concurrency, avoid credential logging and forward only the intended MCP/discovery paths. Allow only exact Host headers with `DOTBOT_ALLOWED_HOSTS` and exact Origin values with `DOTBOT_ALLOWED_ORIGINS` where necessary. Missing Origin is allowed for server clients; any unlisted supplied Origin returns 403. Default accepted hosts are `127.0.0.1:PORT` and `localhost:PORT`; there are no wildcards, permissive CORS rules or trust in forwarded headers.
+Keep DotBot on loopback. Put an authenticated HTTPS reverse proxy in front of it, forward only MCP and protected-resource discovery paths, preserve Authorization, bound body/concurrency, and avoid credential logging. Never expose tunnel mode through this proxy. Set `DOTBOT_AUTH_MODE=oauth` before attaching ingress.
 
-### External OAuth resource mode
+Allow the exact public Host (including any port) with `DOTBOT_ALLOWED_HOSTS`. Add `DOTBOT_ALLOWED_ORIGINS` only for exact supplied Origin values that your client needs. A missing Origin is allowed for server clients; an unlisted supplied Origin returns 403. There are no wildcards or permissive CORS rules. Forwarded headers never establish authorization or caller identity. See [configuration defaults](configuration.md).
+
+### OAuth resource contract
 
 For ChatGPT OAuth, separately choose/configure a compatible authorization provider and set:
 
@@ -41,7 +52,13 @@ The provider must issue signed **access JWTs** with RS256 or ES256, `exp`, `iat`
 
 Discovery is served at `/.well-known/oauth-protected-resource` and `/.well-known/oauth-protected-resource/mcp`. A 401 includes a Bearer challenge pointing to the protected-resource metadata. Discovery exposes only the canonical resource, issuer and supported scope, never a control tool or secret. The authorization provider must handle discovery, authorization-code flow with S256 PKCE, client identification/registration compatible with the host, resource-bound tokens and the exact callback URI the host supplies. DotBot does not configure any of those. Static bearer mode does not pretend to implement that OAuth flow. See [OpenAI authentication](https://developers.openai.com/plugins/build/auth) and [MCP authorization](https://modelcontextprotocol.io/specification/2026-07-28/basic/authorization).
 
-After authorized endpoint/provider preparation, add the MCP server through the connection/plugin management flow available to your ChatGPT workspace, authenticate, inspect the tool list and test `dotbot_status`. Use a private development connection first. DotBot supplies no widget resources or UI metadata; the host’s normal connection/approval interface is sufficient. Exact menu names, plan availability and dot support may change, so use the official host docs shown in your workspace. A plugin installed in a chat is not automatically enabled in every dot.
+After endpoint/provider preparation, add the MCP server through the connection/plugin management flow available to your ChatGPT workspace, authenticate, inspect the tool list and test `dotbot_status`. Use a private development connection first. DotBot supplies no widget resources or UI metadata; the host’s normal connection/approval interface is sufficient. Exact menu names, plan availability and dot support may change, so use the official host docs shown in your workspace. A plugin installed in a chat is not automatically enabled in every dot.
+
+## MCP transport
+
+The official MCP v2 HTTP handler serves protocol 2026-07-28 and legacy stateless tools at `/mcp`. POST is supported; GET, HTTP sessions and legacy HTTP+SSE are not. Modern requests carry the SDK protocol metadata envelope. MCP Events use outbound verified webhooks and do not need an inbound SSE stream. Every request, including discovery and tool listing, must satisfy the configured transport boundary. Neither a session ID nor an event ID is a credential.
+
+Bodies and encoded tool results are bounded to 512,000 bytes. JSON batches are rejected. There are at most 16 active dispatches, 32 connections and 120 requests/minute, with five-second headers and a 30-second request receipt timeout. The listener stays on IPv4 loopback in all modes. Only OAuth mode exposes the read-only protected-resource metadata paths. See [architecture](architecture.md#bounds-and-failure-handling) for other limits.
 
 ## Give dot this handoff
 

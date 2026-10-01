@@ -1,0 +1,14 @@
+{
+    "$schema": "https://unpkg.com/knip@6.39.0/schema.json",
+    "entry": [
+        "src/main.ts",
+        "scripts/validate.ts",
+        "scripts/check-banner.ts",
+        "scripts/check-quality.ts"
+    ],
+    "project": [
+        "src/**/*.ts",
+        "scripts/**/*.ts"
+    ],
+    "includeEntryExports": true
+}

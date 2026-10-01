@@ -1,6 +1,6 @@
 # Files, sources and interactive requests
 
-All these tools require MCP authentication and a live captured `eventId` from an allowed Discord requester. An attachment, source handle, message link, button label or modal value never creates authority. Replies stay in the original channel/thread/DM or ephemeral interaction. Administrator does not remove these controls.
+All these tools require the configured [MCP access boundary](security.md#local-tunnel-boundary) and a live captured `eventId` from an allowed Discord requester. An attachment, source handle, message link, button label or modal value never creates authority. Replies stay in the original channel/thread/DM or ephemeral interaction. Administrator does not remove these controls.
 
 ## Enable only the capabilities you want
 
@@ -20,7 +20,7 @@ Merge the following fields into your private ignored `policy.json`, preserving i
 
 Add `messages.read` and `media.read` for lookup/retrieval; `messages.write` and `media.write` for uploads/replies; `messages.write` and `interactions.write` for controls. These are additional entries in the existing `scopes` array, not a replacement for all your scopes. The tracked example keeps media disabled, scopes empty and whitelist empty. `media.capture="all"` explicitly indexes attachments from observable approved guild messages, including unlisted authors. This setting is separate from context capture and webhook delivery. It does not make their authors bot requesters. DMs remain limited to approved authors and their originating conversation.
 
-For non-addressed guild attachment visibility, enable **Developer Portal → application → Bot → Privileged Gateway Intents → Message Content Intent**, save, obtain Discord approval if required, set `DOTBOT_MESSAGE_CONTENT=true`, and restart DotBot. Discord restricts attachment fields under the same privileged intent as message text. Empty attachment fields are not evidence that a message has no files. [Discord message fields](https://docs.discord.com/developers/resources/message#message-object) describe this restriction.
+For non-addressed guild attachment visibility, enable **Developer Portal → application → Bot → Privileged Gateway Intents → Message Content Intent**, save, obtain Discord approval if required, keep the default `DOTBOT_MESSAGE_CONTENT=true`, and restart DotBot. Discord restricts attachment fields under the same privileged intent as message text. Empty attachment fields are not evidence that a message has no files. [Discord message fields](https://docs.discord.com/developers/resources/message#message-object) describe this restriction.
 
 ## Find the right incoming file
 

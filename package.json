@@ -12,8 +12,17 @@
     "start": "node --env-file=.env dist/src/main.js",
     "check": "tsc --noEmit",
     "validate": "tsx scripts/validate.ts",
+    "validate:connection": "tsx scripts/validate.ts --connection",
     "validate:banner": "tsx scripts/check-banner.ts",
-    "complexity": "eslint src scripts"
+    "complexity": "eslint src scripts",
+    "lint": "eslint src scripts",
+    "check:length": "tsx scripts/check-quality.ts",
+    "check:spelling": "typos",
+    "check:duplicates": "jscpd --fail-on-empty src scripts eslint.config.js",
+    "check:format": "prettier --check \"src/**/*.ts\" \"scripts/**/*.ts\" eslint.config.js",
+    "check:unused": "knip",
+    "quality": "npm run check:length && npm run lint && npm run check:spelling && npm run check:duplicates && npm run check:format && npm run check:unused && npm run check",
+    "setup:spelling": "npm rebuild @ocular-d/typos-bin --ignore-scripts=false"
   },
   "dependencies": {
     "@modelcontextprotocol/node": "^2.1.0",
@@ -27,12 +36,24 @@
     "zod": "^4.0.0"
   },
   "devDependencies": {
+    "@eslint/js": "10.0.1",
     "@modelcontextprotocol/client": "^2.2.0",
+    "@ocular-d/typos-bin": "1.50.3",
     "@types/node": "^22.0.0",
     "eslint": "^10.11.0",
+    "eslint-plugin-sonarjs": "4.2.2",
+    "jscpd": "5.4.0",
+    "knip": "6.39.0",
     "playwright-core": "^1.63.0",
+    "prettier": "3.9.9",
     "tsx": "^4.0.0",
     "typescript": "^5.9.0",
     "typescript-eslint": "^8.0.0"
+  },
+  "typos-bin": {
+    "version": "1.50.3"
+  },
+  "allowScripts": {
+    "@ocular-d/typos-bin@1.50.3": true
   }
 }

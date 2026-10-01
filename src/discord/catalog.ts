@@ -6,6 +6,10 @@ import { scheduledEventOperations } from './events.js';
 import { automodOperations } from './automod.js';
 
 export const operations = [
-  ...messageOperations, ...channelOperations, ...memberOperations,
-  ...guildOperations, ...scheduledEventOperations, ...automodOperations,
+    ...messageOperations,
+    ...channelOperations,
+    ...memberOperations,
+    ...guildOperations,
+    ...scheduledEventOperations,
+    ...automodOperations,
 ];
