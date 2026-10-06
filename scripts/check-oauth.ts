@@ -9,6 +9,7 @@ import { applyPendingOwner, requestOwnerPassword, type KeyMaterial } from '../sr
 import { readPrivate } from '../src/oauth/storage.js';
 import { Authenticator } from '../src/mcp/auth.js';
 import { OAuthFixture, authorization, callback, form, redirect, verifier } from './oauth-fixture.js';
+import { posixOnly } from './fixtures.js';
 import { checkClientExpiry, checkConsentPage, checkLoginLimits, checkOAuthFiles, checkPasswordReset } from './check-oauth-limits.js';
 
 async function registration(f: OAuthFixture): Promise<string> {
@@ -344,7 +345,7 @@ export async function checkOAuth(directory: string): Promise<void> {
     await assert.rejects(() => requestOwnerPassword(f.config.DISCORDINATOR_OAUTH_DATA_DIR, 'short'), /12 characters/);
     await requestOwnerPassword(f.config.DISCORDINATOR_OAUTH_DATA_DIR, password);
     assert.ok(await applyPendingOwner(f.config.DISCORDINATOR_OAUTH_DATA_DIR), 'a requested password enrolls the owner');
-    assert.equal((await stat(`${f.config.DISCORDINATOR_OAUTH_DATA_DIR}/owner.json`)).mode & 0o777, 0o600);
+    if (posixOnly) assert.equal((await stat(`${f.config.DISCORDINATOR_OAUTH_DATA_DIR}/owner.json`)).mode & 0o777, 0o600);
     assert.ok(!(await readFile(`${f.config.DISCORDINATOR_OAUTH_DATA_DIR}/owner.json`, 'utf8')).includes(password));
     await f.start();
     try {

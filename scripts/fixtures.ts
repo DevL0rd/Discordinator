@@ -1,3 +1,4 @@
+import { join } from 'node:path';
 import type { Api, Json } from '../src/discord/api.js';
 import { policySchema, type Config } from '../src/core/config.js';
 import { Policy } from '../src/core/policy.js';
@@ -98,3 +99,8 @@ export function fakeConfig(port = 8787): Config {
         DISCORDINATOR_GUILD_MEMBERS: 'false',
     };
 }
+
+export const socketPath = (directory: string, name: string): string =>
+    process.platform === 'win32' ? `\\\\.\\pipe\\discordinator-${name}-${process.pid}` : join(directory, `${name}.sock`);
+
+export const posixOnly = process.platform !== 'win32';

@@ -5,11 +5,12 @@ import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { createInterface } from 'node:readline';
 import { WebSocketServer } from 'ws';
+import { socketPath } from './fixtures.js';
 import { daemonTransport } from '../src/operator/codex-daemon.js';
 
 export async function checkCodexDaemon(): Promise<void> {
     const directory = await mkdtemp(join(tmpdir(), 'discordinator-daemon-'));
-    const socket = join(directory, 'daemon.sock');
+    const socket = socketPath(directory, 'daemon');
     const http = createServer();
     const server = new WebSocketServer({ server: http });
     server.on('connection', (client) =>

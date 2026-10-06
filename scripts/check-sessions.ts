@@ -7,7 +7,7 @@ import { tmpdir } from 'node:os';
 import { conversationExists, deliver, liveSession } from '../src/operator/claude-sessions.js';
 import { SessionRouter } from '../src/operator/session-router.js';
 import { SessionActivity, transcriptSteps } from '../src/operator/session-activity.js';
-import { fixture } from './fixtures.js';
+import { fixture, socketPath } from './fixtures.js';
 
 function inbox(socket: string, onMessage: () => void = () => undefined): Promise<{ received: Promise<string>; close(): void }> {
     let resolveText: (value: string) => void;
@@ -43,7 +43,7 @@ export async function checkSessions(): Promise<void> {
     const directory = await mkdtemp(join(tmpdir(), 'discordinator-sessions-'));
     const previous = { cwd: process.cwd(), config: process.env.CLAUDE_CONFIG_DIR };
     const sessionId = '11111111-2222-4333-8444-555555555555';
-    const socket = join(directory, 'inbox.sock');
+    const socket = socketPath(directory, 'inbox');
     const workspace = join(directory, 'work');
     process.env.CLAUDE_CONFIG_DIR = join(directory, 'claude');
     process.chdir(directory);

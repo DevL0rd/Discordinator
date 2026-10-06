@@ -6,6 +6,7 @@ import type { BotEvent } from '../src/core/queue.js';
 import { defaultOperatorConfig } from '../src/operator/config.js';
 import { ConversationController } from '../src/operator/controller.js';
 import { ControllerStore, conversationKey } from '../src/operator/controller-state.js';
+import { posixOnly } from './fixtures.js';
 import type { ApprovalDecision, ProviderAdapter, ProviderHooks } from '../src/operator/provider-adapter.js';
 
 class FakeProvider implements ProviderAdapter {
@@ -201,7 +202,7 @@ async function checkRecovery(controller: ConversationController, store: Controll
         recovered.update(() => {}, generation),
         /generation/,
     );
-    assert.equal((await stat(store.file)).mode & 0o777, 0o600);
+    if (posixOnly) assert.equal((await stat(store.file)).mode & 0o777, 0o600);
     assert.ok((JSON.parse(await readFile(store.file, 'utf8')) as { seen: string[] }).seen.includes('first'));
 }
 async function checkHistory(directory: string): Promise<void> {
