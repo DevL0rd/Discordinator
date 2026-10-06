@@ -1,6 +1,6 @@
 import type { ProviderRole, ProviderSession, ProviderReconciliation } from './provider-adapter.js';
 import { activityLine } from './activity-format.js';
-import { codexActivity, contextPercent } from './codex-activity.js';
+import { codexActivity, codexUsage, contextPercent } from './codex-activity.js';
 import {
     object,
     string,
@@ -135,6 +135,10 @@ function activeNotice(connection: Connection, method: string, params: RecordValu
     }
 }
 export function notification(connection: Connection, method: string, params: RecordValue, hooks: ProtocolHooks): void {
+    if (method === 'account/rateLimits/updated') {
+        hooks.emit({ type: 'usage', windows: codexUsage(params) });
+        return;
+    }
     const sessionId = string(params.threadId);
     const session = connection.sessions.get(sessionId);
     if (!session) return;

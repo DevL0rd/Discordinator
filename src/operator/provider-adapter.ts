@@ -39,9 +39,11 @@ export type ProviderEvent =
     | { type: 'approval.requested'; request: ProviderApproval }
     | { type: 'approval.resolved'; key: string; epoch: string }
     | { type: 'context'; sessionId: string; percent: number }
-    | { type: 'image'; sessionId: string; path?: string; data?: string };
-export type ProviderNotice = Extract<ProviderEvent, { type: 'context' | 'image' }>;
-export const isNotice = (event: ProviderEvent): event is ProviderNotice => event.type === 'context' || event.type === 'image';
+    | { type: 'image'; sessionId: string; path?: string; data?: string }
+    | { type: 'usage'; windows: UsageWindow[] };
+export type ProviderNotice = Extract<ProviderEvent, { type: 'context' | 'image' | 'usage' }>;
+export const isNotice = (event: ProviderEvent): event is ProviderNotice =>
+    event.type === 'context' || event.type === 'image' || event.type === 'usage';
 
 export type UsageWindow = { label: string; usedPercent: number; resetsAt?: string };
 

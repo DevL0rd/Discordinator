@@ -1,5 +1,5 @@
 import { channelHistory, type History } from './history.js';
-import { ContextMeter } from './context-meter.js';
+import { contextWarning, ThresholdMeter, usageWarning } from './context-meter.js';
 import type { Bridge } from '../core/bridge.js';
 import type { BotEvent, EventQueue } from '../core/queue.js';
 import { localModes, operatorPath, readOperatorConfig, type OperatorConfig } from './config.js';
@@ -15,7 +15,8 @@ import { desktopInstalled } from './claude-sessions.js';
 import { codexDaemonSocket, daemonTransport } from './codex-daemon.js';
 import { codexCommand } from './codex-config.js';
 import { localTransport } from './codex-protocol.js';
-import type { ProviderAdapter, ProviderNotice } from './provider-adapter.js';
+import type { ProviderAdapter, ProviderNotice, UsageWindow } from './provider-adapter.js';
+import { claudeUsage } from './providers.js';
 import { readFile } from 'node:fs/promises';
 import { randomUUID } from 'node:crypto';
 
@@ -43,14 +44,15 @@ export class OperatorService {
     private idleWaiters: (() => void)[] = [];
     private failures = 0;
     private readonly history: History;
-    readonly meter: ContextMeter;
+    readonly meter: ThresholdMeter;
+    private usageCheckedAt = 0;
 
     constructor(
         readonly queue: EventQueue,
         readonly bridge: Bridge,
     ) {
         this.history = channelHistory(bridge.context, bridge.policy, bridge.api);
-        this.meter = new ContextMeter((eventId, content, idempotencyKey) => this.bridge.respond({ eventId, content, idempotencyKey }));
+        this.meter = new ThresholdMeter((eventId, content, idempotencyKey) => this.bridge.respond({ eventId, content, idempotencyKey }));
     }
 
     start(): void {
@@ -97,9 +99,29 @@ export class OperatorService {
         const active = status.tasks.some((task) => ['queued', 'running', 'approval', 'recovering'].includes(task.state));
         return active || status.busy + status.approvals + status.queued + status.pendingDelivery > 0;
     }
+    private recordUsage(windows: UsageWindow[], eventId: string | undefined): void {
+        for (const window of windows)
+            this.meter.record(
+                `usage:${window.label}`,
+                window.usedPercent,
+                eventId,
+                usageWarning(window.label, window.usedPercent, window.resetsAt),
+            );
+    }
+    private activeOrigin(): string | undefined {
+        return this.controller?.store.snapshot().conversations.find((item) => item.state !== 'idle')?.originEventId;
+    }
+    private discordTurnFinished(eventId: string): void {
+        if (this.mode !== 'claude-session' || Date.now() - this.usageCheckedAt < 5 * 60_000) return;
+        this.usageCheckedAt = Date.now();
+        void claudeUsage()
+            .then((windows) => this.recordUsage(windows, eventId))
+            .catch((error: unknown) => logFailure('Claude usage check failed', error));
+    }
     private async notice(event: ProviderNotice): Promise<void> {
+        if (event.type === 'usage') return this.recordUsage(event.windows, this.activeOrigin());
         const origin = this.originOf(event.sessionId);
-        if (event.type === 'context') return this.meter.record(event.sessionId, event.percent, origin);
+        if (event.type === 'context') return this.meter.record(event.sessionId, event.percent, origin, contextWarning(event.percent));
         if (!origin) return;
         const data = event.path ? await readFile(event.path) : Buffer.from(event.data ?? '', 'base64');
         if (!data.length || data.length > 8 * 1024 * 1024) return;
@@ -218,6 +240,7 @@ export class OperatorService {
             ...(config.claudeEffort ? { effort: config.claudeEffort } : {}),
             activity: config.activityVisibility,
             history: this.history,
+            finished: (eventId) => this.discordTurnFinished(eventId),
         });
         await this.router.start();
         this.appliedConfigAt = config.updatedAt;
@@ -237,7 +260,10 @@ export class OperatorService {
                 activity: config.activityVisibility,
                 workerCapacity: 2,
                 invalidateApproval: (key) => (key ? dispatcher.invalidate(key) : dispatcher.invalidateAll()),
-                processing: (sessionId, eventId, active) => indicator.set(sessionId, eventId, active),
+                processing: (sessionId, eventId, active) => {
+                    indicator.set(sessionId, eventId, active);
+                    if (!active) this.discordTurnFinished(eventId);
+                },
                 changed: () => {
                     this.schedule();
                     this.releaseIdle();

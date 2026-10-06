@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
-import { ContextMeter } from '../src/operator/context-meter.js';
+import { contextWarning, ThresholdMeter, usageWarning } from '../src/operator/context-meter.js';
 import { codexUsage, contextPercent } from '../src/operator/codex-activity.js';
+import { notification } from '../src/operator/codex-state.js';
 import { builtInCommands, commandDefinitions, replyEmbed } from '../src/discord/commands.js';
 import { CommandService } from '../src/operator/commands.js';
 import type { OperatorService } from '../src/operator/service.js';
@@ -11,30 +12,47 @@ import { inviteCopy, inviteLink, inviteReady, ownerFrom, ownerMatches } from '..
 
 function checkMeter(): void {
     const posted: string[] = [];
-    const meter = new ContextMeter((_eventId, text) => {
+    const meter = new ThresholdMeter((_eventId: string, text: string) => {
         posted.push(text);
         return Promise.resolve();
     });
-    meter.record('s', 30, 'e');
-    meter.record('s', 40);
-    meter.record('s', 55, 'e');
-    meter.record('s', 60, 'e');
-    meter.record('s', 76, 'e');
-    meter.record('s', 91, 'e');
-    meter.record('s', 95, 'e');
+    meter.record('s', 30, 'e', contextWarning(30));
+    meter.record('s', 40, undefined, contextWarning(40));
+    meter.record('s', 55, 'e', contextWarning(55));
+    meter.record('s', 60, 'e', contextWarning(60));
+    meter.record('s', 76, 'e', contextWarning(76));
+    meter.record('s', 91, 'e', contextWarning(91));
+    meter.record('s', 95, 'e', contextWarning(95));
     assert.deepEqual(
         posted.map((text) => /(\d+)% full/.exec(text)?.[1]),
         ['30', '55', '76', '91'],
         'one warning each at 25%, 50%, 75% and 90%',
     );
     assert.match(posted[3]!, /91% full[\s\S]*\/compact/);
-    meter.record('s', 60, 'e');
-    meter.record('s', 80, 'e');
+    meter.record('s', 60, 'e', contextWarning(60));
+    meter.record('s', 80, 'e', contextWarning(80));
     assert.equal(posted.length, 5, 'warnings re-arm after the context shrinks');
-    meter.record('s', 85);
-    meter.record('s', 92);
+    meter.record('s', 85, undefined, contextWarning(85));
+    meter.record('s', 92, undefined, contextWarning(92));
     assert.equal(posted.length, 5, 'nothing is posted without a Discord request');
     assert.equal(meter.percent('s'), 92);
+    meter.record('usage:Weekly limit', 52, 'e', usageWarning('Weekly limit', 52, '2030-01-01T00:00:00Z'));
+    assert.match(posted.at(-1)!, /Weekly limit 52% used\.\*\* Resets <t:1893456000:R>/, 'plan usage warns with its reset time');
+}
+
+function checkCodexUsageEvent(): void {
+    const events: unknown[] = [];
+    notification(
+        { sessions: new Map() } as unknown as Parameters<typeof notification>[0],
+        'account/rateLimits/updated',
+        { rateLimits: { secondary: { usedPercent: 76.2, windowDurationMins: 10_080 } } },
+        { emit: (event: unknown) => events.push(event) } as unknown as Parameters<typeof notification>[3],
+    );
+    assert.deepEqual(
+        events,
+        [{ type: 'usage', windows: [{ label: 'Weekly limit', usedPercent: 76 }] }],
+        'Codex limit updates become usage events',
+    );
 }
 
 function checkCodexParsing(): void {
@@ -191,6 +209,7 @@ export async function checkSlashCommands(): Promise<void> {
     checkServers();
     checkMeter();
     checkCodexParsing();
+    checkCodexUsageEvent();
     checkSplit();
     await checkCommands();
 }

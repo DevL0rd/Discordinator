@@ -71,7 +71,13 @@ export class SessionRouter {
     constructor(
         readonly bridge: Bridge,
         readonly workspace: string,
-        readonly launch: { model?: string; effort?: string; activity?: boolean; history?: History } = {},
+        readonly launch: {
+            model?: string;
+            effort?: string;
+            activity?: boolean;
+            history?: History;
+            finished?: (eventId: string) => void;
+        } = {},
     ) {
         this.typing = new ProcessingIndicator((eventId) => this.bridge.typing(eventId));
         this.activity = new SessionActivity(
@@ -147,6 +153,7 @@ export class SessionRouter {
     private settle(eventId: string): void {
         this.picked.delete(eventId);
         this.typing.set(eventId, eventId, false);
+        this.launch.finished?.(eventId);
     }
 
     private async conversation(): Promise<string> {
