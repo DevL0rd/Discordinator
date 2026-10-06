@@ -1,10 +1,10 @@
 import { useEffect, useRef } from 'react';
-import { stdin } from 'node:process';
-import { useStdout } from 'ink';
+import { useStdin, useStdout } from 'ink';
 import { sgrMouse } from './mouse.js';
 
 export function useSgrMouse(handle: (code: number, x: number, y: number) => void): void {
     const { stdout } = useStdout();
+    const { stdin } = useStdin();
     const latest = useRef(handle);
     latest.current = handle;
     useEffect(() => {
@@ -18,5 +18,5 @@ export function useSgrMouse(handle: (code: number, x: number, y: number) => void
             stdin.off('data', read);
             stdout.write('\x1b[?1000l\x1b[?1006l');
         };
-    }, [stdout]);
+    }, [stdin, stdout]);
 }

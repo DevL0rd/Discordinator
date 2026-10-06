@@ -23,11 +23,37 @@ import type { SettingDefinition } from '../settings-registry.js';
 import { passwordError } from '../../oauth/provision.js';
 import { savePassword } from '../onboarding-store.js';
 
+const services = {
+    liveSetupStatus,
+    runtimePresent,
+    readOperatorConfig,
+    readPanel,
+    applyDraft,
+    startSaved,
+    observations,
+    ownerReady,
+    appState,
+    connectApp,
+    disconnectApp,
+    webConnectors,
+    markWebAdded,
+    listServers,
+    openUrl,
+    openConversation,
+    installService,
+    restartService,
+    savePassword,
+};
+export type Services = typeof services;
+
 export interface Store {
     get(): UiState;
     set(update: (state: UiState) => UiState): void;
     exit(): void;
+    services?: Services;
 }
+
+export const io = (store: Store): Services => store.services ?? services;
 
 const friendly = (error: unknown) => (error instanceof Error ? error.message : 'Something went wrong').slice(0, 240);
 const close = (store: Store) => store.set((state) => ({ ...state, sheet: undefined }));
@@ -57,31 +83,33 @@ async function reported(store: Store, work: () => Promise<void>): Promise<void> 
 
 export const refreshStatus = (store: Store): Promise<void> =>
     reported(store, async () => {
-        const live = await liveSetupStatus();
+        const live = await io(store).liveSetupStatus();
         store.set((state) => ({ ...state, observed: { ...state.observed, live, observedAt: new Date().toISOString() } }));
     });
 
 export const refreshLive = (store: Store): Promise<void> =>
     reported(store, async () => {
-        const [live, runtime, active] = await Promise.all([liveSetupStatus(), runtimePresent(), readOperatorConfig()]);
+        const use = io(store);
+        const [live, runtime, active] = await Promise.all([use.liveSetupStatus(), use.runtimePresent(), use.readOperatorConfig()]);
         store.set((state) => ({ ...state, observed: { ...state.observed, live, runtime, active, observedAt: new Date().toISOString() } }));
     });
 
 export const reloadPanel = (store: Store): Promise<void> =>
     reported(store, async () => {
-        const next = await readPanel();
+        const next = await io(store).readPanel();
         store.set((state) => ({ ...state, snapshot: next, drafts: rebaseDrafts(state.snapshot, state.drafts, next) }));
     });
 
 async function extras(store: Store): Promise<void> {
     const environment = store.get().snapshot.documents.environment;
     const token = scalar(environment.DISCORD_BOT_TOKEN);
+    const use = io(store);
     const [claude, codex, web, password, servers] = await Promise.all([
-        appState('claude-code'),
-        appState('codex'),
-        webConnectors(),
-        ownerReady(oauthDirectory.parse(environment.DISCORDINATOR_OAUTH_DATA_DIR)),
-        token ? listServers(token).catch(() => undefined) : undefined,
+        use.appState('claude-code'),
+        use.appState('codex'),
+        use.webConnectors(),
+        use.ownerReady(oauthDirectory.parse(environment.DISCORDINATOR_OAUTH_DATA_DIR)),
+        token ? use.listServers(token).catch(() => undefined) : undefined,
     ]);
     store.set((state) => ({
         ...state,
@@ -92,7 +120,7 @@ async function extras(store: Store): Promise<void> {
 export const refresh = (store: Store, deep = false): Promise<void> =>
     reported(store, async () => {
         if (deep) await reloadPanel(store);
-        const observed = await observations(deep ? undefined : store.get().observed);
+        const observed = await io(store).observations(deep ? undefined : store.get().observed);
         store.set((state) => ({ ...state, observed }));
         if (deep) await extras(store);
     });
@@ -103,7 +131,7 @@ export function confirm(store: Store, title: string, body: string[], buttons: Bu
 
 async function activate(store: Store, enabled: boolean): Promise<void> {
     const label = assistantName(store.get().snapshot.documents.operator.mode);
-    await task(store, enabled ? `Starting ${label}…` : 'Pausing…', () => startSaved(store.get().snapshot, enabled));
+    await task(store, enabled ? `Starting ${label}…` : 'Pausing…', () => io(store).startSaved(store.get().snapshot, enabled));
     await refresh(store);
 }
 
@@ -116,8 +144,9 @@ const appNotes: Record<AppId, string> = {
 function appSheet(store: Store, id: AppId): void {
     const state = store.get().extras.apps[id];
     const connected = Boolean(state?.connected);
-    const connect = () => void task(store, `Connecting ${appNames[id]}…`, () => connectApp(id)).then(() => refresh(store, true));
-    const disconnect = () => void task(store, `Disconnecting ${appNames[id]}…`, () => disconnectApp(id)).then(() => refresh(store, true));
+    const connect = () => void task(store, `Connecting ${appNames[id]}…`, () => io(store).connectApp(id)).then(() => refresh(store, true));
+    const disconnect = () =>
+        void task(store, `Disconnecting ${appNames[id]}…`, () => io(store).disconnectApp(id)).then(() => refresh(store, true));
     confirm(
         store,
         appNames[id],
@@ -150,7 +179,7 @@ function webSheet(store: Store, id: WebId, responder = false): void {
     const domain = publicDomain(store.get().snapshot.documents.environment.DISCORDINATOR_RESOURCE_URL);
     if (!domain) return store.set((state) => logged(state, 'Set your public domain on the Apps page first.', 'warn'));
     const url = `https://${domain}/mcp`;
-    const save = () => void task(store, 'Saving…', () => markWebAdded(id, url)).then(() => refresh(store, true));
+    const save = () => void task(store, 'Saving…', () => io(store).markWebAdded(id, url)).then(() => refresh(store, true));
     const steps = [
         ...webGuides[id].steps(url),
         ...(responder ? ['Then ask a ChatGPT chat to turn on automatic Discord wake-ups so ChatGPT - Dot answers new messages.'] : []),
@@ -165,7 +194,10 @@ function webSheet(store: Store, id: WebId, responder = false): void {
                           void task(
                               store,
                               'Opening claude.ai…',
-                              async () => (await openUrl(claudeConnectorLink(url)), 'Opened claude.ai with Discordinator filled in.'),
+                              async () => (
+                                  await io(store).openUrl(claudeConnectorLink(url)),
+                                  'Opened claude.ai with Discordinator filled in.'
+                              ),
                           ),
                   },
               ]
@@ -190,9 +222,11 @@ function service(store: Store, install: boolean): void {
                 label: install ? 'Install' : 'Restart',
                 tone: install ? 'info' : 'warn',
                 run: () =>
-                    void task(store, install ? 'Installing service…' : 'Restarting…', install ? installService : restartService).then(() =>
-                        refresh(store),
-                    ),
+                    void task(
+                        store,
+                        install ? 'Installing service…' : 'Restarting…',
+                        install ? io(store).installService : io(store).restartService,
+                    ).then(() => refresh(store)),
             },
             { label: 'Cancel', tone: 'idle', run: () => close(store) },
         ],
@@ -236,7 +270,7 @@ export function commitPassword(store: Store, sheet: Extract<Sheet, { kind: 'edit
     void task(
         store,
         'Saving sign-in password…',
-        async () => (await savePassword(sheet.input), 'Sign-in password saved. It works on the next sign-in.'),
+        async () => (await io(store).savePassword(sheet.input), 'Sign-in password saved. It works on the next sign-in.'),
     ).then(() => refresh(store, true));
 }
 
@@ -246,7 +280,9 @@ export function run(store: Store, action: ActionId): void {
         pause: () => activate(store, false),
         refresh: () => task(store, 'Checking everything…', async () => (await refresh(store, true), 'Status refreshed.')),
         'open-session': () =>
-            task(store, 'Opening Claude Desktop…', () => openConversation(String(store.get().snapshot.documents.operator.workspace))),
+            task(store, 'Opening Claude Desktop…', () =>
+                io(store).openConversation(String(store.get().snapshot.documents.operator.workspace)),
+            ),
         'app-claude-code': () => appSheet(store, 'claude-code'),
         'app-codex': () => appSheet(store, 'codex'),
         'web-claude': () => webSheet(store, 'claude'),
@@ -263,7 +299,7 @@ async function commit(store: Store): Promise<boolean> {
     const before = store.get().snapshot.documents.operator.mode;
     const connections = affectsConnections(viewOf(store.get()).changes);
     const saved = await task(store, 'Saving…', async () => {
-        const result = await applyDraft(store.get().snapshot, store.get().drafts);
+        const result = await io(store).applyDraft(store.get().snapshot, store.get().drafts);
         store.set((state) => ({ ...state, snapshot: result.snapshot, drafts: structuredClone(result.snapshot.documents) }));
         return result;
     });
