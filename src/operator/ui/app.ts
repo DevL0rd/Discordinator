@@ -11,6 +11,7 @@ import { frame } from './frame.js';
 import { h, Frame } from './render.js';
 import { sheetLines } from './sheets.js';
 import { refresh, refreshLive, refreshStatus, reloadPanel, type Store } from './effects.js';
+import { statusFile } from '../status-file.js';
 import { handleKey } from './keys.js';
 import { handleMouse } from './mouse.js';
 import { useSgrMouse } from './use-mouse.js';
@@ -55,12 +56,9 @@ function useLive(store: Store): void {
         const stops = [
             ...settingsFiles.map((path) => watchFile(path, () => void reloadPanel(store))),
             ...[operatorPath, presenceFile, runtimeLockFile].map((path) => watchFile(path, () => void refreshLive(store))),
+            watchFile(statusFile, () => void refreshStatus(store)),
         ];
-        const heartbeat = setInterval(() => {
-            if (store.get().observed.runtime) void refreshStatus(store);
-        }, 5000);
         return () => {
-            clearInterval(heartbeat);
             for (const stop of stops) stop();
         };
     }, [store]);

@@ -77,6 +77,7 @@ export class SessionRouter {
             activity?: boolean;
             history?: History;
             finished?: (eventId: string) => void;
+            changed?: () => void;
         } = {},
     ) {
         this.typing = new ProcessingIndicator((eventId) => this.bridge.typing(eventId));
@@ -188,6 +189,7 @@ export class SessionRouter {
     private async refresh(): Promise<void> {
         const live = this.sessionId ? await liveSession(this.sessionId) : undefined;
         this.live = live;
+        this.launch.changed?.();
         if (live && live.status !== 'idle') return;
         for (const eventId of [...this.picked]) this.settle(eventId);
     }

@@ -1,5 +1,6 @@
 import { loadConfig } from './core/config.js';
 import { PresenceWriter } from './operator/presence.js';
+import { StatusWriter } from './operator/status-file.js';
 import { CommandService } from './operator/commands.js';
 import { Policy } from './core/policy.js';
 import { EventQueue } from './core/queue.js';
@@ -119,17 +120,19 @@ async function createRuntime(
     const operator = new OperatorService(queue, bridge);
     const commands = new CommandService(operator);
     const people = new PolicyWatcher(config.DISCORDINATOR_POLICY_FILE, policy, replyOrigins);
-    const http = new HttpServer(
-        config,
-        bridge,
-        () => ({ ...gateway.status(), events: events.status(), operator: operator.status() }),
-        events,
-        undefined,
-        oauth,
-    );
+    const runtimeStatus = () => ({ ...gateway.status(), events: events.status(), operator: operator.status() });
+    const http = new HttpServer(config, bridge, runtimeStatus, events, undefined, oauth);
     http.attachLocal(await loadLocalKey());
     const presence = new PresenceWriter();
-    store.onChange = (state) => presence.update({ subscriptions: state.subscriptions.length });
+    const statusFile = new StatusWriter(() => ({ ...bridge.status(), ...runtimeStatus() }));
+    const touch = () => statusFile.touch();
+    gateway.onState = touch;
+    operator.onStatus = touch;
+    store.onChange = (state) => {
+        presence.update({ subscriptions: state.subscriptions.length });
+        touch();
+    };
+    touch();
     http.onRemote = () => presence.remoteSignedIn();
     return { gateway, http, events, operator, people, presence };
 }

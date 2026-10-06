@@ -1,5 +1,7 @@
 import ipaddr from 'ipaddr.js';
-import { localCall, localEndpoint } from '../mcp/local-client.js';
+import { readStatusFile, statusFile } from './status-file.js';
+import { watchFile } from './file-watch.js';
+import { runtimePresent } from './status.js';
 import { localModes, type OperatorConfig, type OperatingMode } from './config.js';
 
 export const isLocal = (mode: OperatingMode) => localModes.includes(mode);
@@ -45,17 +47,29 @@ export interface LiveSetupStatus {
     events: { subscriptions: number };
 }
 export async function liveSetupStatus(): Promise<LiveSetupStatus | null> {
-    try {
-        const result = await localCall(await localEndpoint(), 'tools/call', { name: 'discordinator_status', arguments: {} }, 2000);
-        const content = (result.content as { type: string; text?: string }[] | undefined)?.find((item) => item.type === 'text')?.text;
-        const status = content ? (JSON.parse(content) as LiveSetupStatus) : null;
-        return status?.operator && status.events ? status : null;
-    } catch {
-        return null;
-    }
+    if (!(await runtimePresent())) return null;
+    const status = (await readStatusFile().catch(() => null)) as LiveSetupStatus | null;
+    return status?.operator && status.events ? status : null;
 }
 export function activationBlock(config: OperatorConfig, live: LiveSetupStatus | null, ready: boolean): string | undefined {
     if (!live) return 'Live status unavailable. Start the bridge or verify access before activating.';
     if (live.operator.activeEventId) return 'A local request is running. Wait before changing responders.';
     if (!ready) return 'Complete prerequisites first, or save settings paused.';
+}
+
+export function waitForLiveStatus(ready: (status: LiveSetupStatus) => boolean, timeoutMs: number): Promise<boolean> {
+    return new Promise((resolve) => {
+        let settled = false;
+        const finish = (value: boolean) => {
+            if (settled) return;
+            settled = true;
+            clearTimeout(timer);
+            stop();
+            resolve(value);
+        };
+        const check = () => void liveSetupStatus().then((status) => status && ready(status) && finish(true));
+        const stop = watchFile(statusFile, check);
+        const timer = setTimeout(() => finish(false), timeoutMs);
+        check();
+    });
 }

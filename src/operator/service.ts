@@ -45,6 +45,7 @@ export class OperatorService {
     private failures = 0;
     private readonly history: History;
     readonly meter: ThresholdMeter;
+    onStatus?: () => void;
     private usageCheckedAt = 0;
 
     constructor(
@@ -138,7 +139,8 @@ export class OperatorService {
             .then(() => this.apply())
             .catch(() => {
                 this.blockedReason = 'Operator could not apply configuration or connect';
-            });
+            })
+            .finally(() => this.onStatus?.());
     }
     private async apply(): Promise<void> {
         if (this.stopped) return;
@@ -241,6 +243,7 @@ export class OperatorService {
             activity: config.activityVisibility,
             history: this.history,
             finished: (eventId) => this.discordTurnFinished(eventId),
+            changed: () => this.onStatus?.(),
         });
         await this.router.start();
         this.appliedConfigAt = config.updatedAt;
@@ -267,6 +270,7 @@ export class OperatorService {
                 changed: () => {
                     this.schedule();
                     this.releaseIdle();
+                    this.onStatus?.();
                 },
                 ...(shared ? { sharedConversation: 'discordinator' } : {}),
                 history: this.history,

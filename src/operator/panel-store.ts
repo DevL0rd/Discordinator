@@ -10,7 +10,7 @@ import { operatorPath, operatorSchema, readOperatorConfig, writeOperatorConfig }
 import { appState, connectApp, responderApps } from './connections.js';
 import { publicDomainBlock } from './connection-domain.js';
 import { validateModel } from './providers.js';
-import { activationBlock, isLocal, liveSetupStatus } from './setup-model.js';
+import { activationBlock, isLocal, liveSetupStatus, waitForLiveStatus } from './setup-model.js';
 import { assignSetting, previewChanges, settings, settingValue, type SettingsSource } from './settings-registry.js';
 import { managedServiceStatus } from './service-status.js';
 import { scalar } from '../core/text.js';
@@ -171,12 +171,8 @@ function controllerOwnsWork(controller?: ControllerStatus | null): boolean {
 function controllerHasDelivery(controller?: ControllerStatus | null): boolean {
     return Boolean(controller && ((controller.queued ?? 0) > 0 || (controller.pendingDelivery ?? 0) > 0));
 }
-async function operatorApplied(next: Record<string, unknown>): Promise<boolean> {
-    for (let attempt = 0; attempt < 5; attempt++) {
-        if ((await liveSetupStatus())?.operator.appliedConfigAt === next.updatedAt) return true;
-        await new Promise((resolve) => setTimeout(resolve, 400));
-    }
-    return false;
+function operatorApplied(next: Record<string, unknown>): Promise<boolean> {
+    return waitForLiveStatus((status) => status.operator.appliedConfigAt === next.updatedAt, 2000);
 }
 type Activation = 'applied' | 'pending' | 'paused';
 async function selectResponder(updated: PanelSnapshot): Promise<Activation> {

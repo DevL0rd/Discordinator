@@ -36,6 +36,7 @@ import { checkCodexDaemon } from './check-codex-daemon.js';
 import { checkUi } from './check-ui.js';
 import { checkWindows } from './check-windows.js';
 import { checkAccessRules } from './check-access-rules.js';
+import { checkStatusFile } from './check-status-file.js';
 
 await mkdir('.data', { recursive: true, mode: 0o700 });
 const directory = await mkdtemp(join('.data', 'validation-'));
@@ -79,6 +80,7 @@ try {
             await checkCodexDaemon();
             await checkWindows(directory);
             await checkAccessRules(directory);
+            await checkStatusFile(directory);
             checkUi();
             await checkController(directory);
             await checkProviderApproval(directory);

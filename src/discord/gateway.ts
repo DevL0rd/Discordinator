@@ -109,30 +109,30 @@ export class Gateway {
         this.client.once(Events.ClientReady, (client) => {
             this.api.botId = client.user.id;
             this.api.applicationId = client.application.id;
-            this.state = 'ready';
+            this.setState('ready');
             if (this.commands)
                 this.safely(async () => {
                     await this.api.put(`/applications/${client.application.id}/commands`, commandDefinitions);
                 });
         });
         this.client.on(Events.ShardReconnecting, () => {
-            this.state = 'reconnecting';
+            this.setState('reconnecting');
         });
         this.client.on(Events.ShardResume, () => {
-            this.state = 'ready';
+            this.setState('ready');
         });
         this.client.on(Events.ShardReady, () => {
-            this.state = 'ready';
+            this.setState('ready');
         });
         this.client.on(Events.ShardDisconnect, () => {
-            this.state = 'disconnected';
+            this.setState('disconnected');
         });
         this.client.on(Events.Error, () => {
-            this.state = 'error';
+            this.setState('error');
             console.error('Discord client error; inspect configuration and connectivity');
         });
         this.client.on(Events.ShardError, () => {
-            this.state = 'error';
+            this.setState('error');
         });
     }
 
@@ -307,6 +307,13 @@ export class Gateway {
         if (approvalId) this.approvals.confirm(event, approvalId);
     }
 
+    onState?: () => void;
+
+    private setState(state: typeof this.state): void {
+        this.state = state;
+        this.onState?.();
+    }
+
     status() {
         return { gateway: this.state, droppedMessages: this.droppedMessages };
     }
@@ -324,7 +331,7 @@ export class Gateway {
     stop(): void {
         this.queue.close();
         void this.client.destroy().catch(() => undefined);
-        this.state = 'offline';
+        this.setState('offline');
     }
 }
 
