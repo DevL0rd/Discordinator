@@ -1,4 +1,5 @@
 import { lookup } from 'node:dns/promises';
+import type { ClientRequest, IncomingMessage } from 'node:http';
 import type { RequestOptions } from 'node:https';
 import { request } from 'node:https';
 import { isIP } from 'node:net';
@@ -19,6 +20,7 @@ export interface Address {
     family: number;
 }
 export type Resolver = (host: string) => Promise<Address[]>;
+export type Transport = (url: URL, options: RequestOptions, callback: (incoming: IncomingMessage) => void) => ClientRequest;
 
 export function callbackUrl(value: string): URL {
     const url = new URL(value);
@@ -57,11 +59,14 @@ function abortable<T>(promise: Promise<T>, signal: AbortSignal): Promise<T> {
 }
 
 /** New connection per attempt: DNS validated once, pinned lookup, normal hostname TLS verification. */
-export function httpsSender(resolver: Resolver = (host) => lookup(host, { all: true, verbatim: true })): CallbackSender {
+export function httpsSender(
+    resolver: Resolver = (host) => lookup(host, { all: true, verbatim: true }),
+    transport: Transport = request,
+): CallbackSender {
     return async (value, body, headers, signal) => {
         const { url, address } = await resolveCallback(value, resolver, signal);
         return new Promise((resolve, reject) => {
-            const outgoing = request(url, connectionOptions(url, address, headers, signal), (incoming) =>
+            const outgoing = transport(url, connectionOptions(url, address, headers, signal), (incoming) =>
                 collect(incoming, resolve, reject),
             );
             outgoing.on('error', () => reject(new CallbackError(signal.aborted ? 'timeout' : 'network_error')));
@@ -70,11 +75,7 @@ export function httpsSender(resolver: Resolver = (host) => lookup(host, { all: t
     };
 }
 
-function collect(
-    incoming: import('node:http').IncomingMessage,
-    resolve: (result: CallbackResponse) => void,
-    reject: (error: Error) => void,
-): void {
+function collect(incoming: IncomingMessage, resolve: (result: CallbackResponse) => void, reject: (error: Error) => void): void {
     const chunks: Buffer[] = [];
     let size = 0;
     incoming.on('data', (chunk: Buffer) => {
