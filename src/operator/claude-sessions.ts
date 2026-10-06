@@ -120,6 +120,9 @@ export async function openInDesktop(sessionId: string, waitMs = 90_000): Promise
     const existing = await liveSession(sessionId);
     if (existing) return existing;
     await showInDesktop(sessionId);
+    const first = await waitForSession(sessionId, idle, 15_000);
+    if (first) return first;
+    await showInDesktop(sessionId);
     const opened = await waitForSession(sessionId, idle, waitMs);
     if (!opened) throw new Error('Claude Desktop did not open the Discordinator conversation');
     return opened;
