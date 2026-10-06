@@ -18,6 +18,20 @@ function eventData(line: string): string {
     }
 }
 
+function eventRewriter(): TransformStream<string, string> {
+    let pending = '';
+    return new TransformStream({
+        transform(chunk, controller) {
+            const lines = (pending + chunk).split('\n');
+            pending = lines.pop() ?? '';
+            for (const line of lines) controller.enqueue(`${eventData(line)}\n`);
+        },
+        flush(controller) {
+            if (pending) controller.enqueue(eventData(pending));
+        },
+    });
+}
+
 async function rpcMethod(request: Request): Promise<unknown> {
     try {
         return request.headers.get('mcp-method') ?? ((await request.clone().json()) as { method?: unknown }).method;
@@ -36,14 +50,17 @@ export async function descriptorResponse(
     if (method !== 'tools/list' || response.status !== 200) return response;
     const type = response.headers.get('content-type') ?? '';
     if (!type.includes('application/json') && !type.includes('text/event-stream')) return response;
-    const body = await response.text();
-    const encoded = type.includes('application/json')
-        ? JSON.stringify(declareSchemes(JSON.parse(body) as Envelope))
-        : body
-              .split('\n')
-              .map((line) => eventData(line))
-              .join('\n');
     const headers = new Headers(response.headers);
     headers.delete('content-length');
+    if (type.includes('text/event-stream') && response.body)
+        return new Response(
+            response.body.pipeThrough(new TextDecoderStream()).pipeThrough(eventRewriter()).pipeThrough(new TextEncoderStream()),
+            {
+                status: response.status,
+                statusText: response.statusText,
+                headers,
+            },
+        );
+    const encoded = JSON.stringify(declareSchemes(JSON.parse(await response.text()) as Envelope));
     return new Response(encoded, { status: response.status, statusText: response.statusText, headers });
 }
