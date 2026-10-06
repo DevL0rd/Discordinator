@@ -54,7 +54,10 @@ export function channelHistory(context: ContextIndex, policy: Policy, api: Api):
         const key = wholeServer ? `guild:${event.guildId}` : event.channelId;
         if (!policy.config.context.enabled) return { text: '', key };
         if (wholeServer) await loadServer(event.guildId!).catch(() => undefined);
-        await load((await api.channel(event.channelId)) as Channel, event.guildId).catch(() => undefined);
+        const channel = event.guildId
+            ? ((await api.channel(event.channelId).catch(() => ({ id: event.channelId }))) as Channel)
+            : { id: event.channelId };
+        await load(channel, event.guildId).catch(() => undefined);
         let records: ContextRecord[];
         try {
             records = context.history(event.id, wholeServer);

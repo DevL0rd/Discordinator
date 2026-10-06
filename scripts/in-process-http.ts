@@ -18,6 +18,7 @@ function decodeChunks(body: Buffer): Buffer {
 export async function inProcessHttp(server: Server, path: string, init: RequestInit): Promise<Response> {
     const chunks: Buffer[] = [];
     const socket = new Duplex({
+        writableHighWaterMark: 64 * 1024 * 1024,
         read() {},
         write(chunk: Buffer, _encoding, done) {
             chunks.push(Buffer.from(chunk));

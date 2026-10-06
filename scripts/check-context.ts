@@ -145,4 +145,14 @@ export async function checkHistory(directory: string): Promise<void> {
     const server = await history(f.event, {});
     assert.equal(server.key, `guild:${ids.guild}`);
     assert.match(server.text, /#general[\s\S]*first[\s\S]*#random[\s\S]*elsewhere/, 'whole-server history is grouped by channel');
+    f.api.channel = () => Promise.reject(new Error('This operation requires a guild channel'));
+    const dm = f.queue.add('dm-history', {
+        actorId: ids.user,
+        channelId: ids.other,
+        guildId: null,
+        messageId: '900000000000000099',
+        kind: 'message',
+        text: 'hi',
+    })!;
+    assert.equal(typeof (await history(dm, {})).text, 'string', 'direct messages never use the server-only channel lookup');
 }
