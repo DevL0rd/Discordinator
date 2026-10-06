@@ -30,10 +30,12 @@ function fakeDispatcher(routes: DiscordRoutes, seen: string[]) {
             seen.push(path);
             const known = path in routes;
             const body = Buffer.from(JSON.stringify(known ? routes[path] : { message: 'Unknown', code: 0 }));
-            handler.onConnect(() => undefined);
-            handler.onHeaders(known ? 200 : 404, [Buffer.from('content-type'), Buffer.from('application/json')], () => undefined, '');
-            handler.onData(body);
-            handler.onComplete([]);
+            setImmediate(() => {
+                handler.onConnect(() => undefined);
+                handler.onHeaders(known ? 200 : 404, [Buffer.from('content-type'), Buffer.from('application/json')], () => undefined, '');
+                handler.onData(body);
+                handler.onComplete([]);
+            });
             return true;
         },
         close: () => Promise.resolve(),
