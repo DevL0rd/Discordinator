@@ -8,6 +8,7 @@ import { checkHttpBudgets } from './check-http-budgets.js';
 import { operations } from '../src/discord/catalog.js';
 import { checkContext, checkHistory } from './check-context.js';
 import { checkEvents, checkCancellation } from './check-events.js';
+import { checkEventsPump } from './check-events-pump.js';
 import { checkAuth } from './check-auth.js';
 import { checkMedia } from './check-media.js';
 import { checkMediaLimits } from './check-media-limits.js';
@@ -55,6 +56,7 @@ try {
             await checkHistory(directory);
             await checkEvents(directory);
             await checkCancellation(directory);
+            await checkEventsPump(directory);
             await checkMedia(directory);
             await checkMediaLimits(directory);
             await checkControls(directory);
