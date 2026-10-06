@@ -39,6 +39,15 @@ import { checkRender } from './check-render.js';
 import { checkDashboard } from './check-dashboard.js';
 import { checkWindows } from './check-windows.js';
 import { checkAccessRules } from './check-access-rules.js';
+import { checkMessageOperations } from './check-message-operations.js';
+import { checkAdminOperations } from './check-admin-operations.js';
+import { checkDiscordApi } from './check-discord-api.js';
+import { checkRuntimeLock } from './check-runtime-lock.js';
+import { checkGatewayMessages } from './check-gateway-messages.js';
+import { checkGatewayLoad } from './check-gateway-load.js';
+import { checkGatewayInteractions } from './check-gateway-interactions.js';
+import { checkGatewayLifecycle } from './check-gateway-lifecycle.js';
+import { checkCoreEdges } from './check-core-edges.js';
 import { checkStatusFile } from './check-status-file.js';
 import { checkServiceHost } from './check-service-host.js';
 import { checkSupervisor } from './check-supervisor.js';
@@ -116,6 +125,15 @@ try {
             await checkClaudeController(directory);
             await checkInteractionEvents(directory);
             await checkOwnerContext(directory);
+            await checkMessageOperations(directory);
+            await checkAdminOperations(directory);
+            await checkDiscordApi();
+            await checkRuntimeLock(directory);
+            await checkGatewayMessages(directory);
+            await checkGatewayLoad(directory);
+            await checkGatewayInteractions(directory);
+            await checkGatewayLifecycle(directory);
+            await checkCoreEdges(directory);
             console.log(
                 `Local validation passed: policy/triggers, Gateway mocks, approvals, idempotency, queue and bearer/OAuth MCP (${toolCount()} tools), context, MCP Events, safe media/retrieval and correlated controls. No Discord connection.`,
             );
