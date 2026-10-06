@@ -16,10 +16,10 @@ export class OAuthFixture {
             ...fakeConfig(),
             DISCORDINATOR_AUTH_MODE: 'oauth' as const,
             DISCORDINATOR_OAUTH_SERVER: 'bundled' as const,
-            DISCORDINATOR_RESOURCE_URL: 'https://dotbot.devl0rd.com/mcp',
-            DISCORDINATOR_OAUTH_ISSUER: 'https://dotbot.devl0rd.com',
-            DISCORDINATOR_OAUTH_JWKS_URL: 'https://dotbot.devl0rd.com/oauth/jwks',
-            DISCORDINATOR_ALLOWED_HOSTS: 'dotbot.devl0rd.com',
+            DISCORDINATOR_RESOURCE_URL: 'https://discordinator.example/mcp',
+            DISCORDINATOR_OAUTH_ISSUER: 'https://discordinator.example',
+            DISCORDINATOR_OAUTH_JWKS_URL: 'https://discordinator.example/oauth/jwks',
+            DISCORDINATOR_ALLOWED_HOSTS: 'discordinator.example',
             DISCORDINATOR_TRUSTED_PROXIES: '127.0.0.1',
             DISCORDINATOR_OAUTH_DATA_DIR: `${directory}/oauth`,
         };
@@ -40,7 +40,7 @@ export class OAuthFixture {
             .filter((entry) => target.pathname.startsWith(entry.path))
             .map((entry) => entry.value)
             .join('; ');
-        const headers = new Headers({ Host: 'dotbot.devl0rd.com:443', 'X-Forwarded-Proto': 'https', Cookie: cookie });
+        const headers = new Headers({ Host: 'discordinator.example:443', 'X-Forwarded-Proto': 'https', Cookie: cookie });
         new Headers(init.headers).forEach((value, name) => headers.set(name, value));
         const response = await inProcessHttp(this.http!.server, `${target.pathname}${target.search}`, { ...init, headers });
         for (const value of response.headers.getSetCookie()) {
@@ -52,7 +52,7 @@ export class OAuthFixture {
         return response;
     };
     post(path: string, values: Record<string, string>, headers = {}): Promise<Response> {
-        const origin: Record<string, string> = path.includes('/interaction/') ? { Origin: 'https://dotbot.devl0rd.com:443' } : {};
+        const origin: Record<string, string> = path.includes('/interaction/') ? { Origin: 'https://discordinator.example:443' } : {};
         return this.fetch(path, {
             method: 'POST',
             headers: { 'Content-Type': 'application/x-www-form-urlencoded', ...origin, ...headers },
