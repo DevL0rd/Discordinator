@@ -246,7 +246,25 @@ export async function checkFailures(): Promise<void> {
     assert.equal(spawnFailure.stopped, true);
     const timedOut = new CodexAdapter({ spawnTransport: () => new MockTransport(), requestTimeoutMs: 5 });
     await assert.rejects(timedOut.connect(config, { onEvent: async () => {} }), /acknowledgement timed out/);
+    await checkSlowCall();
+    await checkEarlyFrames();
+}
 
+async function checkSlowCall(): Promise<void> {
+    const slowTransport = new MockTransport();
+    const slow = new CodexAdapter({ spawnTransport: () => slowTransport, requestTimeoutMs: 50 });
+    const slowConnect = slow.connect(config, { onEvent: async () => {} });
+    slowTransport.reply(await slowTransport.request('initialize'), {});
+    await slowConnect;
+    await assert.rejects(slow.usage(), /acknowledgement timed out: account\/rateLimits\/read/);
+    const after = slowTransport.sent.length;
+    const usage = slow.usage();
+    slowTransport.reply(await slowTransport.request('account/rateLimits/read', after), { rateLimits: {} });
+    assert.deepEqual(await usage, [], 'one slow call fails alone; the connection stays up');
+    await slow.close();
+}
+
+async function checkEarlyFrames(): Promise<void> {
     const early = await connected();
     try {
         const opening = early.adapter.openSession({ role: 'worker', conversationKey: 'early', sessionId: 'early-thread' });

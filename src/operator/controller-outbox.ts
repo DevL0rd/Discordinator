@@ -1,8 +1,9 @@
 import type { ControllerStore, ControllerState } from './controller-state.js';
+import { splitMessage } from './message-split.js';
 
 export function appendReply(state: ControllerState, eventId: string, content: string, key: string, loose = false): void {
     if (state.outbox.some((item) => item.key.startsWith(`${key}-`))) return;
-    const chunks = content.match(/[\s\S]{1,1900}/g) ?? ['The provider completed without a text response.'];
+    const chunks = content.trim() ? splitMessage(content) : ['The provider completed without a text response.'];
     for (const [index, chunk] of chunks.entries())
         state.outbox.push({ key: `${key}-${index}`, eventId, content: chunk, loose, sent: false, attempts: 0, failed: false });
 }

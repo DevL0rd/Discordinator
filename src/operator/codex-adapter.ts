@@ -216,8 +216,11 @@ export class CodexAdapter implements ProviderAdapter {
         this.send(connection, { id: pending.id, result: approvalResult(pending, decision) });
         pending.answered = true;
         if (decision.action !== 'cancel' || !['question', 'permissions'].includes(pending.request.kind)) return;
-        const session = connection.sessions.get(pending.request.sessionId);
-        if (session?.turnId === pending.request.turnId) await this.interrupt(pending.request.sessionId, pending.request.turnId);
+        const { sessionId, turnId } = pending.request;
+        if (connection.sessions.get(sessionId)?.turnId !== turnId) return;
+        await this.interrupt(sessionId, turnId).catch((error: unknown) => {
+            if (connection.sessions.get(sessionId)?.turnId === turnId) throw error;
+        });
     }
 
     async close(): Promise<void> {

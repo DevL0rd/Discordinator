@@ -9,6 +9,7 @@ import { isNotice } from './provider-adapter.js';
 import { controllerTools } from './controller-tools.js';
 import { recoverController } from './controller-recovery.js';
 import { appendReply, ControllerOutbox } from './controller-outbox.js';
+import { shortReason, TurnClock } from './controller-turns.js';
 
 export type ControllerDelivery = (eventId: string, content: string, key: string, loose: boolean) => Promise<unknown>;
 export type ControllerApprovalDelivery = (request: ProviderApproval, originEventId: string) => Promise<void>;
@@ -21,7 +22,9 @@ export type ControllerOptions = {
     sharedConversation?: string;
     history?: History;
     notice?: (event: ProviderNotice) => void;
+    sessionIdleMs?: number;
 };
+type Origin = Pick<BotEvent, 'guildId' | 'channelId' | 'actorId'>;
 
 export class ConversationController {
     private generation = 0;
@@ -35,8 +38,7 @@ export class ConversationController {
     private progressAt = new Map<string, number>();
     private approvalDeliveryError: string | null = null;
     private failed = false;
-    private timeouts = new Map<string, ReturnType<typeof setTimeout>>();
-    private deferredFinals = new Map<string, Extract<ProviderEvent, { type: 'final' | 'turn.failed' }>[]>();
+    private readonly turns: TurnClock;
     constructor(
         readonly adapter: ProviderAdapter,
         readonly config: OperatorConfig,
@@ -46,6 +48,7 @@ export class ConversationController {
         readonly options: ControllerOptions = {},
     ) {
         this.outbox = new ControllerOutbox(store, deliver, () => this.generation);
+        this.turns = new TurnClock(adapter, config, () => this.fail(), options.sessionIdleMs ?? 10 * 60_000);
     }
     async start(): Promise<void> {
         await this.store.load();
@@ -63,8 +66,7 @@ export class ConversationController {
         this.connected = false;
         this.approvals.clear();
         this.options.invalidateApproval?.();
-        for (const timer of this.timeouts.values()) clearTimeout(timer);
-        this.timeouts.clear();
+        this.turns.clear();
         this.stopProcessing();
         this.outbox.stop();
         await this.adapter.close();
@@ -77,20 +79,32 @@ export class ConversationController {
             approvalDeliveryError: this.approvalDeliveryError,
         });
     }
+    conversation(origin?: Origin) {
+        const key = this.options.sharedConversation ?? (origin ? conversationKey(origin) : undefined);
+        return this.store.snapshot().conversations.find((item) => item.key === key);
+    }
     async reset(): Promise<void> {
+        const sessions: string[] = [];
         await this.store.update((state) => {
-            for (const item of state.conversations) Object.assign(item, { sessionId: undefined, seen: {} });
+            if (state.conversations.some((item) => item.state !== 'idle'))
+                throw new Error('The assistant is still working. Use /stop first, then /new.');
+            for (const item of state.conversations) {
+                if (item.sessionId) sessions.push(item.sessionId);
+                Object.assign(item, { sessionId: undefined, seen: {} });
+            }
         }, this.generation);
+        for (const sessionId of sessions) this.closeIdle(sessionId);
+    }
+    async stopAll(): Promise<number> {
+        const running = this.store.snapshot().conversations.filter((item) => item.sessionId && item.turnId && item.state !== 'idle');
+        for (const item of running) await this.turns.interrupt(item.sessionId!, item.turnId!, 'stop');
+        return running.length;
     }
     async ingest(event: BotEvent): Promise<boolean> {
         if (this.stopped) throw new Error('Controller stopped');
         const added = await this.store.enqueue(event);
-        if (!added) {
-            this.schedulePump();
-            return false;
-        }
         this.schedulePump();
-        return true;
+        return added;
     }
     async startTask(conversation: string, prompt: string): Promise<string> {
         if (!prompt.trim() || prompt.length > 32000) throw new Error('Task prompt is empty or too large');
@@ -116,7 +130,7 @@ export class ConversationController {
     async cancelTask(id: string): Promise<void> {
         const task = this.getTaskStatus(id);
         if (task.sessionId && task.turnId && ['running', 'approval'].includes(task.state))
-            await this.adapter.interrupt(task.sessionId, task.turnId);
+            await this.turns.interrupt(task.sessionId, task.turnId, 'cancel');
         await this.store.update((state) => {
             const current = state.tasks.find((item) => item.id === id)!;
             current.state = 'cancelled';
@@ -126,24 +140,13 @@ export class ConversationController {
         const pending = this.approvals.get(key);
         if (!pending || pending.originEventId !== originEventId) throw new Error('Approval is not pending for this origin');
         this.approvals.delete(key);
+        if (decision.action === 'cancel') this.turns.expect(pending.request.sessionId, pending.request.turnId, 'cancel');
         try {
             await this.adapter.resolveApproval(key, decision);
         } catch (error) {
             this.approvals.set(key, pending);
             throw error;
         }
-        if (decision.action === 'cancel') {
-            await this.adapter.interrupt(pending.request.sessionId, pending.request.turnId);
-        }
-    }
-    async retryApproval(key: string): Promise<void> {
-        const pending = this.approvals.get(key);
-        if (!pending) throw new Error('The provider request is no longer pending');
-        await this.requestApproval(pending.request, pending.originEventId);
-        this.approvalDeliveryError = null;
-    }
-    async retryDelivery(): Promise<void> {
-        await this.outbox.flush();
     }
     private async handleProviderEvent(event: ProviderEvent): Promise<void> {
         if (this.stopped) return;
@@ -169,46 +172,7 @@ export class ConversationController {
         if (!this.available()) return;
         this.pumping = true;
         try {
-            for (const event of this.store.snapshot().inbox) {
-                const key = this.options.sharedConversation ?? conversationKey(event);
-                const existing = this.store.snapshot().conversations.find((item) => item.key === key);
-                if (existing && existing.state !== 'idle') continue;
-                let sessionId = existing?.sessionId;
-                await this.store.update((state) => {
-                    const item = state.conversations.find((item) => item.key === key);
-                    if (item) Object.assign(item, { state: 'busy', originEventId: event.id });
-                    else
-                        state.conversations.push({
-                            key,
-                            actorId: event.actorId,
-                            channelId: event.channelId,
-                            seen: {},
-                            originEventId: event.id,
-                            state: 'busy',
-                        });
-                }, this.generation);
-                let submitted = false;
-                try {
-                    sessionId = await this.openConversation(key, sessionId);
-                    submitted = true;
-                    const text = await withHistory(this.store, this.generation, key, event, this.options.history);
-                    const turn = await this.adapter.startTurn(sessionId, { text, originEventId: event.id });
-                    this.armTimeout(sessionId, turn.turnId);
-                    this.progressAt.set(sessionId, Date.now());
-                    await this.store.update((state) => {
-                        const item = state.conversations.find((item) => item.key === key)!;
-                        if (item.state === 'busy') item.turnId = turn.turnId;
-                        state.inbox = state.inbox.filter((item) => item.id !== event.id);
-                    }, this.generation);
-                    await this.drainFinals(sessionId, turn.turnId);
-                } catch (error) {
-                    await this.store.update((state) => {
-                        const item = state.conversations.find((item) => item.key === key)!;
-                        item.state = submitted ? 'recovering' : 'idle';
-                    }, this.generation);
-                    throw error;
-                }
-            }
+            for (const event of this.store.snapshot().inbox) await this.dispatch(event);
             await this.startWorkers();
         } finally {
             this.pumping = false;
@@ -216,6 +180,47 @@ export class ConversationController {
                 this.pumpAgain = false;
                 this.schedulePump();
             }
+        }
+    }
+    private async dispatch(event: BotEvent): Promise<void> {
+        const key = this.options.sharedConversation ?? conversationKey(event);
+        const existing = this.store.snapshot().conversations.find((item) => item.key === key);
+        if (existing && existing.state !== 'idle') return;
+        let sessionId = existing?.sessionId;
+        if (sessionId) this.turns.wake(sessionId);
+        await this.store.update((state) => {
+            const item = state.conversations.find((item) => item.key === key);
+            if (item) Object.assign(item, { state: 'busy', originEventId: event.id });
+            else
+                state.conversations.push({
+                    key,
+                    actorId: event.actorId,
+                    channelId: event.channelId,
+                    seen: {},
+                    originEventId: event.id,
+                    state: 'busy',
+                });
+        }, this.generation);
+        let submitted = false;
+        try {
+            sessionId = await this.openConversation(key, sessionId);
+            submitted = true;
+            const text = await withHistory(this.store, this.generation, key, event, this.options.history);
+            const turn = await this.adapter.startTurn(sessionId, { text, originEventId: event.id });
+            this.turns.arm(sessionId, turn.turnId);
+            this.progressAt.set(sessionId, Date.now());
+            await this.store.update((state) => {
+                const item = state.conversations.find((item) => item.key === key)!;
+                if (item.state === 'busy') item.turnId = turn.turnId;
+                state.inbox = state.inbox.filter((item) => item.id !== event.id);
+            }, this.generation);
+            await this.drainFinals(sessionId, turn.turnId);
+        } catch (error) {
+            await this.store.update((state) => {
+                const item = state.conversations.find((item) => item.key === key)!;
+                item.state = submitted ? 'recovering' : 'idle';
+            }, this.generation);
+            throw error;
         }
     }
     private async openConversation(key: string, sessionId?: string): Promise<string> {
@@ -247,7 +252,7 @@ export class ConversationController {
                 originEventId: task.originEventId,
                 taskId: task.id,
             });
-            this.armTimeout(session.id, turn.turnId);
+            this.turns.arm(session.id, turn.turnId);
             await this.store.update((state) => {
                 state.tasks.find((item) => item.id === task.id)!.turnId = turn.turnId;
             }, this.generation);
@@ -311,22 +316,28 @@ export class ConversationController {
         await this.markSession(request.sessionId, 'approval');
         try {
             await this.requestApproval(request, owner.originEventId);
-        } catch {
-            this.approvalDeliveryError =
-                'Harness prompt delivery failed; action remains blocked. Retry the pending prompt or complete/deny it in the local provider; never infer approval.';
+        } catch (error) {
+            await this.approvalUnavailable(request, owner.originEventId, error);
         }
+    }
+    private async approvalUnavailable(request: ProviderApproval, originEventId: string, error: unknown): Promise<void> {
+        this.approvalDeliveryError = 'An approval request could not be shown in Discord, so it was denied.';
+        this.approvals.delete(request.key);
+        await this.adapter.resolveApproval(request.key, { action: 'deny' });
+        await this.outbox.queue(
+            originEventId,
+            `${request.title} needed your approval, but the request could not be shown here (${shortReason(error)}), so it was denied.`,
+            `controller-approval-unavailable-${request.key}`,
+        );
     }
     private async finished(event: Extract<ProviderEvent, { type: 'final' | 'turn.failed' }>): Promise<void> {
         const owner = this.owner(event.sessionId);
         if (!owner) return;
         if ('state' in owner && owner.state === 'cancelled') return this.release(event.sessionId, event.turnId, owner.originEventId);
-        if (!owner.turnId) {
-            this.deferFinal(event, owner.state);
-            return;
-        }
+        if (!owner.turnId) return this.turns.defer(event, owner.state);
         if (owner.turnId !== event.turnId) return;
+        const text = this.turns.outcome(event);
         this.release(event.sessionId, event.turnId, owner.originEventId);
-        const text = event.type === 'final' ? event.text : 'The provider stopped with an error. I have not retried the action.';
         await this.store.update((current) => {
             appendReply(current, owner.originEventId, text, `controller-final-${event.sessionId}-${event.turnId}`);
             const worker = current.tasks.find((item) => item.sessionId === event.sessionId);
@@ -340,24 +351,21 @@ export class ConversationController {
                 delete controller.turnId;
             }
         }, this.generation);
-        if (this.closesAfterTurn(owner)) await this.adapter.closeSession?.(event.sessionId).catch(() => undefined);
+        if ('prompt' in owner) await this.adapter.closeSession?.(event.sessionId);
+        else this.turns.rest(event.sessionId, () => this.closeIdle(event.sessionId));
         await this.outbox.flush();
         this.schedulePump();
         this.options.changed?.();
     }
-    private closesAfterTurn(owner: object): boolean {
-        return 'prompt' in owner || Boolean(this.options.sharedConversation);
+    private closeIdle(sessionId: string): void {
+        this.turns.wake(sessionId);
+        const owner = this.owner(sessionId);
+        if (owner && owner.state !== 'idle') return;
+        void this.adapter.closeSession?.(sessionId).catch(() => this.fail());
     }
     private release(sessionId: string, turnId: string, originEventId: string): void {
         this.options.processing?.(sessionId, originEventId, false);
-        clearTimeout(this.timeouts.get(`${sessionId}:${turnId}`));
-        this.timeouts.delete(`${sessionId}:${turnId}`);
-    }
-    private deferFinal(event: Extract<ProviderEvent, { type: 'final' | 'turn.failed' }>, state: string): void {
-        if (state === 'idle') return;
-        const pending = this.deferredFinals.get(event.sessionId) ?? [];
-        if (pending.length < 32) pending.push(event);
-        this.deferredFinals.set(event.sessionId, pending);
+        this.turns.release(sessionId, turnId);
     }
     private async progress(event: Extract<ProviderEvent, { type: 'progress' }>): Promise<void> {
         if (event.activity && !this.options.activity) return;
@@ -370,21 +378,7 @@ export class ConversationController {
         await this.outbox.queue(owner.originEventId, text, `controller-progress-${event.sessionId}-${Date.now()}`, true);
     }
     private async drainFinals(sessionId: string, turnId: string): Promise<void> {
-        const pending = this.deferredFinals.get(sessionId) ?? [];
-        this.deferredFinals.delete(sessionId);
-        for (const event of pending.filter((item) => item.turnId === turnId)) await this.finished(event);
-    }
-    private armTimeout(sessionId: string, turnId: string): void {
-        if (!this.config.timeoutSeconds) return;
-        const key = `${sessionId}:${turnId}`;
-        if (this.timeouts.has(key)) return;
-        this.timeouts.set(
-            key,
-            setTimeout(() => {
-                this.timeouts.delete(key);
-                void this.adapter.interrupt(sessionId, turnId).catch(() => this.fail());
-            }, this.config.timeoutSeconds * 1000),
-        );
+        for (const event of this.turns.deferred(sessionId, turnId)) await this.finished(event);
     }
     private async markSession(sessionId: string, state: 'busy' | 'approval'): Promise<void> {
         const owner = this.owner(sessionId);

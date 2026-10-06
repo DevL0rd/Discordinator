@@ -1,4 +1,4 @@
-import type { MessageQueue } from './claude-stream.js';
+import type { ContextUsage, MessageQueue } from './claude-stream.js';
 import type { ProviderApproval, ProviderReconciliation, ProviderRole } from './provider-adapter.js';
 import type { ClaudePermissionResult, ClaudeQuery } from './claude-protocol.js';
 
@@ -32,7 +32,7 @@ export type SessionState = {
     resumed: boolean;
     stream: Promise<void>;
     closed: boolean;
-    promptTokens?: number;
+    usage?: ContextUsage;
 };
 
 export const errorText = (error: unknown): string => (error instanceof Error ? error.message : String(error));

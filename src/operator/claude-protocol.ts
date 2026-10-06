@@ -34,7 +34,7 @@ export type ClaudeMessage = Record<string, unknown> & {
     subtype?: string;
     session_id?: string;
     result?: string;
-    message?: { content?: unknown[] };
+    message?: { content?: unknown[]; model?: string; usage?: Record<string, number> };
 };
 
 export interface ClaudeQuery extends AsyncIterable<ClaudeMessage> {

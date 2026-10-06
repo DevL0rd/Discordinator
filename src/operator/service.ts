@@ -20,6 +20,12 @@ import { readFile } from 'node:fs/promises';
 import { randomUUID } from 'node:crypto';
 
 const retryMs = 5000;
+const maxAttempts = 3;
+type Origin = Pick<BotEvent, 'guildId' | 'channelId' | 'actorId'>;
+
+function logFailure(label: string, error: unknown): void {
+    console.error(`${label} ${JSON.stringify({ error: error instanceof Error ? error.name : typeof error })}`);
+}
 
 export class OperatorService {
     private stopped = false;
@@ -35,6 +41,7 @@ export class OperatorService {
     private consuming?: Promise<void>;
     private unwatch?: () => void;
     private idleWaiters: (() => void)[] = [];
+    private failures = 0;
     private readonly history: History;
     readonly meter: ContextMeter;
 
@@ -49,7 +56,6 @@ export class OperatorService {
     start(): void {
         if (this.unwatch) return;
         this.unwatch = watchFile(operatorPath, () => this.schedule());
-        this.cursor = this.queue.snapshot(0, 0).latestCursor;
         this.schedule();
         this.consuming = this.consume();
     }
@@ -61,8 +67,8 @@ export class OperatorService {
         await this.retire();
         await this.consuming;
     }
-    responder() {
-        const sessionId = this.router?.conversationId ?? this.controller?.store.snapshot().conversations[0]?.sessionId;
+    responder(origin?: Origin) {
+        const sessionId = this.router?.conversationId ?? this.controller?.conversation(origin)?.sessionId;
         return { mode: this.mode, controller: this.controller, router: this.router, sessionId };
     }
     status() {
@@ -142,18 +148,34 @@ export class OperatorService {
         while (!this.stopped) {
             const page = await this.queue.poll(this.cursor, 25, 60_000);
             await this.applying;
-            if (!this.controller && !this.router) {
-                this.cursor = page.latestCursor;
-                continue;
-            }
             for (const event of page.events) {
-                if (!(await this.accept(event))) {
-                    await new Promise((resolve) => setTimeout(resolve, retryMs));
-                    break;
-                }
+                if (!(await this.handle(event))) break;
                 this.cursor = event.cursor;
             }
         }
+    }
+    private async handle(event: BotEvent): Promise<boolean> {
+        if (!this.controller && !this.router) {
+            await this.unavailable(event, this.blockedReason ?? 'the local assistant is not running');
+            return true;
+        }
+        if (await this.accept(event)) {
+            this.failures = 0;
+            return true;
+        }
+        if (++this.failures < maxAttempts) {
+            await new Promise((resolve) => setTimeout(resolve, retryMs));
+            return false;
+        }
+        this.failures = 0;
+        await this.unavailable(event, this.blockedReason ?? 'the message could not be handed to the assistant');
+        return true;
+    }
+    private async unavailable(event: BotEvent, reason: string): Promise<void> {
+        if (!localModes.includes(this.mode as OperatorConfig['mode'])) return;
+        await this.bridge
+            .respond({ eventId: event.id, content: `Assistant unavailable: ${reason}`, idempotencyKey: `operator-unavailable-${event.id}` })
+            .catch((error: unknown) => logFailure('Operator unavailable notice failed', error));
     }
     private async accept(event: BotEvent): Promise<boolean> {
         try {
@@ -191,12 +213,11 @@ export class OperatorService {
         await controller?.stop();
     }
     private async createRouter(config: OperatorConfig): Promise<void> {
-        this.router = new SessionRouter(this.bridge, config.workspace, () => undefined, {
+        this.router = new SessionRouter(this.bridge, config.workspace, {
             ...(config.claudeModel ? { model: config.claudeModel } : {}),
             ...(config.claudeEffort ? { effort: config.claudeEffort } : {}),
             activity: config.activityVisibility,
             history: this.history,
-            context: (sessionId, percent, eventId) => this.meter.record(sessionId, percent, eventId),
         });
         await this.router.start();
         this.appliedConfigAt = config.updatedAt;
@@ -223,7 +244,7 @@ export class OperatorService {
                 },
                 ...(shared ? { sharedConversation: 'discordinator' } : {}),
                 history: this.history,
-                notice: (event) => void this.notice(event),
+                notice: (event) => void this.notice(event).catch((error: unknown) => logFailure('Operator notice failed', error)),
             },
         );
         this.controller = controller;

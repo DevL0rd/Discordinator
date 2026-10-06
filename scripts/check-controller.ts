@@ -15,6 +15,7 @@ class FakeProvider implements ProviderAdapter {
     turns: { sessionId: string; text: string; turnId: string }[] = [];
     decisions: { key: string; decision: ApprovalDecision }[] = [];
     interrupted: string[] = [];
+    failStarts = 0;
     async connect(_config: unknown, hooks: ProviderHooks) {
         this.hooks = hooks;
         await hooks.onEvent({ type: 'connected', epoch: 'test-epoch' });
@@ -29,6 +30,7 @@ class FakeProvider implements ProviderAdapter {
         return Promise.resolve({ id });
     }
     startTurn(sessionId: string, input: { text: string }) {
+        if (this.failStarts-- > 0) return Promise.reject(new Error('provider refused the turn'));
         const turnId = `turn-${this.turns.length + 1}`;
         this.turns.push({ sessionId, text: input.text, turnId });
         return Promise.resolve({ turnId });
@@ -41,6 +43,9 @@ class FakeProvider implements ProviderAdapter {
     resolveApproval(key: string, decision: ApprovalDecision) {
         this.decisions.push({ key, decision });
         return Promise.resolve();
+    }
+    reconcile(sessionId: string) {
+        return Promise.resolve({ sessionId, state: 'unknown' as const });
     }
     async close() {}
 }
@@ -128,6 +133,10 @@ async function checkApproval(controller: ConversationController, adapter: FakePr
     await controller.resolveApproval('approval-1', { action: 'deny' }, 'first');
     assert.equal(adapter.decisions[0]!.decision.action, 'deny');
     await assert.rejects(controller.resolveApproval('approval-1', { action: 'allow-once' }, 'first'));
+    const request = { key: 'approval-2', epoch: 'test-epoch', sessionId: 'session-1', turnId: 'turn-1', kind: 'command' as const };
+    await adapter.hooks.onEvent({ type: 'approval.requested', request: { ...request, title: 'Run command', payload: {} } });
+    await controller.resolveApproval('approval-2', { action: 'cancel' }, 'first');
+    assert.deepEqual(adapter.interrupted, [], 'cancel is interrupted once, by the provider adapter only');
 }
 async function checkResumeAfterRestart(directory: string): Promise<void> {
     const file = join(directory, 'resume.json');
@@ -225,7 +234,93 @@ async function checkHistory(directory: string): Promise<void> {
     assert.match(provider.turns[1]!.text, /^NEW\n/, 'later messages receive only what is new since the last update');
     await controller.stop();
 }
+function harness(directory: string, name: string, provider: FakeProvider, approval = () => Promise.resolve()) {
+    const sent: string[] = [];
+    const controller = new ConversationController(
+        provider,
+        defaultOperatorConfig(),
+        new ControllerStore(join(directory, name)),
+        (_id, content) => {
+            sent.push(content);
+            return Promise.resolve();
+        },
+        approval,
+    );
+    return { controller, sent };
+}
+const lastTurn = (provider: FakeProvider) => provider.turns.at(-1)!;
+async function checkStopAndReset(directory: string): Promise<void> {
+    const provider = new FakeProvider();
+    const { controller, sent } = harness(directory, 'stop.json', provider, () => Promise.reject(new Error('prompt rejected')));
+    await controller.start();
+    await controller.ingest(controllerEvent('stop-1'));
+    await settle(() => provider.turns.length === 1);
+    await assert.rejects(controller.reset(), /still working/, '/new refuses while a turn runs instead of orphaning it');
+    assert.equal(await controller.stopAll(), 1);
+    assert.deepEqual(provider.interrupted, ['turn-1']);
+    await provider.hooks.onEvent({ type: 'turn.failed', sessionId: 'session-1', turnId: 'turn-1', reason: 'aborted' });
+    await settle(() => sent.includes('Stopped.'));
+    await controller.reset();
+    await controller.ingest(controllerEvent('stop-2'));
+    await settle(() => provider.turns.length === 2);
+    assert.equal(lastTurn(provider).sessionId, 'session-2', 'the next message after /new starts a new conversation');
+    await provider.hooks.onEvent({
+        type: 'approval.requested',
+        request: {
+            key: 'hidden',
+            epoch: 'test-epoch',
+            sessionId: 'session-2',
+            turnId: 'turn-2',
+            kind: 'command',
+            title: 'Run ls',
+            payload: {},
+        },
+    });
+    await settle(() => sent.some((text) => text.includes('could not be shown here (prompt rejected)')));
+    assert.deepEqual(provider.decisions, [{ key: 'hidden', decision: { action: 'deny' } }], 'an approval that cannot be shown is denied');
+    await provider.hooks.onEvent({
+        type: 'turn.failed',
+        sessionId: 'session-2',
+        turnId: 'turn-2',
+        reason: 'Rate limit in /home/someone/x',
+    });
+    await settle(() => sent.some((text) => text.includes('(Rate limit in ~/x)')));
+    await controller.ingest(controllerEvent('stop-3'));
+    await settle(() => provider.turns.length === 3);
+    const long = Array.from({ length: 60 }, (_, index) => `Paragraph ${index} ${'word '.repeat(15)}`).join('\n\n');
+    await provider.hooks.onEvent({ type: 'final', sessionId: 'session-2', turnId: 'turn-3', text: long });
+    await settle(() => sent.some((text) => text.includes('Paragraph 59')));
+    const chunks = sent.slice(sent.findIndex((text) => text.startsWith('Paragraph 0 ')));
+    assert.ok(
+        chunks.length > 1 && chunks.every((chunk) => chunk.length <= 2000 && chunk.startsWith('Paragraph')),
+        'replies split on paragraphs',
+    );
+    await controller.stop();
+}
+async function checkUnstartedRecovery(directory: string): Promise<void> {
+    const failing = new FakeProvider();
+    failing.failStarts = 1;
+    const before = harness(directory, 'unstarted.json', failing);
+    await before.controller.start();
+    await before.controller.ingest(controllerEvent('unstarted-1'));
+    await settle(() => before.controller.status().failed);
+    await before.controller.stop();
+    const store = new ControllerStore(join(directory, 'unstarted.json'));
+    await store.load();
+    await store.update((state) => {
+        state.conversations.push({ key: 'orphan', originEventId: 'orphan', actorId: 'a', channelId: 'c', seen: {}, state: 'recovering' });
+    });
+    const healthy = new FakeProvider();
+    const after = harness(directory, 'unstarted.json', healthy);
+    await after.controller.start();
+    await settle(() => healthy.turns.length === 1);
+    assert.ok(!after.sent.some((text) => text.includes('restarted')), 'a turn that never started gets no restart notice');
+    assert.equal(after.controller.store.snapshot().conversations.find((item) => item.key === 'orphan')!.state, 'idle');
+    await after.controller.stop();
+}
 export async function checkController(directory: string): Promise<void> {
+    await checkStopAndReset(directory);
+    await checkUnstartedRecovery(directory);
     await checkHistory(directory);
     await checkLifecycle(directory);
     await checkResumeAfterRestart(directory);

@@ -60,6 +60,8 @@ export async function checkProviderApproval(directory: string): Promise<void> {
     assert.equal(decisions.length, 0);
     assert.equal(await dispatcher.accept(child), true);
     assert.deepEqual(decisions, [{ action: 'allow-once' }]);
-    assert.equal(await dispatcher.accept(child), false);
+    assert.equal(await dispatcher.accept(child), true, 'a stale click is answered, never ingested as a new turn');
+    assert.equal(decisions.length, 1);
+    assert.equal(await dispatcher.accept({ ...child, text: JSON.stringify({ choice: 'unrelated_choice' }) }), false);
     dispatcher.invalidateAll();
 }

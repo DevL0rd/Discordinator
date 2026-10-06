@@ -7,6 +7,7 @@ import { assistantName } from './ui/status.js';
 
 export type CommandReply = { title: string; lines: string[]; tone: 'info' | 'good' | 'warn' };
 export type CommandOptions = Record<string, string | undefined>;
+type CommandOrigin = Parameters<OperatorService['responder']>[0];
 
 const desktopOnly = 'Claude Desktop conversations can only do this from Claude Desktop itself. Open the Discordinator conversation there.';
 const bar = (percent: number) => {
@@ -36,11 +37,11 @@ function stateText(mode: string, busy: boolean, live: boolean): string {
 export class CommandService {
     constructor(readonly operator: OperatorService) {}
 
-    run(name: string, options: CommandOptions): Promise<CommandReply> {
+    run(name: string, options: CommandOptions, origin?: CommandOrigin): Promise<CommandReply> {
         const handlers: Record<string, () => Promise<CommandReply>> = {
-            status: () => this.status(),
-            usage: () => this.usage(),
-            compact: () => this.compact(),
+            status: () => this.status(origin),
+            usage: () => this.usage(origin),
+            compact: () => this.compact(origin),
             new: () => this.fresh(),
             stop: () => this.stop(),
             activity: () => this.change('Activity updates', 'operator.activityVisibility', options.mode === 'on'),
@@ -52,39 +53,42 @@ export class CommandService {
         return handler();
     }
 
-    private context(): string {
-        const { sessionId } = this.operator.responder();
+    private context(origin: CommandOrigin): string {
+        const { sessionId, router } = this.operator.responder(origin);
+        if (router) return '**Context** shown in Claude Desktop';
         const percent = sessionId ? this.operator.meter.percent(sessionId) : undefined;
         return percent === undefined ? '**Context** not measured yet; it updates after the next reply' : `**Context** ${bar(percent)}`;
     }
 
-    private async status(): Promise<CommandReply> {
+    private async status(origin: CommandOrigin): Promise<CommandReply> {
         const config = await readOperatorConfig();
-        const { mode, controller, router } = this.operator.responder();
+        const { mode, controller, router } = this.operator.responder(origin);
+        const busy = router ? router.status().busy : (controller?.status().busy ?? 0) > 0;
         return {
             title: assistantName(config.mode),
             tone: mode === 'disabled' ? 'warn' : 'good',
             lines: [
-                `**State** ${stateText(mode, (controller?.status().busy ?? 0) > 0, Boolean(router?.live))}`,
+                `**State** ${stateText(mode, busy, Boolean(router?.live))}`,
                 `**Model** ${modelOf(config)}`,
                 `**Activity updates** ${config.activityVisibility ? 'on' : 'off'}`,
-                this.context(),
+                this.context(origin),
             ],
         };
     }
 
-    private async usage(): Promise<CommandReply> {
-        const { mode, controller } = this.operator.responder();
+    private async usage(origin: CommandOrigin): Promise<CommandReply> {
+        const { mode, controller } = this.operator.responder(origin);
         let windows: UsageWindow[];
         if (isClaude(mode)) windows = await claudeUsage();
         else if (controller?.adapter.usage) windows = await controller.adapter.usage();
         else throw new Error('Plan usage is available for Claude Code and Codex responders.');
-        return { title: `${assistantName(mode)} usage`, tone: 'info', lines: [...windows.map(windowLine), this.context()] };
+        return { title: `${assistantName(mode)} usage`, tone: 'info', lines: [...windows.map(windowLine), this.context(origin)] };
     }
 
-    private async compact(): Promise<CommandReply> {
-        const { router, controller, sessionId } = this.operator.responder();
+    private async compact(origin: CommandOrigin): Promise<CommandReply> {
+        const { router, controller, sessionId } = this.operator.responder(origin);
         if (router) throw new Error(desktopOnly);
+        if (controller && !controller.adapter.compact) throw new Error('Compaction is not supported for this responder.');
         if (!controller?.adapter.compact || !sessionId) throw new Error('There is no conversation to compact yet.');
         await controller.adapter.compact(sessionId);
         return { title: 'Compacting', tone: 'good', lines: ['The conversation is being compacted to free up context.'] };
@@ -100,11 +104,8 @@ export class CommandService {
     private async stop(): Promise<CommandReply> {
         const { router, controller } = this.operator.responder();
         if (router) throw new Error(desktopOnly);
-        const running = (controller?.store.snapshot().conversations ?? []).filter(
-            (item) => item.sessionId && item.turnId && item.state !== 'idle',
-        );
-        if (!running.length) return { title: 'Nothing to stop', tone: 'info', lines: ['The assistant is not working on anything.'] };
-        for (const item of running) await controller!.adapter.interrupt(item.sessionId!, item.turnId!);
+        if (!(await controller?.stopAll()))
+            return { title: 'Nothing to stop', tone: 'info', lines: ['The assistant is not working on anything.'] };
         return { title: 'Stopped', tone: 'good', lines: ['The current work was interrupted.'] };
     }
 

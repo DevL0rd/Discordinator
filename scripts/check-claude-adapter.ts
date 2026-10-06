@@ -44,13 +44,13 @@ class OutputQueue implements AsyncIterable<ClaudeMessage> {
     }
 }
 
-type FakeCall = {
+export type FakeCall = {
     options: ClaudeQueryOptions;
     inputs: ClaudeUserMessage[];
     query: FakeQuery;
 };
 
-class FakeQuery extends OutputQueue implements ClaudeQuery {
+export class FakeQuery extends OutputQueue implements ClaudeQuery {
     readonly controller = new AbortController();
     interrupted = 0;
     closed = 0;
@@ -146,7 +146,7 @@ const asAllow = (result: ClaudePermissionResult): Extract<ClaudePermissionResult
 };
 
 const tick = async (): Promise<void> => new Promise((resolve) => setTimeout(resolve, 0));
-const waitFor = async (predicate: () => boolean): Promise<void> => {
+export const waitFor = async (predicate: () => boolean): Promise<void> => {
     for (let index = 0; index < 100; index += 1) {
         if (predicate()) return;
         await tick();
@@ -306,6 +306,7 @@ async function checkDecisions(harness: Harness, controllerId: string): Promise<v
         await waitFor(() => events.some((event) => event.type === 'final' && event.turnId === turn.turnId));
         await assert.rejects(() => adapter.resolveApproval(request.key, { action: 'deny' }), /expired/);
     }
+    assert.equal(harness.calls[0]!.query.interrupted, 1, 'cancelling an approval interrupts the turn once, inside the adapter');
 
     const question = await adapter.startTurn(controllerId, {
         text: 'question',
@@ -340,7 +341,7 @@ async function checkLifecycle(harness: Harness, controllerId: string, workerId: 
     });
     await waitFor(() => calls[0]!.inputs.some((input) => input.message.content === 'busy'));
     await adapter.interrupt(controllerId, interruptible.turnId);
-    assert.equal(calls[0]!.query.interrupted, 1, 'interrupt delegates to the live provider query');
+    assert.equal(calls[0]!.query.interrupted, 2, 'interrupt delegates to the live provider query');
     calls[0]!.query.releaseBusy!();
     await waitFor(() => events.some((event) => event.type === 'final' && event.turnId === interruptible.turnId));
     await adapter.close();
