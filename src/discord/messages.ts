@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { define, channel, message, pagination, text, mentions, origin, query, write, sensitive } from './operations.js';
+import { define, channel, message, pagination, forwardPagination, text, mentions, origin, query, write, sensitive } from './operations.js';
 
 export const emoji = z
     .string()
@@ -109,11 +109,11 @@ export const messageOperations = [
         'reaction_users',
         'Read a bounded page of users for one Unicode or name:id custom emoji reaction.',
         { scope: 'messages.read', target: 'channel' },
-        { ...message, emoji, ...pagination },
+        { ...message, emoji, ...forwardPagination },
         (a, c) =>
             c.api.get(
                 `/channels/${a.channelId}/messages/${a.messageId}/reactions/${encodeURIComponent(a.emoji)}`,
-                query({ limit: a.limit, after: a.before }),
+                query({ limit: a.limit, after: a.after }),
             ),
     ),
     define(
@@ -152,8 +152,8 @@ export const messageOperations = [
         'poll_voters',
         'Read a bounded page of voters for one answer.',
         { scope: 'messages.read', target: 'channel' },
-        { ...message, answerId: z.number().int().positive(), ...pagination },
+        { ...message, answerId: z.number().int().positive(), ...forwardPagination },
         (a, c) =>
-            c.api.get(`/channels/${a.channelId}/polls/${a.messageId}/answers/${a.answerId}`, query({ limit: a.limit, after: a.before })),
+            c.api.get(`/channels/${a.channelId}/polls/${a.messageId}/answers/${a.answerId}`, query({ limit: a.limit, after: a.after })),
     ),
 ];

@@ -100,9 +100,18 @@ async function checkGateway(file: string): Promise<void> {
     const event = f.queue.snapshot(0, 25).events.at(-1)!;
     await f.bridge.respond({ eventId: event.id, content: 'reply', idempotencyKey: 'interaction-reply' });
     assert.equal(edited, 1);
-    const denied = { ...interaction, user: { id: ids.denied } } as unknown as ChatInputCommandInteraction;
-    await assert.rejects(() => gateway.interaction(denied));
+    const replies: unknown[] = [];
+    const denied = {
+        ...interaction,
+        user: { id: ids.denied },
+        reply: (body: unknown) => {
+            replies.push(body);
+            return Promise.resolve();
+        },
+    } as unknown as ChatInputCommandInteraction;
+    await gateway.interaction(denied);
     assert.equal(deferred, 1);
+    assert.match(JSON.stringify(replies), /not approved/, 'unapproved people get a private explanation');
     gateway.stop();
 }
 async function checkDirectMessages(file: string): Promise<void> {

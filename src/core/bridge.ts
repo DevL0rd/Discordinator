@@ -111,6 +111,7 @@ export class Bridge {
         );
     }
 
+    private readonly typingChecks = new Map<string, { context: AccessContext; until: number }>();
     private async replyEvent(id: string): Promise<AccessContext> {
         if (this.ownerContexts.has(id)) return this.event(id);
         if (!this.replyOrigins) return this.event(id);
@@ -183,8 +184,16 @@ export class Bridge {
         });
     }
 
-    async typing(eventId: string): Promise<void> {
+    private async typingContext(eventId: string): Promise<AccessContext> {
+        const cached = this.typingChecks.get(eventId);
+        if (cached && cached.until > Date.now()) return cached.context;
         const context = await this.replyEvent(eventId);
+        for (const [id, entry] of this.typingChecks) if (entry.until <= Date.now()) this.typingChecks.delete(id);
+        this.typingChecks.set(eventId, { context, until: Date.now() + 30_000 });
+        return context;
+    }
+    async typing(eventId: string): Promise<void> {
+        const context = await this.typingContext(eventId);
         this.policy.assertScope('messages.write');
         this.policy.assertResponse(context.event, context.event.channelId);
         await this.api.post(`/channels/${context.event.channelId}/typing`, {});

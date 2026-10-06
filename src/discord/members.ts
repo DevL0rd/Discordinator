@@ -1,6 +1,6 @@
 import { z } from 'zod';
 import { snowflake } from '../core/config.js';
-import { define, member, guild, shortName, pagination, query, sensitive, reason } from './operations.js';
+import { define, member, guild, shortName, pagination, forwardPagination, query, sensitive, reason } from './operations.js';
 
 const role = { ...guild, roleId: snowflake };
 const roleSettings = {
@@ -22,8 +22,8 @@ export const memberOperations = [
         'members_list',
         'Read a bounded member page; Server Members intent is required.',
         { scope: 'members.read', target: 'guild' },
-        { ...guild, ...pagination },
-        (a, c) => c.api.get(`/guilds/${a.guildId}/members`, query({ limit: a.limit, after: a.before })),
+        { ...guild, ...forwardPagination },
+        (a, c) => c.api.get(`/guilds/${a.guildId}/members`, query({ limit: a.limit, after: a.after })),
     ),
     define(
         'member_nickname',

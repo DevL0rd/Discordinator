@@ -25,6 +25,7 @@ export const guild = { guildId: snowflake };
 export const member = { ...guild, userId: snowflake };
 export const message = { ...channel, messageId: snowflake };
 export const pagination = { limit: z.number().int().min(1).max(100).default(25), before: snowflake.optional() };
+export const forwardPagination = { limit: z.number().int().min(1).max(100).default(25), after: snowflake.optional() };
 export const text = z.string().min(1).max(2000);
 const embed = z
     .object({
@@ -47,11 +48,21 @@ const embed = z
         timestamp: z.iso.datetime().optional(),
     })
     .strict();
+type Embed = z.infer<typeof embed>;
+const embedLength = (item: Embed) =>
+    (item.title?.length ?? 0) +
+    (item.description?.length ?? 0) +
+    (item.footer?.text.length ?? 0) +
+    (item.fields ?? []).reduce((total, field) => total + field.name.length + field.value.length, 0);
+
 export const rich = {
     content: z.string().max(2000).default('').describe('Message text. Optional when embeds are given.'),
     embeds: z
         .array(embed)
         .max(10)
+        .refine((items) => items.reduce((total, item) => total + embedLength(item), 0) <= 6000, {
+            message: 'Embeds can hold at most 6000 characters in total; split the content across messages',
+        })
         .optional()
         .describe(
             'Discord embeds for structured, non-conversational output: reports, results, lists, status. Keep normal chat as plain content.',

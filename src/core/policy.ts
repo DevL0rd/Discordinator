@@ -24,6 +24,8 @@ export class Policy {
         this.config = next;
     }
 
+    private readonly threadParents = new Map<string, string>();
+
     noteRoles(userId: string, guildId: string, roleIds: Iterable<string>): void {
         const guilds = this.memberRoles.get(userId) ?? new Map<string, Set<string>>();
         guilds.set(guildId, new Set(roleIds));
@@ -48,8 +50,16 @@ export class Policy {
         return inScope(this.config.servers, guildId);
     }
 
+    noteThread(threadId: string, parentId: string): void {
+        this.threadParents.set(threadId, parentId);
+    }
+
     channelAllowed(channelId: string): boolean {
-        return inScope(this.config.channels, channelId);
+        const parent = this.threadParents.get(channelId);
+        const list = this.config.channels;
+        if (!parent) return inScope(list, channelId);
+        if (list.blocked.includes(channelId) || list.blocked.includes(parent)) return false;
+        return list.mode === 'blocklist' || list.allowed.includes(channelId) || list.allowed.includes(parent);
     }
 
     assertGuild(guildId: string): void {

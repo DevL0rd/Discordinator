@@ -1,11 +1,11 @@
-import type { APIEmbed, ChatInputCommandInteraction } from 'discord.js';
+import { MessageFlags, type APIEmbed, type ChatInputCommandInteraction } from 'discord.js';
 import type { CommandOptions, CommandReply } from '../operator/commands.js';
 import { assistants } from '../operator/ui/status.js';
 import { responderChoices } from '../operator/commands.js';
 
 export type CommandHandler = (name: string, options: CommandOptions) => Promise<CommandReply>;
 
-const everywhere = { contexts: [0, 1, 2], integration_types: [0] };
+const everywhere = { contexts: [0, 1], integration_types: [0] };
 const text = (name: string, description: string, choices?: { name: string; value: string }[]) => ({
     type: 3,
     name,
@@ -49,11 +49,16 @@ export const builtInCommands = new Set(commandDefinitions.map((definition) => de
 const colors = { info: 0x5865f2, good: 0x3ba55d, warn: 0xf0b232 };
 
 export function replyEmbed(reply: CommandReply): APIEmbed {
-    return { title: reply.title, description: reply.lines.join('\n'), color: colors[reply.tone] };
+    const description = reply.lines.join('\n');
+    return {
+        title: reply.title,
+        description: description.length > 4096 ? `${description.slice(0, 4095)}…` : description,
+        color: colors[reply.tone],
+    };
 }
 
 export async function runCommand(interaction: ChatInputCommandInteraction, handler: CommandHandler): Promise<void> {
-    await interaction.deferReply();
+    await interaction.deferReply({ flags: MessageFlags.Ephemeral });
     const options: CommandOptions = Object.fromEntries(interaction.options.data.map((option) => [option.name, String(option.value ?? '')]));
     const reply = await handler(interaction.commandName, options).catch((error: unknown): CommandReply => ({
         title: 'Could not do that',
@@ -61,4 +66,8 @@ export async function runCommand(interaction: ChatInputCommandInteraction, handl
         lines: [error instanceof Error ? error.message : 'Something went wrong'],
     }));
     await interaction.editReply({ embeds: [replyEmbed(reply)], allowedMentions: { parse: [] } });
+}
+
+export async function denyCommand(interaction: ChatInputCommandInteraction): Promise<void> {
+    await interaction.reply({ content: 'You are not approved to use Discordinator here.', flags: MessageFlags.Ephemeral });
 }

@@ -12,6 +12,7 @@ const methods = {
 };
 export interface Api {
     botId: string;
+    applicationId: string;
     get(route: string, query?: URLSearchParams): Promise<unknown>;
     post(route: string, body: unknown): Promise<unknown>;
     postFiles(route: string, body: unknown, files: import('../core/queue.js').Delivery['files']): Promise<unknown>;
@@ -22,6 +23,8 @@ export interface Api {
     message(channelId: string, messageId: string): Promise<Json>;
 }
 
+const threadTypes = new Set([10, 11, 12]);
+
 function requestFailure(status: number | undefined): Error {
     if (status === undefined || status >= 500)
         return new UncertainOutcome(`Discord request failed (${status ?? 'network/timeout'}); inspect outcome before retrying mutations`);
@@ -30,6 +33,7 @@ function requestFailure(status: number | undefined): Error {
 
 export class DiscordApi implements Api {
     botId = '';
+    applicationId = '';
     private readonly rest: REST;
     private invalid = false;
 
@@ -85,8 +89,9 @@ export class DiscordApi implements Api {
     }
 
     async channel(id: string): Promise<Json> {
-        this.policy.assertChannel(id);
         const channel = (await this.get(`/channels/${id}`)) as Json;
+        if (threadTypes.has(Number(channel.type)) && typeof channel.parent_id === 'string') this.policy.noteThread(id, channel.parent_id);
+        this.policy.assertChannel(id);
         if (typeof channel.guild_id !== 'string') throw new Error('This operation requires a guild channel');
         this.policy.assertGuild(channel.guild_id);
         return channel;
@@ -220,6 +225,19 @@ const safeFields = new Set([
     'format_type',
     'approximate_member_count',
     'approximate_presence_count',
+    'message_reference',
+    'message_id',
+    'referenced_message',
+    'mentions',
+    'thread',
+    'embeds',
+    'title',
+    'description',
+    'url',
+    'fields',
+    'value',
+    'footer',
+    'text',
 ]);
 
 export function project(value: unknown, depth = 0): unknown {

@@ -1,6 +1,6 @@
 import { Client, Events, GatewayIntentBits, Partials } from 'discord.js';
-import { builtInCommands, commandDefinitions, runCommand, type CommandHandler } from './commands.js';
-import type { Message, ChatInputCommandInteraction, Interaction } from 'discord.js';
+import { builtInCommands, commandDefinitions, denyCommand, runCommand, type CommandHandler } from './commands.js';
+import type { Message, PartialMessage, ChatInputCommandInteraction, Interaction } from 'discord.js';
 import type { Config } from '../core/config.js';
 import type { Policy } from '../core/policy.js';
 import type { EventQueue } from '../core/queue.js';
@@ -29,6 +29,7 @@ export class Gateway {
     readonly client: Client;
     private readonly triggers: Triggers;
     private state = 'offline';
+    private readonly unknownMembers = new Map<string, number>();
     private seen = new Map<string, number>();
     private activeMessages = 0;
     private droppedMessages = 0;
@@ -84,14 +85,10 @@ export class Gateway {
             for (const id of messages.keys()) this.remove(id);
         });
         this.client.on(Events.MessageUpdate, (old, message) => {
-            if (message.partial) return;
-            this.safely(async () => {
-                await this.replyOrigins?.edit(message.id, message.content);
-            });
-            this.context?.update(message.id, message.content, this.config.DISCORDINATOR_MESSAGE_CONTENT === 'true' || !message.guildId);
-            if (old.partial || attachmentKeys(old) === attachmentKeys(message)) return;
-            this.media?.index.remove(message.id);
-            this.observeMedia(message, false);
+            if (!message.partial) this.edited(old, message);
+        });
+        this.client.on(Events.ThreadCreate, (thread) => {
+            if (thread.parentId) this.policy.noteThread(thread.id, thread.parentId);
         });
         this.bindMembers();
         this.client.on(Events.InteractionCreate, (interaction) => {
@@ -111,10 +108,11 @@ export class Gateway {
         });
         this.client.once(Events.ClientReady, (client) => {
             this.api.botId = client.user.id;
+            this.api.applicationId = client.application.id;
             this.state = 'ready';
             if (this.commands)
                 this.safely(async () => {
-                    await this.api.put(`/applications/${client.user.id}/commands`, commandDefinitions);
+                    await this.api.put(`/applications/${client.application.id}/commands`, commandDefinitions);
                 });
         });
         this.client.on(Events.ShardReconnecting, () => {
@@ -179,6 +177,7 @@ export class Gateway {
 
     async message(message: Message): Promise<void> {
         if (!this.claimMessage(message.id)) return;
+        if (message.channel?.isThread() && message.channel.parentId) this.policy.noteThread(message.channelId, message.channel.parentId);
         if (message.member && message.guildId) this.policy.noteRoles(message.author.id, message.guildId, message.member.roles.cache.keys());
         this.activeMessages++;
         try {
@@ -206,7 +205,6 @@ export class Gateway {
         this.observeMedia(message, trigger !== null);
         if (!this.policy.config.context.enabled && !this.policy.config.mcpEvents.enabled) return;
         const observed = observe(message, this.config.DISCORDINATOR_MESSAGE_CONTENT === 'true');
-        // Scope and observation authorization are independent from trigger authorization.
         try {
             this.policy.assertObservation(observed);
         } catch {
@@ -222,14 +220,34 @@ export class Gateway {
         return Boolean(this.events) && !message.author.bot && !message.webhookId && this.policy.config.mcpEvents.enabled;
     }
 
-    private async authorizedTrigger(message: Message) {
-        // Reject before reading trigger text or fetching a reply reference.
-        try {
-            this.policy.assertUser(message.author.id);
-        } catch {
-            return null;
+    private async learnRoles(userId: string): Promise<void> {
+        if (!this.policy.config.allowedRoleIds.length || this.policy.userAllowed(userId)) return;
+        if ((this.unknownMembers.get(userId) ?? 0) > Date.now()) return;
+        for (const guild of this.client.guilds.cache.values()) {
+            const member = await guild.members.fetch(userId).catch(() => undefined);
+            if (member) this.policy.noteRoles(userId, guild.id, member.roles.cache.keys());
         }
-        if (message.author.bot || message.webhookId) return null;
+        for (const [id, until] of this.unknownMembers) if (until <= Date.now()) this.unknownMembers.delete(id);
+        if (!this.policy.userAllowed(userId)) this.unknownMembers.set(userId, Date.now() + 10 * 60_000);
+    }
+
+    private edited(old: Message | PartialMessage, message: Message): void {
+        this.safely(async () => {
+            await this.replyOrigins?.edit(message.id, message.content);
+        });
+        this.context?.update(message.id, message.content, this.config.DISCORDINATOR_MESSAGE_CONTENT === 'true' || !message.guildId);
+        if (old.partial || attachmentKeys(old) === attachmentKeys(message)) return;
+        this.media?.index.remove(message.id);
+        this.observeMedia(message, false);
+    }
+
+    private async allowedAuthor(message: Message): Promise<boolean> {
+        if (message.guildId === null) await this.learnRoles(message.author.id);
+        return this.policy.userAllowed(message.author.id) && !message.author.bot && !message.webhookId;
+    }
+
+    private async authorizedTrigger(message: Message) {
+        if (!(await this.allowedAuthor(message))) return null;
         const event = {
             actorId: message.author.id,
             channelId: message.channelId,
@@ -244,19 +262,33 @@ export class Gateway {
         const queued = this.queue.add(`message:${message.id}`, event);
         if (!queued) return null;
         await this.replyOrigins?.capture(queued);
-        const approvalId = this.triggers.approvalId(message.content, this.api.botId, message.guildId === null);
+        const approvalId = await this.approvalIn(message);
         if (approvalId) this.approvals.confirm(event, approvalId);
         return queued;
+    }
+    private async approvalIn(message: Message): Promise<string | null> {
+        const prefixed = this.triggers.approvalId(message.content, this.api.botId, message.guildId === null);
+        if (prefixed) return prefixed;
+        const bare = this.triggers.approvalId(message.content, this.api.botId, true);
+        return bare && (await replyToBot(message, this.api.botId)) ? bare : null;
     }
     private async addressed(message: Message): Promise<boolean> {
         if (message.guildId === null) return true;
         if (this.triggers.accepts(message.author.id, message.content, this.api.botId)) return true;
+        const botRole = message.guild?.members.me?.roles.botRole?.id;
+        if (botRole && message.mentions?.roles.has(botRole)) return true;
         return this.policy.config.triggers.replyToBot && (await replyToBot(message, this.api.botId));
     }
 
     async interaction(interaction: ChatInputCommandInteraction): Promise<void> {
-        this.policy.assertUser(interaction.user.id);
-        if (interaction.applicationId !== this.api.botId) return;
+        if (interaction.applicationId !== this.api.applicationId) return;
+        const origin = { actorId: interaction.user.id, channelId: interaction.channelId, guildId: interaction.guildId };
+        try {
+            this.policy.assertUser(origin.actorId);
+            this.policy.assertOrigin(origin);
+        } catch {
+            return denyCommand(interaction);
+        }
         if (this.commands && builtInCommands.has(interaction.commandName)) return runCommand(interaction, this.commands);
         if (interaction.commandName !== 'discordinator') return;
         const event = {
@@ -267,7 +299,6 @@ export class Gateway {
             name: 'discordinator',
             text: interaction.options.getString('text') ?? '',
         };
-        this.policy.assertOrigin(event);
         this.policy.assertScope('messages.write');
         const queued = await captureInteraction(interaction, event, this.policy, this.queue);
         if (!queued) return;
@@ -280,7 +311,15 @@ export class Gateway {
         return { gateway: this.state, droppedMessages: this.droppedMessages };
     }
     async start(): Promise<void> {
-        await this.client.login(this.config.DISCORD_BOT_TOKEN);
+        try {
+            await this.client.login(this.config.DISCORD_BOT_TOKEN);
+        } catch (error) {
+            if (/disallowed intents/i.test(error instanceof Error ? error.message : ''))
+                console.error(
+                    'Discord refused the bot’s privileged intents. In the Discord Developer Portal under Bot, turn on Message Content Intent and Server Members Intent, then restart Discordinator.',
+                );
+            throw error;
+        }
     }
     stop(): void {
         this.queue.close();

@@ -18,6 +18,7 @@ export const ids = {
 
 export class FakeApi implements Api {
     botId = ids.bot;
+    applicationId = ids.bot;
     calls: { method: string; route: string; body?: unknown }[] = [];
     constructor(readonly policy: Policy) {}
     private request(method: string, route: string, body?: unknown): Promise<unknown> {

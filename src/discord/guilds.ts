@@ -66,7 +66,7 @@ export const guildOperations = [
     ),
     define(
         'command_register',
-        'Register /dot with a text option in this guild, with confirmation. No global replacement.',
+        'Register /discordinator with a text option in this guild, with confirmation. No global replacement.',
         { scope: 'commands.write', target: 'guild' },
         guild,
         (a, c) =>

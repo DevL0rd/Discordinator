@@ -1,14 +1,34 @@
-import { mkdir, open, unlink } from 'node:fs/promises';
+import { mkdir, open, readFile, stat, unlink } from 'node:fs/promises';
+
+const file = '.data/runtime.lock';
+
+function running(pid: number): boolean {
+    if (!pid || pid === process.pid) return false;
+    try {
+        process.kill(pid, 0);
+        return true;
+    } catch (error) {
+        return (error as NodeJS.ErrnoException).code === 'EPERM';
+    }
+}
+
+async function claim() {
+    try {
+        return await open(file, 'wx', 0o600);
+    } catch (error) {
+        if ((error as NodeJS.ErrnoException).code !== 'EEXIST') throw new Error('Runtime lock is inaccessible', { cause: error });
+        const pid = Number(await readFile(file, 'utf8').catch(() => ''));
+        const age = Date.now() - ((await stat(file).catch(() => undefined))?.mtimeMs ?? 0);
+        if (running(pid) || (!pid && age < 10_000))
+            throw new Error(`Discordinator is already running${pid ? ` (process ${pid})` : ''}`, { cause: error });
+        await unlink(file);
+        return open(file, 'wx', 0o600);
+    }
+}
 
 export async function acquireRuntime(): Promise<() => Promise<void>> {
     await mkdir('.data', { recursive: true, mode: 0o700 });
-    const file = '.data/runtime.lock';
-    let handle;
-    try {
-        handle = await open(file, 'wx', 0o600);
-    } catch {
-        throw new Error('Runtime lock exists or is inaccessible; inspect the previous instance before removing it');
-    }
+    const handle = await claim();
     try {
         await handle.writeFile(String(process.pid));
     } catch (error) {

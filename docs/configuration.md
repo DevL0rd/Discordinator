@@ -37,7 +37,7 @@ The full [public policy example](../policy.example.json) grants no users, scopes
 | :-- | :-- | :-- |
 | `allowedUserIds` | `[]` | Up to 100 quoted 17–20 digit Discord IDs; empty rejects every requester |
 | `servers.mode`, `channels.mode` | `allowlist` | `allowlist`: only IDs in `allowed`. `blocklist`: everything the bot can access except IDs in `blocked` |
-| `servers.allowed`, `channels.allowed` | `[]` | Up to 100 servers / 1000 channels; an empty allowlist allows nothing; threads need their own IDs in allowlist mode |
+| `servers.allowed`, `channels.allowed` | `[]` | Up to 100 servers / 1000 channels; an empty allowlist allows nothing; threads follow their parent channel, and can also be listed or blocked on their own |
 | `servers.blocked`, `channels.blocked` | `[]` | Always excluded, in both modes; an empty blocklist excludes nothing |
 | `scopes` | `[]` | Explicit capabilities from [the tool reference](capabilities.md) |
 | `triggers.replyToBot` | `true` | Fetch and verify a same-channel reply target authored by this bot |

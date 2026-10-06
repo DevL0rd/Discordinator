@@ -88,7 +88,12 @@ async function checkDurableActions(directory: string): Promise<void> {
     const args = { channelId: ids.channel, messageId: ids.other };
     const controls = { eventId: f.event.id, idempotencyKey: 'durable-approved-delete' };
     const preview = (await bridge.invoke(operation, args, controls)) as { approvalId: string; expiresInSeconds: unknown };
-    assert.equal(preview.expiresInSeconds, null);
+    assert.equal(preview.expiresInSeconds, 604_800);
+    assert.equal(
+        ((await bridge.invoke(operation, args, controls)) as { approvalId: string }).approvalId,
+        preview.approvalId,
+        'repeating a request reuses its pending approval',
+    );
     now += 24 * 60 * 60_000;
     assert.equal(approvals.confirm(f.event, preview.approvalId), true);
     await assert.rejects(
