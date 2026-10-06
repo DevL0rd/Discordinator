@@ -37,6 +37,7 @@ const pause = () => new Promise((resolve) => setTimeout(resolve, 20));
 async function until(screen: Screen, text: string): Promise<void> {
     for (let attempt = 0; attempt < 1000 && !screen.frame.includes(text); attempt++) await pause();
     assert.ok(screen.frame.includes(text), `expected the wizard to show “${text}”:\n${screen.frame}`);
+    await new Promise((resolve) => setTimeout(resolve, 100));
 }
 
 type Keys = (text: string) => Promise<void>;
