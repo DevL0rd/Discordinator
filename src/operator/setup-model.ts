@@ -35,7 +35,13 @@ export function timeoutError(value: string): string | undefined {
 export interface LiveSetupStatus {
     approvedPeopleRevision?: string;
     gateway: string;
-    operator: { mode: string; appliedConfigAt: string | null; activeEventId?: string | null; supportedConfigVersion?: number };
+    operator: {
+        mode: string;
+        appliedConfigAt: string | null;
+        activeEventId?: string | null;
+        blockedReason?: string | null;
+        supportedConfigVersion?: number;
+    };
     events: { subscriptions: number };
 }
 export async function liveSetupStatus(): Promise<LiveSetupStatus | null> {

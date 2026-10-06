@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { mkdtemp, readFile, rm } from 'node:fs/promises';
+import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { tmpdir, homedir } from 'node:os';
 import { defaultOperatorConfig, readOperatorConfig, writeOperatorConfig } from '../src/operator/config.js';
@@ -54,7 +54,9 @@ export async function checkOperator(): Promise<void> {
     const directory = await mkdtemp(join(tmpdir(), 'discordinator-operator-'));
     try {
         const path = join(directory, 'operator.json');
-        assert.equal((await readOperatorConfig(path)).mode, 'chatgpt-poll');
+        assert.equal((await readOperatorConfig(path)).mode, 'claude-session', 'Claude Code is the default responder');
+        await writeFile(path, JSON.stringify({ ...defaultOperatorConfig(), publicEndpoint: 'https://old.example/mcp' }));
+        assert.equal('publicEndpoint' in (await readOperatorConfig(path)), false, 'the retired endpoint URL is dropped');
         const config = { ...defaultOperatorConfig(), mode: 'codex-local' as const, enabled: true };
         await writeOperatorConfig(config, path);
         assert.equal((await readOperatorConfig(path)).mode, 'codex-local');

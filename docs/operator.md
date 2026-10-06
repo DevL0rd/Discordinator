@@ -24,15 +24,17 @@
 | `s` | Review and save |
 | `/` | Find any setting |
 | `p` | Start or pause |
-| `r` | Refresh |
+| `r` | Reload settings and status |
 | `?` | Help |
 | `q` | Quit |
 
 ## Saving
 
-Every save shows a review of the exact before → after values, with secrets redacted. Settings are validated first, and a private backup is written to `.data/setup-backups`.
+Every save shows a review of the exact before → after values, with secrets redacted. Settings are validated first, and a private backup is written to `.data/setup-backups`. If the files are written but a later step fails, such as connecting an app, the save is kept and the problem is shown as a warning.
 
-Saving a responder makes it the primary one and connects its app if needed; the switch waits for any work in progress to finish. ChatGPT wake-ups are delivered only while ChatGPT is the selected responder, so connected apps never answer twice. The running Discordinator watches its settings files, so responder and policy settings take effect as soon as they are saved. When it runs as the background service, `.env` changes make it restart itself once any work in progress has finished.
+When a settings file changes outside the setup app, the app reloads it and keeps your unsaved edits on top. Press `r` to reload by hand.
+
+Saving a different responder makes it the primary one, starts it and connects its app if needed; the switch waits for any work in progress to finish. Saving other changes keeps a paused responder paused. Choosing ChatGPT - Dot also allows wake-up events. ChatGPT wake-ups are delivered only while ChatGPT is the selected responder, so connected apps never answer twice. The running Discordinator watches its settings files, so responder and policy settings take effect as soon as they are saved. When it runs as the background service, `.env` changes make it restart itself once any work in progress has finished.
 
 ## Responders
 
@@ -42,11 +44,10 @@ Exactly one responder answers new Discord messages.
 | :-- | :-- | :-- |
 | Claude Code | `claude-session` | One ongoing Claude conversation. Prefers Claude Desktop; see below. |
 | Codex | `codex-local` | One ongoing Codex conversation in the shared Codex app-server service on this computer; see below. |
-| ChatGPT - Dot | `chatgpt-events` | The Discordinator app in ChatGPT is woken automatically. Needs a public HTTPS domain. |
-| ChatGPT · scheduled checks | `chatgpt-poll` | ChatGPT checks for new messages on a schedule you set up in ChatGPT. |
-| Another MCP app | `manual-mcp` | Any compatible MCP client; you run it yourself. |
+| ChatGPT - Dot | `chatgpt-events` | The Discordinator app in ChatGPT is woken automatically. Needs a public HTTPS domain; see below. |
+| Another MCP app | `manual-mcp` | Any compatible MCP client; you run it yourself. Its card shows the address to connect to and how to sign in. |
 
-Older saved choices (`claude-local`, `claude-channel`) are migrated to `claude-session` automatically.
+Older saved choices (`claude-local`, `claude-channel`) are migrated to `claude-session` automatically, and `chatgpt-poll` shows as ChatGPT - Dot.
 
 ### Claude Code
 
@@ -58,13 +59,17 @@ For each Discord message, in order:
 
 If a step cannot complete, the message stays queued and the setup app shows why. Nothing else answers in its place.
 
-Messages are pushed through Claude Code's own session inbox, the same mechanism Claude Code uses for messages between your sessions. Claude treats them as coming from outside, not from you, so they can never approve its permission prompts. The live session needs the Discord tools, which the claude.ai connector or the local plugin provides (see Connected apps). **Open in Claude Desktop** opens the conversation at any time.
+Messages are pushed through Claude Code's own session inbox, the same mechanism Claude Code uses for messages between your sessions. Claude treats them as coming from outside, not from you, so they can never approve its permission prompts. The live session needs the Discord tools, which the local plugin provides (see [Local responders](#local-responders)). **Open in Claude Desktop** opens the conversation at any time.
 
 ### Codex
 
 Discordinator connects to the shared Codex app-server service that the Codex command line manages (`codex app-server daemon`), starting it if needed, and keeps one ongoing Discordinator conversation there. Because the conversation lives in that shared service rather than inside Discordinator, other Codex clients attached to it can follow and continue it, for example `codex resume --remote unix://` from a terminal, or the ChatGPT app once the service's remote control is enabled with `codex app-server daemon enable-remote-control`.
 
 If your Codex has no shared service, or **Always run in the background** is on, Discordinator runs a private Codex app-server instead, with one conversation per person and channel. Questions and permission requests go to Discord as buttons in both cases.
+
+### ChatGPT - Dot
+
+Its card lists what it needs, each with a check mark: a public domain and a sign-in password (Apps page), the ChatGPT (web) connector, wake-up events allowed, and a ChatGPT chat that turned on wake-ups. **ChatGPT connector guide** walks you through the connector and wake-ups.
 
 ## Local responders
 
@@ -88,10 +93,12 @@ The Apps page holds the connectors that give Claude and ChatGPT on the web and p
 
 ## Domain and local access
 
-Enter the **Public domain** as a bare domain such as `bot.example.com` (no `https://`, no path). Discordinator derives the HTTPS MCP and OAuth URLs from it. The separate **MCP endpoint URL** setting for Another MCP app takes a full `https://` URL with path.
+Enter the **Public domain** as a bare domain such as `bot.example.com` (no `https://`, no path). Discordinator derives the HTTPS MCP and OAuth URLs from it. Clear it to go back to local-only access; the web connectors then stop working.
+
+Another MCP app connects to `http://127.0.0.1:8787/mcp` (your port) with `Authorization: Bearer` and the key in `.data/local.key`, or, with a public domain, to `https://YOUR-DOMAIN/mcp` and signs in with your Discordinator password.
 
 Local tools such as the setup app and the Claude plugin reach the runtime with a local key in `.data/local.key`. It is created automatically and kept private. It only works for requests with a `127.0.0.1` or `localhost` Host header, so traffic arriving through a tunnel can never use it.
 
 ## Background service
 
-The **System** page installs, starts and removes the background service. On Linux it is a systemd user service named `discordinator.service`. On Windows it starts hidden when you sign in, through your account's startup entries, with no admin rights needed, and logs to `.data/service.log`. It never stops a Discordinator you started by hand.
+The **System** page installs (or reinstalls) the background service, building Discordinator first, and restarts it while it runs. On Linux it is a systemd user service named `discordinator.service`. On Windows it starts hidden when you sign in, through your account's startup entries, with no admin rights needed, and logs to `.data/service.log`. It never stops a Discordinator you started by hand.

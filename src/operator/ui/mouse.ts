@@ -19,7 +19,7 @@ function sheetOption(store: Store, sheet: Sheet, index: number): void {
         return store.set((state) => ({ ...state, sheet: { ...sheet, input: sheet.options[index]!, error: undefined } }));
     if (sheet.kind === 'multi') return store.set((state) => ({ ...state, sheet: toggleChoice(sheet, index) }));
     if (sheet.kind === 'search') {
-        const chosen = searchResults(sheet.input)[index];
+        const chosen = searchResults(sheet)[index];
         if (chosen) jumpTo(store, chosen.id);
     }
 }

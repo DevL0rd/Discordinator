@@ -1,7 +1,6 @@
 import { scalar } from '../../../core/text.js';
 import { publicDomain } from '../../connection-domain.js';
-import { statusHint } from '../../connections.js';
-import { connectorStatus, type WebId } from '../../web-connectors.js';
+import { connectorStatus, webHint, type WebId } from '../../web-connectors.js';
 import { line, span } from '../canvas.js';
 import { actionItem, card, heading, note, pill, section, settingItem } from '../items.js';
 import type { Item, View } from '../model.js';
@@ -18,7 +17,7 @@ function webCard(id: WebId, title: string, status: string, about: string): Item 
         intent: { type: 'run', action: `web-${id}` },
         title,
         badge: pill(status, webTone(status)),
-        body: [line([span(about, color.soft)]), line([span(statusHint[status] ?? '', color.muted)])],
+        body: [line([span(about, color.soft)]), line([span(webHint[status] ?? '', color.muted)])],
     });
 }
 

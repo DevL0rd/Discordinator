@@ -21,9 +21,6 @@ export const memoryItems = (): Item[] => [
 ];
 
 const elsewhere = new Set([
-    'operator.mode',
-    'operator.enabled',
-    'operator.exclusiveLocal',
     'environment.DISCORDINATOR_RESOURCE_URL',
     'environment.DISCORDINATOR_AUTH_MODE',
     'environment.DISCORDINATOR_OAUTH_SERVER',

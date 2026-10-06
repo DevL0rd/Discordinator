@@ -1,4 +1,5 @@
 import { stdin, stdout } from 'node:process';
+import { mkdir } from 'node:fs/promises';
 import { useState } from 'react';
 import { render } from 'ink';
 import { h } from './ui/render.js';
@@ -10,6 +11,7 @@ import { needsOnboarding } from './onboarding-store.js';
 import { migrateEnvironment } from '../core/env-migration.js';
 
 await migrateEnvironment();
+await mkdir('.data', { recursive: true, mode: 0o700 });
 const firstRun = await needsOnboarding(process.env);
 let snapshot = await readPanel();
 let observed = await observations();
@@ -33,7 +35,7 @@ if (!stdin.isTTY || !stdout.isTTY) {
 } else {
     stdout.write('\x1b[?1049h\x1b[?25l');
     try {
-        const app = render(h(Setup), { exitOnCtrlC: false, patchConsole: true });
+        const app = render(h(Setup), { exitOnCtrlC: false, patchConsole: true, incrementalRendering: true });
         await app.waitUntilExit();
     } finally {
         stdout.write('\x1b[?25h\x1b[?1049l');

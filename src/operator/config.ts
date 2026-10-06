@@ -7,10 +7,10 @@ export type OperatingMode = z.infer<typeof operatingMode>;
 const operatingMode = z.enum(['chatgpt-events', 'chatgpt-poll', 'codex-local', 'claude-session', 'manual-mcp']);
 export const localModes: readonly OperatingMode[] = ['codex-local', 'claude-session'];
 const renamedModes: Record<string, OperatingMode> = { 'claude-local': 'claude-session', 'claude-channel': 'claude-session' };
-const migrateMode = (value: unknown): unknown => {
+const migrateConfig = (value: unknown): unknown => {
     if (!value || typeof value !== 'object') return value;
-    const mode = (value as { mode?: unknown }).mode;
-    return typeof mode === 'string' && renamedModes[mode] ? { ...value, mode: renamedModes[mode] } : value;
+    const { publicEndpoint: _retired, ...rest } = value as { mode?: unknown; publicEndpoint?: unknown };
+    return typeof rest.mode === 'string' && renamedModes[rest.mode] ? { ...rest, mode: renamedModes[rest.mode] } : rest;
 };
 
 const operatorObject = z
@@ -29,20 +29,16 @@ const operatorObject = z
         progressSeconds: z.number().int().min(15).max(600).optional(),
         activityVisibility: z.boolean().default(false),
         backgroundOnly: z.boolean().default(false),
-        publicEndpoint: z
-            .url()
-            .refine((value) => new URL(value).protocol === 'https:')
-            .optional(),
         updatedAt: z.iso.datetime(),
     })
     .strict();
-export const operatorSchema = z.preprocess(migrateMode, operatorObject);
+export const operatorSchema = z.preprocess(migrateConfig, operatorObject);
 export type OperatorConfig = z.infer<typeof operatorObject>;
 
 export const operatorPath = '.data/operator.json';
 export const defaultOperatorConfig = (): OperatorConfig => ({
     version: 1,
-    mode: 'chatgpt-poll',
+    mode: 'claude-session',
     enabled: false,
     workspace: homedir(),
     timeoutSeconds: 0,

@@ -1,4 +1,5 @@
-import { publicDomainBlock } from '../../connection-domain.js';
+import { mcpAddresses, publicDomain } from '../../connection-domain.js';
+import { connectorStatus } from '../../web-connectors.js';
 import type { OperatingMode } from '../../config.js';
 import { box, line, span, wrap, type Line, type Span } from '../canvas.js';
 import { color, glyph } from '../theme.js';
@@ -20,21 +21,36 @@ function badge(mode: OperatingMode, view: View): Span[] {
 }
 const badgeWidth = (mode: OperatingMode, view: View) => badge(mode, view).reduce((total, item) => total + item.text.length, 0);
 
-function readiness(mode: OperatingMode, view: View): Span[] {
-    if (publicDomainBlock(mode, view.drafts.environment))
-        return [span(`${glyph.off} Unavailable: needs a public domain (Apps page)`, color.amber)];
-    const check = (ok: boolean | undefined, label: string): Span[] => [
-        span(ok ? `${glyph.check} ` : `${glyph.off} `, ok ? color.mint : color.dim),
-        span(`${label}   `, ok ? color.soft : color.muted),
+const check = (ok: boolean | undefined, label: string): Span[] => [
+    span(ok ? `${glyph.check} ` : `${glyph.off} `, ok ? color.mint : color.dim),
+    span(`${label}   `, ok ? color.soft : color.muted),
+];
+
+function desktop(view: View): Span[] {
+    if (view.drafts.operator.backgroundOnly === true) return [];
+    if (operator(view).session?.live) return check(true, 'Live in Claude Desktop');
+    return [span(`${glyph.pending} Opens in Claude Desktop when needed`, color.muted)];
+}
+
+function chatgptReadiness(view: View): Span[][] {
+    const domain = publicDomain(view.drafts.environment.DISCORDINATOR_RESOURCE_URL);
+    const added = domain && connectorStatus(view.extras.web?.chatgpt, `https://${domain}/mcp`).current;
+    const policy = view.drafts.policy as { mcpEvents?: { enabled?: boolean } };
+    return [
+        check(Boolean(domain), 'Public domain set (Apps page)'),
+        check(view.extras.password, 'Sign-in password set (Apps page)'),
+        check(Boolean(added), 'ChatGPT (web) connector added'),
+        check(policy.mcpEvents?.enabled, 'Wake-up events allowed'),
+        check((view.observed.live?.events.subscriptions ?? 0) > 0, 'A ChatGPT chat turned on wake-ups'),
     ];
+}
+
+function readiness(mode: OperatingMode, view: View): Span[][] {
     if (mode === 'claude-session')
-        return [
-            ...check(view.extras.apps['claude-code']?.connected, 'Discord tools connected'),
-            ...check(operator(view).session?.live, 'Live in Claude Desktop'),
-        ];
-    if (mode === 'codex-local') return check(view.extras.apps.codex?.connected, 'Discord tools connected');
-    if (mode === 'chatgpt-events') return check((view.observed.live?.events.subscriptions ?? 0) > 0, 'Wake-ups connected');
-    return [span('Connect your app from the Apps page', color.muted)];
+        return [[...check(view.extras.apps['claude-code']?.connected, 'Discord tools connected'), ...desktop(view)]];
+    if (mode === 'codex-local') return [check(view.extras.apps.codex?.connected, 'Discord tools connected')];
+    if (mode === 'chatgpt-events') return chatgptReadiness(view);
+    return [[span('Your MCP app connects to the addresses below and answers itself.', color.muted)]];
 }
 
 function card(mode: OperatingMode): Item {
@@ -54,7 +70,7 @@ function card(mode: OperatingMode): Item {
             const rows = [
                 title,
                 ...wrap(assistants[mode].blurb, inner - 2).map((value) => line([span(`  ${value}`, color.muted)])),
-                line([span('  '), ...readiness(mode, view)]),
+                ...readiness(mode, view).map((row) => line([span('  '), ...row])),
             ];
             return box(rows, size - 2, { border: selected ? color.violet : chosen ? color.violetDeep : color.line, bg }).map((value) => ({
                 ...line([span('  '), ...value.spans]),
@@ -102,8 +118,12 @@ function modeSettings(mode: OperatingMode, view: View): Item[] {
             settingItem('operator.backgroundOnly', 'Always run in the background'),
             ...background('codex'),
         ];
-    if (mode === 'manual-mcp') return [settingItem('operator.publicEndpoint', 'MCP endpoint URL')];
-    return [note('chatgpt-note', chatgptHowTo)];
+    if (mode === 'manual-mcp') return mcpAddresses(view.drafts.environment).map((text, index) => note(`mcp-address-${index}`, text));
+    return [
+        actionItem('chatgpt-guide', 'ChatGPT connector guide', { type: 'run', action: 'chatgpt-guide' }, 'Add it and turn on wake-ups'),
+        settingItem('policy.mcpEvents.enabled', 'Allow wake-up events'),
+        note('chatgpt-note', chatgptHowTo),
+    ];
 }
 
 export function assistantItems(view: View): Item[] {

@@ -38,8 +38,8 @@ assert.deepEqual(settingValue({}, field('policy.allowedUserIds')), [], 'Default 
 assert.ok(fieldError(field('policy.scopes'), ['not-a-scope']));
 const preview = previewChanges('policy', defaults, changed);
 assert.equal(preview.length, 1);
-assert.equal(preview[0]?.apply, 'restart');
-assert.equal(preview[0]?.before, '500');
+assert.equal(preview[0]?.apply, 'live');
+assert.equal(preview[0]?.before, '50');
 const secretPreview = previewChanges('environment', { DISCORD_BOT_TOKEN: 'old-secret' }, { DISCORD_BOT_TOKEN: 'new-secret' });
 assert.equal(secretPreview.length, 1);
 assert.equal(secretPreview[0]?.before, '[redacted]');

@@ -2,16 +2,16 @@ import assert from 'node:assert/strict';
 import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
-import { defaultOperatorConfig, operatorSchema } from '../src/operator/config.js';
+import { defaultOperatorConfig, operatorSchema, readOperatorConfig, writeOperatorConfig } from '../src/operator/config.js';
 import { validateEffort, type ProviderModels } from '../src/operator/providers.js';
-import { readPanel, applyDraft, persistentWorkBlock } from '../src/operator/panel-store.js';
+import { readPanel, applyDraft, persistentWorkBlock, rebaseDrafts } from '../src/operator/panel-store.js';
 import { editSetting, settings } from '../src/operator/settings-registry.js';
 import { settingsList, settingsUpdate } from '../src/mcp/settings.js';
-import { disconnectAffected } from '../src/operator/reconnect.js';
+import { planReconnect } from '../src/operator/reconnect.js';
 import { csv, envSchema, validateAuth } from '../src/core/config.js';
 import { domainError, editPublicDomain, publicDomain, publicDomainBlock } from '../src/operator/connection-domain.js';
 
-const noReconnect = () => Promise.resolve('');
+const noReconnect = () => Promise.resolve(() => Promise.resolve(''));
 
 function checkDomain(): void {
     const external = {
@@ -40,6 +40,10 @@ function checkDomain(): void {
     assert.equal(fresh.DISCORDINATOR_OAUTH_SERVER, 'bundled');
     assert.equal(fresh.DISCORDINATOR_TRUSTED_PROXIES, '127.0.0.1,::1');
     assert.throws(() => editPublicDomain(external, 'http://localhost'));
+    const cleared = editPublicDomain(fresh, '');
+    assert.equal(cleared.DISCORDINATOR_RESOURCE_URL, '', 'the public domain can be cleared');
+    assert.equal(cleared.DISCORDINATOR_AUTH_MODE, 'bearer', 'clearing it goes back to local-only access');
+    assert.equal(editPublicDomain(external, '').DISCORDINATOR_AUTH_MODE, 'oauth', 'an external provider is left alone');
     assert.equal(publicDomain('https://new.example/mcp'), 'new.example', 'domain is displayed without protocol');
     assert.match(publicDomainBlock('chatgpt-events', {})!, /public domain/, 'ChatGPT explains why it needs a public domain');
     assert.equal(publicDomainBlock('chatgpt-events', { DISCORDINATOR_RESOURCE_URL: 'https://new.example/mcp' }), undefined);
@@ -100,16 +104,54 @@ async function checkDraft(): Promise<void> {
     const multi = await applyDraft(applied.snapshot, combined, noReconnect);
     assert.equal(multi.snapshot.documents.operator.mode, 'chatgpt-events');
     assert.equal(multi.snapshot.documents.environment.DISCORDINATOR_RESOURCE_URL, 'https://fixture.example/mcp');
+    assert.equal(
+        (multi.snapshot.documents.policy.mcpEvents as { enabled: boolean }).enabled,
+        true,
+        'choosing ChatGPT - Dot allows wake-up events',
+    );
+    assert.match(multi.message, /Restart Discordinator|restarts itself/, 'every saved source is reported');
+    assert.match(multi.message, /wake-up/);
+    assert.match(multi.message, /Wake-up events are now allowed/);
     const policyField = settings.find((field) => field.id === 'policy.context.perChannel')!;
     const policyDraft = structuredClone(applied.snapshot.documents);
     policyDraft.policy = editSetting(policyDraft.policy, policyField, 77);
     await writeFile('policy.json', '{"context":{"perChannel":88}}');
     await assert.rejects(applyDraft(applied.snapshot, policyDraft, noReconnect), /changed elsewhere/);
     assert.equal((JSON.parse(await readFile('policy.json', 'utf8')) as { context: { perChannel: number } }).context.perChannel, 88);
+    const rebased = rebaseDrafts(applied.snapshot, policyDraft, await readPanel());
+    assert.equal((rebased.policy.context as { perChannel: number }).perChannel, 77, 'drafts survive an outside change');
+    assert.equal(
+        (rebased.environment as { DISCORDINATOR_RESOURCE_URL?: string }).DISCORDINATOR_RESOURCE_URL,
+        'https://fixture.example/mcp',
+        'outside changes are kept',
+    );
+    await checkPaused();
+}
+async function checkPaused(): Promise<void> {
+    const snapshot = await readPanel();
+    const draft = structuredClone(snapshot.documents);
+    draft.operator.mode = 'manual-mcp';
+    const switched = await applyDraft(snapshot, draft, noReconnect);
+    assert.equal((await readOperatorConfig()).enabled, true, 'choosing a responder starts it');
+    await writeOperatorConfig({ ...(await readOperatorConfig()), enabled: false });
+    const edited = structuredClone(switched.snapshot.documents);
+    edited.operator.instructions = 'Be brief.';
+    const kept = await applyDraft(switched.snapshot, edited, noReconnect);
+    assert.equal((await readOperatorConfig()).enabled, false, 'editing a paused responder keeps it paused');
+    assert.match(kept.message, /stays paused/);
+    const failing = structuredClone(kept.snapshot.documents);
+    failing.operator.instructions = 'Be very brief.';
+    const failed = await applyDraft(kept.snapshot, failing, () => Promise.resolve(() => Promise.reject(new Error('fixture failure'))));
+    assert.equal(failed.warning, true, 'a failure after writing is a warning');
+    assert.match(failed.message, /^Saved, but fixture failure/);
+    assert.equal(failed.snapshot.documents.operator.instructions, 'Be very brief.', 'the new snapshot is returned');
+    await writeOperatorConfig({ ...defaultOperatorConfig(), mode: 'chatgpt-poll' });
+    await rm('.data/operator-settings.json');
+    assert.equal((await readPanel()).documents.operator.mode, 'chatgpt-events', 'scheduled checks show as ChatGPT - Dot');
 }
 async function checkReconnect(): Promise<void> {
     const unrelated = [{ id: 'policy.context.reach', label: 'History', before: 'channel', after: 'server', apply: 'live' as const }];
-    assert.equal(await disconnectAffected(unrelated), '', 'settings that do not affect connections never touch apps');
+    assert.equal(await (await planReconnect(unrelated, {}))(), '', 'settings that do not affect connections never touch apps');
 }
 async function checkSettingsTools(): Promise<void> {
     await checkReconnect();

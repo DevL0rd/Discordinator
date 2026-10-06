@@ -6,14 +6,15 @@ import { readOperatorConfig } from './config.js';
 import { publicDomain } from './connection-domain.js';
 import { watchFile } from './file-watch.js';
 import { presenceFile, readPresence } from './presence.js';
-import { liveSetupStatus } from './setup-model.js';
-import { chatgptHowTo } from './ui/status.js';
+import { liveSetupStatus, type LiveSetupStatus } from './setup-model.js';
+import { assistants, chatgptHowTo, responderMode } from './ui/status.js';
 import type { AiChoice } from './onboarding-store.js';
 
 export interface Check {
     label: string;
     ok: boolean;
     hint: string;
+    start?: boolean;
 }
 
 export async function savedPublicUrl(): Promise<string> {
@@ -21,7 +22,7 @@ export async function savedPublicUrl(): Promise<string> {
     return `https://${publicDomain(environment.DISCORDINATOR_RESOURCE_URL)}/mcp`;
 }
 
-async function chatgptChecks(choice: AiChoice, subscriptions: number): Promise<Check[]> {
+async function chatgptChecks(subscriptions: number): Promise<Check[]> {
     const url = await savedPublicUrl();
     const connected = Boolean((await readPresence()).remoteAt);
     const checks: Check[] = [
@@ -31,12 +32,24 @@ async function chatgptChecks(choice: AiChoice, subscriptions: number): Promise<C
             hint: `In ChatGPT open Settings, Apps & Connectors, turn on Developer mode, create a connector named Discordinator with ${url}, and sign in with your password.`,
         },
     ];
-    if (choice === 'chatgpt-events') checks.push({ label: 'Automatic wake-ups are on', ok: subscriptions > 0, hint: chatgptHowTo });
+    checks.push({ label: 'Automatic wake-ups are on', ok: subscriptions > 0, hint: chatgptHowTo });
     return checks;
 }
 
+async function startCheck(mode: AiChoice, live: LiveSetupStatus | null): Promise<Check> {
+    const active = await readOperatorConfig();
+    const blocked = live?.operator.blockedReason;
+    const starting = active.enabled && active.mode === mode;
+    return {
+        label: `${assistants[mode].name} is answering`,
+        ok: live?.operator.mode === mode && !blocked && live.operator.appliedConfigAt === active.updatedAt,
+        hint: blocked ?? (starting ? 'Discordinator is switching to it. Check again in a moment.' : 'Choose Finish to start it.'),
+        start: true,
+    };
+}
+
 export async function verifyChecks(choice?: AiChoice): Promise<Check[]> {
-    const mode = choice ?? (await readOperatorConfig()).mode;
+    const mode = choice ?? responderMode((await readOperatorConfig()).mode);
     const live = await liveSetupStatus();
     const checks: Check[] = [
         {
@@ -54,7 +67,8 @@ export async function verifyChecks(choice?: AiChoice): Promise<Check[]> {
             hint: `${appNames[app]}: ${state.status}. Go back and connect it.`,
         });
     }
-    if (mode.startsWith('chatgpt-')) checks.push(...(await chatgptChecks(mode, live?.events.subscriptions ?? 0)));
+    if (mode === 'chatgpt-events') checks.push(...(await chatgptChecks(live?.events.subscriptions ?? 0)));
+    if (mode !== 'manual-mcp') checks.push(await startCheck(mode, live));
     return checks;
 }
 

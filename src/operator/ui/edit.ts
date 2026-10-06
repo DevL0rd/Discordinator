@@ -5,7 +5,7 @@ import type { Observations } from './model.js';
 import { scalar } from '../../core/text.js';
 import { effortOptions, type ProviderModels } from '../providers.js';
 
-const optional = ['codexModel', 'codexEffort', 'claudeModel', 'claudeEffort', 'instructions', 'publicEndpoint'];
+const optional = ['codexModel', 'codexEffort', 'claudeModel', 'claudeEffort', 'instructions'];
 
 export function editOptions(field: SettingDefinition, drafts: Documents, observed: Observations): string[] {
     if (field.path === 'codexModel') return ['', ...observed.codex.models.map((model) => model.id)];
@@ -41,8 +41,8 @@ export function initialInput(field: SettingDefinition, drafts: Documents): strin
 }
 
 export function editHint(field: SettingDefinition): string {
-    if (field.id === 'environment.DISCORDINATOR_RESOURCE_URL') return 'Just the domain, like bot.example.com. No https:// and no path.';
-    if (field.path === 'publicEndpoint') return 'The full URL, including https:// and the path.';
+    if (field.id === 'environment.DISCORDINATOR_RESOURCE_URL')
+        return 'Just the domain, like bot.example.com. No https:// and no path. Leave it empty to stop the web connectors.';
     if (field.credential) return 'Paste the new value. It is hidden as you type and never shown again.';
     if (field.kind === 'integer')
         return `A whole number${field.minimum !== undefined ? ` from ${field.minimum}` : ''}${field.maximum !== undefined ? ` to ${field.maximum}` : ''}.`;
@@ -52,13 +52,8 @@ export function editHint(field: SettingDefinition): string {
 }
 
 function parseDomain(value: string): string {
-    const error = domainError(value);
+    const error = value ? domainError(value) : undefined;
     if (error) throw new Error(error);
-    return value;
-}
-function parseEndpoint(value: string): string {
-    if (value && !/^https:\/\/[^/\s]+\/\S*$/.test(value))
-        throw new Error('Enter the full https:// URL including its path, like https://bot.example.com/mcp.');
     return value;
 }
 function parseJson(value: string): unknown {
@@ -85,7 +80,6 @@ const parsers: Partial<Record<SettingDefinition['kind'], (value: string) => unkn
 function parse(field: SettingDefinition, input: string): unknown {
     const value = input.trim();
     if (field.id === 'environment.DISCORDINATOR_RESOURCE_URL') return parseDomain(value);
-    if (field.path === 'publicEndpoint') return parseEndpoint(value);
     return parsers[field.kind]?.(value) ?? input;
 }
 

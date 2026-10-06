@@ -1,5 +1,5 @@
 import { mkdir, readFile, rename, stat, writeFile } from 'node:fs/promises';
-import { disconnectAffected } from './reconnect.js';
+import { planReconnect } from './reconnect.js';
 import { ownerReady } from '../oauth/provision.js';
 import { dirname } from 'node:path';
 import { parseEnv } from 'node:util';
@@ -11,10 +11,10 @@ import { appState, connectApp, responderApps } from './connections.js';
 import { publicDomainBlock } from './connection-domain.js';
 import { validateModel } from './providers.js';
 import { activationBlock, isLocal, liveSetupStatus } from './setup-model.js';
-import { previewChanges, type SettingsSource } from './settings-registry.js';
+import { assignSetting, previewChanges, settings, settingValue, type SettingsSource } from './settings-registry.js';
 import { managedServiceStatus } from './service-status.js';
 import { scalar } from '../core/text.js';
-import { assistantName } from './ui/status.js';
+import { assistantName, responderMode } from './ui/status.js';
 
 export type Documents = Record<SettingsSource, Record<string, unknown>>;
 export interface PanelSnapshot {
@@ -45,15 +45,25 @@ export async function readPanel(): Promise<PanelSnapshot> {
             return [key, parsed.success ? parsed.data : environment[key]];
         }),
     );
+    const operator = await readOperatorConfig(originals.operator ? paths.operator : operatorPath);
     return {
         paths,
         originals,
         documents: {
-            operator: { ...(await readOperatorConfig(originals.operator ? paths.operator : operatorPath)) },
+            operator: { ...operator, mode: responderMode(operator.mode) },
             policy: { ...policySchema.parse(originals.policy ? JSON.parse(originals.policy) : {}) },
             environment: resolved,
         },
     };
+}
+export function rebaseDrafts(before: PanelSnapshot, drafts: Documents, next: PanelSnapshot): Documents {
+    const rebased = structuredClone(next.documents);
+    for (const definition of settings) {
+        const value = settingValue(drafts[definition.source], definition);
+        if (JSON.stringify(value) === JSON.stringify(settingValue(before.documents[definition.source], definition))) continue;
+        rebased[definition.source] = assignSetting(rebased[definition.source], definition, value);
+    }
+    return rebased;
 }
 export function draftChanges(snapshot: PanelSnapshot, drafts: Documents) {
     return (Object.keys(drafts) as SettingsSource[]).flatMap((source) =>
@@ -83,14 +93,15 @@ async function validateDraft(snapshot: PanelSnapshot, drafts: Documents, source:
     if (policy.triggers.matchNames && env.DISCORDINATOR_MESSAGE_CONTENT !== 'true')
         throw new Error('Name triggers require Message Content intent.');
     if (source === 'policy') await validatePeople(snapshot, policy, env.DISCORD_BOT_TOKEN);
+    const blocked = source === 'policy' ? undefined : publicDomainBlock(String(drafts.operator.mode), drafts.environment);
+    if (blocked) throw new Error(blocked);
     if (
         env.DISCORDINATOR_OAUTH_SERVER === 'bundled' &&
         env.DISCORDINATOR_AUTH_MODE === 'oauth' &&
         !(await ownerReady(env.DISCORDINATOR_OAUTH_DATA_DIR))
     )
         throw new Error('Set a sign-in password first (Apps → Sign-in password); apps on your public domain sign in with it.');
-    if (source !== 'operator') return;
-    await validateOperator(drafts.operator, drafts.environment);
+    if (source === 'operator') await validateOperator(drafts.operator);
 }
 async function validatePeople(snapshot: PanelSnapshot, policy: ReturnType<typeof policySchema.parse>, token: string): Promise<void> {
     const previous = snapshot.documents.policy.allowedUserIds as string[];
@@ -101,10 +112,8 @@ async function validatePeople(snapshot: PanelSnapshot, policy: ReturnType<typeof
         if (user.id !== id || user.bot) throw new Error('Added Discord person could not be verified as a human.');
     }
 }
-async function validateOperator(document: Record<string, unknown>, environment: Record<string, unknown>): Promise<void> {
+async function validateOperator(document: Record<string, unknown>): Promise<void> {
     const config = operatorSchema.parse(document);
-    const blocked = publicDomainBlock(config.mode, environment);
-    if (blocked) throw new Error(blocked);
     if (!isLocal(config.mode)) return;
     if (!(await stat(config.workspace)).isDirectory()) throw new Error('Workspace must be an existing directory.');
     await validateModel(config);
@@ -118,7 +127,9 @@ export async function startSaved(snapshot: PanelSnapshot, enabled: boolean): Pro
     const work = persistentWorkBlock(live, active.updatedAt);
     if (work) throw new Error('An assistant is still working. Wait for it to finish before switching.');
     if (enabled) {
-        await validateOperator(snapshot.documents.operator, snapshot.documents.environment);
+        const blocked = publicDomainBlock(selected.mode, snapshot.documents.environment);
+        if (blocked) throw new Error(blocked);
+        await validateOperator(snapshot.documents.operator);
         const blocker = activationBlock(selected, live, true);
         if (blocker) throw new Error(blocker);
     }
@@ -128,7 +139,6 @@ export async function startSaved(snapshot: PanelSnapshot, enabled: boolean): Pro
     return (await operatorApplied(next)) ? startedMessage(enabled, target.mode) : 'Request saved. Waiting for Discordinator to respond.';
 }
 function externalStart(mode: string, live: Awaited<ReturnType<typeof liveSetupStatus>>): string | undefined {
-    if (mode === 'chatgpt-poll') return 'Start scheduled checks in ChatGPT. This screen cannot start a ChatGPT task.';
     if (mode === 'manual-mcp') return 'Connect and start your assistant in its MCP client. No assistant was started here.';
     if (mode === 'chatgpt-events' && !live?.events.subscriptions)
         throw new Error('Connect automatic wake-ups in ChatGPT first. No wake-up connection was found.');
@@ -168,29 +178,41 @@ async function operatorApplied(next: Record<string, unknown>): Promise<boolean> 
     }
     return false;
 }
-async function selectResponder(updated: PanelSnapshot): Promise<boolean> {
+type Activation = 'applied' | 'pending' | 'paused';
+async function selectResponder(updated: PanelSnapshot): Promise<Activation> {
     const selected = operatorSchema.parse(updated.documents.operator);
+    const active = await readOperatorConfig();
+    const switching = selected.mode !== active.mode;
     const app = responderApps[selected.mode];
-    if (app && !(await appState(app)).connected) await connectApp(app);
-    await writeOperatorConfig({ ...selected, enabled: true, exclusiveLocal: isLocal(selected.mode) });
-    return operatorApplied(await readOperatorConfig());
+    if (switching && app && !(await appState(app)).connected) await connectApp(app);
+    const enabled = switching || active.enabled;
+    await writeOperatorConfig({ ...selected, enabled, exclusiveLocal: enabled && isLocal(selected.mode) });
+    if (!enabled) return 'paused';
+    return (await operatorApplied(await readOperatorConfig())) ? 'applied' : 'pending';
 }
-async function applyMessage(source: SettingsSource, applied: boolean, mode: string): Promise<string> {
-    if (source === 'operator' && mode === 'chatgpt-events' && !(await liveSetupStatus())?.events.subscriptions)
+async function operatorMessage(activation: Activation, mode: string): Promise<string> {
+    if (activation === 'paused') return `Saved. ${assistantName(mode)} stays paused until you start it.`;
+    if (mode === 'chatgpt-events' && !(await liveSetupStatus())?.events.subscriptions)
         return `Saved, but ChatGPT has no wake-up connection, so nothing will answer yet. In ChatGPT, reconnect Discordinator and turn on automatic wake-ups.`;
-    if (source === 'operator')
-        return applied
-            ? `Saved. ${assistantName(mode)} is now the primary responder.`
-            : `Saved. ${assistantName(mode)} takes over once Discordinator finishes any current work.`;
-    if (source === 'policy') return 'Settings saved and applied.';
+    return activation === 'applied'
+        ? `Saved. ${assistantName(mode)} is now the primary responder.`
+        : `Saved. ${assistantName(mode)} takes over once Discordinator finishes any current work.`;
+}
+async function environmentMessage(): Promise<string> {
     return (await managedServiceStatus()).active
         ? 'Settings saved. Discordinator restarts itself to apply them once it is idle.'
-        : 'Settings saved. Start Discordinator from Service to apply them.';
+        : 'Settings saved. Restart Discordinator to apply them.';
+}
+function withEvents(snapshot: PanelSnapshot, drafts: Documents): Documents {
+    const choosing = drafts.operator.mode === 'chatgpt-events' && snapshot.documents.operator.mode !== 'chatgpt-events';
+    const events = settings.find((definition) => definition.id === 'policy.mcpEvents.enabled')!;
+    if (!choosing || settingValue(drafts.policy, events) === true) return drafts;
+    return { ...drafts, policy: assignSetting(drafts.policy, events, true) };
 }
 async function saveSource(snapshot: PanelSnapshot, drafts: Documents, source: SettingsSource): Promise<string> {
     const path = snapshot.paths[source];
     if ((await read(path)) !== snapshot.originals[source])
-        throw new Error('Configuration changed elsewhere. Reload; draft has not been saved.');
+        throw new Error('Configuration changed elsewhere. Press R to reload; nothing has been saved.');
     const backup = `.data/setup-backups/${Date.now()}-${source}.json`;
     await mkdir(dirname(backup), { recursive: true, mode: 0o700 });
     await writeFile(backup, JSON.stringify({ path, original: snapshot.originals[source] }), { mode: 0o600, flush: true });
@@ -211,7 +233,7 @@ async function saveSources(snapshot: PanelSnapshot, drafts: Documents, sources: 
     for (const source of sources) {
         await validateDraft(snapshot, drafts, source);
         if ((await read(snapshot.paths[source])) !== snapshot.originals[source])
-            throw new Error('Configuration changed elsewhere. Reload; nothing has been saved.');
+            throw new Error('Configuration changed elsewhere. Press R to reload; nothing has been saved.');
     }
     const written = new Map<SettingsSource, string>();
     try {
@@ -229,18 +251,39 @@ async function saveSources(snapshot: PanelSnapshot, drafts: Documents, sources: 
         throw error;
     }
 }
+async function attempt<T>(work: () => Promise<T>, failed: T, failures: string[]): Promise<T> {
+    try {
+        return await work();
+    } catch (error) {
+        failures.push(error instanceof Error ? error.message : String(error));
+        return failed;
+    }
+}
+export interface Applied {
+    snapshot: PanelSnapshot;
+    message: string;
+    warning?: boolean;
+}
 export async function applyDraft(
     snapshot: PanelSnapshot,
     drafts: Documents,
-    reconnect: typeof disconnectAffected = disconnectAffected,
-): Promise<{ snapshot: PanelSnapshot; message: string }> {
-    const sources = changedSources(snapshot, drafts);
+    reconnect: typeof planReconnect = planReconnect,
+): Promise<Applied> {
+    const prepared = withEvents(snapshot, drafts);
+    const sources = changedSources(snapshot, prepared);
     if (!sources.length) return { snapshot, message: 'No changes to save.' };
-    const changes = draftChanges(snapshot, drafts);
-    await saveSources(snapshot, drafts, sources);
-    const reconnected = await reconnect(changes);
+    const finish = await reconnect(draftChanges(snapshot, prepared), prepared.environment);
+    await saveSources(snapshot, prepared, sources);
     const updated = await readPanel();
-    const source = (['environment', 'operator', 'policy'] as const).find((item) => sources.includes(item))!;
-    const applied = sources.includes('operator') && (await selectResponder(updated));
-    return { snapshot: updated, message: `${await applyMessage(source, applied, String(updated.documents.operator.mode))}${reconnected}` };
+    const failures: string[] = [];
+    const mode = String(updated.documents.operator.mode);
+    const messages: string[] = [];
+    if (sources.includes('environment')) messages.push(await environmentMessage());
+    if (sources.includes('operator'))
+        messages.push(await operatorMessage(await attempt(() => selectResponder(updated), 'paused', failures), mode));
+    if (sources.includes('policy'))
+        messages.push(prepared === drafts ? 'Discord settings saved and applied.' : 'Wake-up events are now allowed for ChatGPT.');
+    const reconnected = await attempt(finish, '', failures);
+    if (failures.length) return { snapshot: updated, message: `Saved, but ${failures.join(' ')}`, warning: true };
+    return { snapshot: updated, message: `${messages.join(' ')}${reconnected}` };
 }

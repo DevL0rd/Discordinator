@@ -1,4 +1,4 @@
-import { searchSettings, type SettingDefinition } from '../settings-registry.js';
+import { searchSettings, settings, type SettingDefinition } from '../settings-registry.js';
 import { blank, box, line, span, truncate, wrap, type Line, type Span } from './canvas.js';
 import { color, glyph, tone, type Tone } from './theme.js';
 import { editHint } from './edit.js';
@@ -20,11 +20,15 @@ export type Sheet =
       }
     | { kind: 'multi'; field: SettingDefinition; label: string; chosen: string[]; index: number; labels?: Record<string, string> }
     | { kind: 'confirm'; title: string; body: string[]; buttons: Button[]; index: number }
-    | { kind: 'search'; input: string; index: number }
+    | { kind: 'search'; input: string; index: number; reachable: readonly string[] }
     | { kind: 'help' };
 
 const optionLabel = (value: string) => value || 'Default';
-export const searchResults = (input: string) => searchSettings(input).slice(0, 8);
+export const searchResults = (sheet: Extract<Sheet, { kind: 'search' }>) =>
+    searchSettings(
+        sheet.input,
+        settings.filter((setting) => sheet.reachable.includes(setting.id)),
+    ).slice(0, 8);
 
 function buttons(items: { label: string; tone: Tone }[], index: number): Line {
     return line(
@@ -122,7 +126,7 @@ function multiBody(sheet: Extract<Sheet, { kind: 'multi' }>, size: number): Line
 }
 
 function searchBody(sheet: Extract<Sheet, { kind: 'search' }>, size: number): Line[] {
-    const results = searchResults(sheet.input);
+    const results = searchResults(sheet);
     return [
         field(sheet.input, false, size),
         blank(),
@@ -145,7 +149,7 @@ const helpRows: [string, string][] = [
     ['s', 'Review and save changes'],
     ['/', 'Find any setting'],
     ['p', 'Start or pause the assistant'],
-    ['r', 'Refresh status'],
+    ['r', 'Reload settings and status'],
     ['Esc', 'Close this panel'],
     ['q', 'Quit (Discordinator keeps running)'],
 ];

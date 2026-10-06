@@ -8,15 +8,8 @@ export const operatorSettings = [
             description:
                 'The one assistant that answers new Discord messages. Saving switches to it once current work finishes and connects its app if needed.',
             kind: 'choice',
-            choices: ['chatgpt-events', 'chatgpt-poll', 'codex-local', 'claude-session', 'manual-mcp'],
-            defaultValue: 'chatgpt-poll',
-        },
-        {
-            path: 'enabled',
-            label: 'Responder enabled',
-            description: 'Activation requires runtime ownership and active-request checks.',
-            kind: 'boolean',
-            defaultValue: false,
+            choices: ['claude-session', 'codex-local', 'chatgpt-events', 'manual-mcp'],
+            defaultValue: 'claude-session',
         },
         {
             path: 'workspace',
@@ -24,14 +17,6 @@ export const operatorSettings = [
             description: 'Directory used for local CLI execution. Validate filesystem access before applying.',
             kind: 'text',
             sensitive: true,
-        },
-        {
-            path: 'exclusiveLocal',
-            label: 'Exclusive local ownership',
-            description:
-                'Confirm every external polling consumer is stopped before local activation. A configured MCP client is not evidence of listening; no heartbeat is inferred.',
-            kind: 'boolean',
-            defaultValue: false,
         },
         {
             path: 'timeoutSeconds',
@@ -100,14 +85,6 @@ export const operatorSettings = [
                 'Optional redacted tool activity, off by default. Genuine harness approvals and questions are always relayed independently.',
             kind: 'boolean',
             defaultValue: false,
-        },
-    ]),
-    ...group('operator', 'connections', 'reference', [
-        {
-            path: 'publicEndpoint',
-            label: 'MCP endpoint URL',
-            description: 'Full URL including https:// and path, for apps that connect to a custom endpoint.',
-            kind: 'text',
         },
     ]),
 ];

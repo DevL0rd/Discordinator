@@ -1,4 +1,8 @@
-import { applyDraft, startSaved } from '../panel-store.js';
+import { applyDraft, readPanel, rebaseDrafts, startSaved } from '../panel-store.js';
+import { affectsConnections } from '../reconnect.js';
+import { readOperatorConfig } from '../config.js';
+import { ownerReady } from '../../oauth/provision.js';
+import { oauthDirectory } from '../../oauth/registration.js';
 import { installService, restartService } from '../install.js';
 import { openConversation } from '../session-router.js';
 import { appNames, appState, connectApp, disconnectApp, statusHint, type AppId } from '../connections.js';
@@ -14,6 +18,7 @@ import type { ActionId } from './model.js';
 import { assistantName } from './status.js';
 import { logged, viewOf, type UiState } from './state.js';
 import type { Button, Sheet } from './sheets.js';
+import type { Tone } from './theme.js';
 import type { SettingDefinition } from '../settings-registry.js';
 import { passwordError } from '../../oauth/provision.js';
 import { savePassword } from '../onboarding-store.js';
@@ -27,11 +32,14 @@ export interface Store {
 const friendly = (error: unknown) => (error instanceof Error ? error.message : 'Something went wrong').slice(0, 240);
 const close = (store: Store) => store.set((state) => ({ ...state, sheet: undefined }));
 
-async function task(store: Store, label: string, work: () => Promise<string>): Promise<boolean> {
+type Outcome = string | { message: string; warning?: boolean };
+async function task(store: Store, label: string, work: () => Promise<Outcome>): Promise<boolean> {
     store.set((state) => ({ ...state, busy: label, sheet: undefined }));
     try {
-        const message = await work();
-        store.set((state) => logged({ ...state, busy: undefined }, message, 'good'));
+        const outcome = await work();
+        const [message, tone]: [string, Tone] =
+            typeof outcome === 'string' ? [outcome, 'good'] : [outcome.message, outcome.warning ? 'warn' : 'good'];
+        store.set((state) => logged({ ...state, busy: undefined }, message, tone));
         return true;
     } catch (error) {
         store.set((state) => logged({ ...state, busy: undefined }, friendly(error), 'bad'));
@@ -39,24 +47,55 @@ async function task(store: Store, label: string, work: () => Promise<string>): P
     }
 }
 
-export async function refreshLive(store: Store): Promise<void> {
-    const [live, runtime] = await Promise.all([liveSetupStatus(), runtimePresent()]);
-    store.set((state) => ({ ...state, observed: { ...state.observed, live, runtime, observedAt: new Date().toISOString() } }));
+async function reported(store: Store, work: () => Promise<void>): Promise<void> {
+    try {
+        await work();
+    } catch (error) {
+        store.set((state) => logged(state, friendly(error), 'bad'));
+    }
 }
 
-export async function refresh(store: Store, deep = false): Promise<void> {
-    const observed = await observations(deep ? undefined : store.get().observed);
-    store.set((state) => ({ ...state, observed }));
-    if (!deep) return;
-    const token = scalar(store.get().snapshot.documents.environment.DISCORD_BOT_TOKEN);
-    const [claude, codex, web, servers] = await Promise.all([
+export const refreshStatus = (store: Store): Promise<void> =>
+    reported(store, async () => {
+        const live = await liveSetupStatus();
+        store.set((state) => ({ ...state, observed: { ...state.observed, live, observedAt: new Date().toISOString() } }));
+    });
+
+export const refreshLive = (store: Store): Promise<void> =>
+    reported(store, async () => {
+        const [live, runtime, active] = await Promise.all([liveSetupStatus(), runtimePresent(), readOperatorConfig()]);
+        store.set((state) => ({ ...state, observed: { ...state.observed, live, runtime, active, observedAt: new Date().toISOString() } }));
+    });
+
+export const reloadPanel = (store: Store): Promise<void> =>
+    reported(store, async () => {
+        const next = await readPanel();
+        store.set((state) => ({ ...state, snapshot: next, drafts: rebaseDrafts(state.snapshot, state.drafts, next) }));
+    });
+
+async function extras(store: Store): Promise<void> {
+    const environment = store.get().snapshot.documents.environment;
+    const token = scalar(environment.DISCORD_BOT_TOKEN);
+    const [claude, codex, web, password, servers] = await Promise.all([
         appState('claude-code'),
         appState('codex'),
         webConnectors(),
+        ownerReady(oauthDirectory.parse(environment.DISCORDINATOR_OAUTH_DATA_DIR)),
         token ? listServers(token).catch(() => undefined) : undefined,
     ]);
-    store.set((state) => ({ ...state, extras: { apps: { 'claude-code': claude, codex }, web, ...(servers ? { servers } : {}) } }));
+    store.set((state) => ({
+        ...state,
+        extras: { apps: { 'claude-code': claude, codex }, web, password, ...(servers ? { servers } : {}) },
+    }));
 }
+
+export const refresh = (store: Store, deep = false): Promise<void> =>
+    reported(store, async () => {
+        if (deep) await reloadPanel(store);
+        const observed = await observations(deep ? undefined : store.get().observed);
+        store.set((state) => ({ ...state, observed }));
+        if (deep) await extras(store);
+    });
 
 export function confirm(store: Store, title: string, body: string[], buttons: Button[]): void {
     store.set((state) => ({ ...state, sheet: { kind: 'confirm', title, body, buttons, index: 0 } }));
@@ -212,6 +251,7 @@ export function run(store: Store, action: ActionId): void {
         'app-codex': () => appSheet(store, 'codex'),
         'web-claude': () => webSheet(store, 'claude'),
         'web-chatgpt': () => webSheet(store, 'chatgpt'),
+        'chatgpt-guide': () => webSheet(store, 'chatgpt', true),
         'sign-in-password': () => passwordSheet(store, 0),
         'install-service': () => service(store, true),
         'restart-service': () => service(store, false),
@@ -221,14 +261,15 @@ export function run(store: Store, action: ActionId): void {
 
 async function commit(store: Store): Promise<boolean> {
     const before = store.get().snapshot.documents.operator.mode;
+    const connections = affectsConnections(viewOf(store.get()).changes);
     const saved = await task(store, 'Saving…', async () => {
         const result = await applyDraft(store.get().snapshot, store.get().drafts);
         store.set((state) => ({ ...state, snapshot: result.snapshot, drafts: structuredClone(result.snapshot.documents) }));
-        return result.message;
+        return result;
     });
     if (!saved) return false;
     const mode = store.get().snapshot.documents.operator.mode;
-    await refresh(store, mode !== before);
+    await refresh(store, connections || mode !== before);
     if (mode !== before && mode === 'chatgpt-events' && !store.get().extras.web?.chatgpt) webSheet(store, 'chatgpt', true);
     return true;
 }
