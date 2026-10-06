@@ -1,4 +1,5 @@
 import { createServer } from 'node:http';
+import { once } from 'node:events';
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import type { JWTVerifyGetKey } from 'jose';
 import { createMcpHandler } from '@modelcontextprotocol/server';
@@ -19,6 +20,21 @@ import { localPrincipalId } from './local-key.js';
 function json(response: ServerResponse, status: number, value: unknown): void {
     response.writeHead(status, { 'Content-Type': 'application/json', 'Cache-Control': 'no-store', 'X-Content-Type-Options': 'nosniff' });
     response.end(JSON.stringify(value));
+}
+
+const maxBody = 512_000;
+
+async function rejectOversized(request: IncomingMessage, response: ServerResponse): Promise<boolean> {
+    const declared = Number(request.headers['content-length']);
+    if (!Number.isFinite(declared) || declared <= maxBody) return false;
+    if (declared > 4 * 1024 * 1024) {
+        request.destroy();
+        return true;
+    }
+    request.resume();
+    await once(request, 'end');
+    json(response, 413, { jsonrpc: '2.0', error: { code: -32000, message: 'Request body too large' }, id: null });
+    return true;
 }
 
 export class HttpServer {
@@ -85,6 +101,7 @@ export class HttpServer {
     }
 
     private async handle(request: IncomingMessage, response: ServerResponse): Promise<void> {
+        if (await rejectOversized(request, response)) return;
         if (!this.validHeaders(request)) {
             console.error(
                 `HTTP trust denied ${JSON.stringify({
@@ -150,7 +167,7 @@ export class HttpServer {
                     { service: ctx.era === 'modern' ? this.events : undefined, principal },
                     this.config.DISCORDINATOR_AUTH_MODE === 'oauth',
                 ),
-            { maxRequestBodySize: 512_000 },
+            { maxRequestBodySize: maxBody },
         );
         try {
             await toNodeHandler(
@@ -165,7 +182,7 @@ export class HttpServer {
                         ),
                 },
                 {
-                    maxRequestBodySize: 512_000,
+                    maxRequestBodySize: maxBody,
                     onerror: (error) => console.error(`MCP adapter failed ${JSON.stringify({ error: error.name })}`),
                 },
             )(request, response);

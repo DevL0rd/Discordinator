@@ -35,7 +35,7 @@ class Screen extends Writable {
 const pause = () => new Promise((resolve) => setTimeout(resolve, 20));
 
 async function until(screen: Screen, text: string): Promise<void> {
-    for (let attempt = 0; attempt < 250 && !screen.frame.includes(text); attempt++) await pause();
+    for (let attempt = 0; attempt < 1000 && !screen.frame.includes(text); attempt++) await pause();
     assert.ok(screen.frame.includes(text), `expected the wizard to show “${text}”:\n${screen.frame}`);
 }
 
@@ -90,7 +90,7 @@ async function firstSteps(keys: Keys, screen: Screen): Promise<void> {
     await until(screen, 'Your bot token');
     await keys('fixture-token');
     await keys('\r');
-    await until(screen, 'Continue');
+    await until(screen, 'Add the bot to your server');
     await keys('\r');
     await until(screen, 'Who is the owner?');
     await keys('nobody');

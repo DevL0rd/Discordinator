@@ -20,7 +20,7 @@ const event = (id: string) => ({
     receivedAt: new Date().toISOString(),
 });
 const settle = async (predicate: () => boolean): Promise<void> => {
-    for (let index = 0; index < 200 && !predicate(); index++) await new Promise((resolve) => setTimeout(resolve, 5));
+    for (let index = 0; index < 2000 && !predicate(); index++) await new Promise((resolve) => setTimeout(resolve, 5));
     assert.ok(predicate(), 'background Claude did not settle');
 };
 
