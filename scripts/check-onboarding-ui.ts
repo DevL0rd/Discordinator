@@ -7,7 +7,7 @@ import { render } from 'ink';
 import { Onboarding } from '../src/operator/onboarding.js';
 import { onboardingPhase } from '../src/operator/onboarding-store.js';
 import { readOperatorConfig, writeOperatorConfig } from '../src/operator/config.js';
-import { discordRoutes, inScratch, withDiscord, withLocal, type LiveFake } from './onboarding-fakes.js';
+import { discordRoutes, inScratch, withDiscord, withLocal, type LiveFake, liveFake } from './onboarding-fakes.js';
 
 class Keyboard extends PassThrough {
     isTTY = true;
@@ -114,7 +114,7 @@ async function finishVerify(live: LiveFake): Promise<number> {
 
 export async function checkOnboardingUi(directory: string): Promise<void> {
     await inScratch(directory, async () => {
-        const live: LiveFake = { subscriptions: 0, online: false, probes: [] };
+        const live = liveFake();
         await withLocal(live, async () => {
             await withDiscord(discordRoutes(), () => withToken('', () => wizard(firstSteps)));
             assert.equal(await finishVerify(live), 1, 'Check again finishes setup once everything works');

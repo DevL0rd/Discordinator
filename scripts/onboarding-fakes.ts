@@ -1,4 +1,7 @@
-import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
+import { existsSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { statusFile } from '../src/operator/status-file.js';
+import { watchFile } from '../src/operator/file-watch.js';
+import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { join, resolve } from 'node:path';
 
 interface Handler {
@@ -88,31 +91,50 @@ export interface LiveFake {
     probes: string[];
 }
 
-async function liveStatus(live: LiveFake): Promise<Response> {
-    const saved = await readFile(join('.data', 'operator.json'), 'utf8').catch(() => '');
+function statusOf(live: LiveFake) {
+    const saved = existsSync(join('.data', 'operator.json')) ? readFileSync(join('.data', 'operator.json'), 'utf8') : '';
     const config = (saved ? JSON.parse(saved) : {}) as { mode?: string; enabled?: boolean; updatedAt?: string };
     const operator = {
         mode: live.mode ?? (config.enabled ? config.mode : 'off'),
         appliedConfigAt: config.updatedAt ?? null,
         blockedReason: live.blockedReason ?? null,
     };
-    const text = JSON.stringify({ gateway: 'ready', operator, events: { subscriptions: live.subscriptions } });
-    return Response.json({ jsonrpc: '2.0', id: 1, result: { content: [{ type: 'text', text }] } });
+    return { gateway: 'ready', operator, events: { subscriptions: live.subscriptions } };
+}
+
+export function syncLive(live: LiveFake): void {
+    if (!existsSync('.data')) return;
+    if (!live.online) {
+        rmSync(join('.data', 'runtime.lock'), { force: true });
+        return;
+    }
+    writeFileSync(join('.data', 'runtime.lock'), String(process.pid));
+    writeFileSync(statusFile, JSON.stringify(statusOf(live)));
+}
+
+export function liveFake(): LiveFake {
+    const state: LiveFake = { subscriptions: 0, online: false, probes: [] };
+    return new Proxy(state, {
+        set(target, key, value) {
+            Reflect.set(target, key, value);
+            syncLive(target);
+            return true;
+        },
+    });
 }
 
 export async function withLocal<T>(live: LiveFake, run: () => Promise<T>): Promise<T> {
     const previous = globalThis.fetch;
     globalThis.fetch = ((input: string | URL) => {
-        const url = String(input);
-        if (!url.startsWith('http://127.0.0.1:')) {
-            live.probes.push(url);
-            return Promise.resolve(new Response('', { status: 401 }));
-        }
-        return live.online ? liveStatus(live) : Promise.reject(new Error('offline'));
+        live.probes.push(String(input));
+        return Promise.resolve(new Response('', { status: 401 }));
     }) as Fetch;
+    syncLive(live);
+    const stop = watchFile(join('.data', 'operator.json'), () => syncLive(live));
     try {
         return await run();
     } finally {
+        stop();
         globalThis.fetch = previous;
     }
 }

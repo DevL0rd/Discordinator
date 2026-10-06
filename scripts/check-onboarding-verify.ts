@@ -4,17 +4,18 @@ import { savedPublicUrl, verifyChecks, verifyLines } from '../src/operator/onboa
 import { readOperatorConfig, writeOperatorConfig, type OperatingMode } from '../src/operator/config.js';
 import { presenceFile } from '../src/operator/presence.js';
 import { assistants, chatgptHowTo } from '../src/operator/ui/status.js';
-import { inScratch, withLocal, type LiveFake } from './onboarding-fakes.js';
+import { inScratch, withLocal, type LiveFake, liveFake, syncLive } from './onboarding-fakes.js';
 
 const summary = (checks: { label: string; ok: boolean }[]) => checks.map((check) => `${check.ok ? '+' : '-'} ${check.label}`);
 
-async function select(mode: OperatingMode, enabled: boolean): Promise<void> {
+async function select(live: LiveFake, mode: OperatingMode, enabled: boolean): Promise<void> {
     await writeOperatorConfig({ ...(await readOperatorConfig()), mode, enabled });
+    syncLive(live);
 }
 
 async function checkRunning(live: LiveFake): Promise<void> {
     assert.equal(await savedPublicUrl(), 'https:///mcp', 'without a domain the address is incomplete');
-    await select('manual-mcp', false);
+    await select(live, 'manual-mcp', false);
     const offline = await verifyChecks();
     assert.deepEqual(summary(offline), ['- Discordinator is running'], 'another MCP app only needs Discordinator running');
     const lines = verifyLines(offline);
@@ -28,7 +29,7 @@ async function checkRunning(live: LiveFake): Promise<void> {
 async function checkChatgpt(live: LiveFake): Promise<void> {
     await writeFile('.env', 'DISCORDINATOR_RESOURCE_URL="https://bot.example.com/mcp"\n');
     assert.equal(await savedPublicUrl(), 'https://bot.example.com/mcp');
-    await select('chatgpt-poll', false);
+    await select(live, 'chatgpt-poll', false);
     const waiting = await verifyChecks();
     assert.deepEqual(summary(waiting), [
         '+ Discordinator is running',
@@ -42,7 +43,7 @@ async function checkChatgpt(live: LiveFake): Promise<void> {
     assert.equal(waiting[3]!.hint, 'Choose Finish to start it.');
     await writeFile(presenceFile, JSON.stringify({ remoteAt: '2026-01-01T00:00:00.000Z', subscriptions: 1 }));
     live.subscriptions = 1;
-    await select('chatgpt-events', true);
+    await select(live, 'chatgpt-events', true);
     assert.ok(
         (await verifyChecks()).every((check) => check.ok),
         'connected, waking up and answering',
@@ -61,7 +62,7 @@ async function checkChatgpt(live: LiveFake): Promise<void> {
 
 export async function checkOnboardingVerify(directory: string): Promise<void> {
     await inScratch(directory, async () => {
-        const live: LiveFake = { subscriptions: 0, online: false, probes: [] };
+        const live = liveFake();
         await withLocal(live, async () => {
             await checkRunning(live);
             await checkChatgpt(live);

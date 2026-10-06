@@ -31,14 +31,18 @@ export async function waitForFile(path: string, timeoutMs: number): Promise<bool
             () => true,
             () => false,
         );
-    if (await exists()) return true;
     return new Promise((resolve) => {
+        let settled = false;
         const finish = (found: boolean) => {
+            if (settled) return;
+            settled = true;
             clearTimeout(timer);
             stop();
             resolve(found);
         };
-        const stop = watchFile(path, () => void exists().then((found) => found && finish(true)));
+        const check = () => void exists().then((found) => found && finish(true));
+        const stop = watchFile(path, check);
         const timer = setTimeout(() => finish(false), timeoutMs);
+        check();
     });
 }

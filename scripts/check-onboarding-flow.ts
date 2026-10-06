@@ -6,7 +6,7 @@ import type { State } from '../src/operator/onboarding-copy.js';
 import { onboardingPhase } from '../src/operator/onboarding-store.js';
 import { readOperatorConfig } from '../src/operator/config.js';
 import { presenceFile } from '../src/operator/presence.js';
-import { discordRoutes, fake, inScratch, withDiscord, withLocal, type LiveFake } from './onboarding-fakes.js';
+import { discordRoutes, fake, inScratch, withDiscord, withLocal, type LiveFake, liveFake } from './onboarding-fakes.js';
 
 const start: State = { step: 'welcome', input: '', selected: 0, draft: { token: '', ownerId: '', channelId: '' } };
 const press = (state: State, selected = 0, input = state.input) => advance({ ...state, selected, input }, () => undefined);
@@ -160,7 +160,7 @@ export async function checkOnboardingFlow(directory: string): Promise<void> {
     checkResume();
     assert.deepEqual(await press({ ...start, step: 'loading' }), { ...start, step: 'loading' }, 'loading has no action');
     await inScratch(directory, async () => {
-        const live: LiveFake = { subscriptions: 0, online: false, probes: [] };
+        const live = liveFake();
         await withLocal(live, async () => {
             const ai = await saveDiscordStep(await discord());
             await manualResponder(ai, live);
@@ -168,5 +168,5 @@ export async function checkOnboardingFlow(directory: string): Promise<void> {
         });
         assert.deepEqual(live.probes, ['https://bot.example.com/mcp'], 'the domain is probed once during review');
     });
-    await inScratch(directory, () => withLocal({ subscriptions: 0, online: false, probes: [] }, localResponder));
+    await inScratch(directory, () => withLocal(liveFake(), localResponder));
 }
