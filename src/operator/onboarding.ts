@@ -1,11 +1,11 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { useVerify, verifyChecks, verifyLines, type Check } from './onboarding-verify.js';
+import { savedPublicUrl, useVerify, verifyChecks, verifyLines, type Check } from './onboarding-verify.js';
 import { inviteCopy, inviteLink, inviteReady, ownerFrom, ownerMatches } from './onboarding-invite.js';
-import { openInBrowser } from './web-connectors.js';
+import { markWebAdded, openInBrowser } from './web-connectors.js';
 import { passwordError } from '../oauth/provision.js';
 import { useApp, useInput, useStdout } from 'ink';
 import { installService } from './install.js';
-import { connectApp } from './connections.js';
+import { appNames, connectApp, responderApps } from './connections.js';
 import {
     discoverDiscord,
     savePassword,
@@ -38,7 +38,7 @@ type Step =
     | 'password'
     | 'password-confirm'
     | 'ai-review'
-    | 'plugin'
+    | 'connect'
     | 'service'
     | 'verify';
 interface State {
@@ -72,7 +72,7 @@ const stageOf: Record<Step, number> = {
     password: 0,
     'password-confirm': 0,
     'ai-review': 1,
-    plugin: 2,
+    connect: 2,
     service: 3,
     verify: 3,
 };
@@ -85,7 +85,7 @@ function buttonsFor(state: State): string[] {
         invite: inviteReady(state.discovery) ? ['Continue'] : ['Open invite', 'Check again'],
         'discord-review': state.identity ? ['Save', 'Back'] : ['Verify'],
         'ai-review': ['Save', 'Back'],
-        plugin: state.error ? ['Retry', 'Skip'] : ['Continue'],
+        connect: state.error ? ['Retry', 'Skip'] : ['Continue'],
         service: ['Skip', 'Install service', 'Back'],
         verify: state.checks?.every((check) => check.ok) ? ['Finish'] : ['Check again'],
     };
@@ -160,9 +160,9 @@ function copy(state: State): { title: string; body: string[] } {
             title: 'Ready to save',
             body: [`${assistants[state.choice!].name}`, state.evidence ?? '', 'It is saved paused. You start it from the dashboard.'],
         }),
-        plugin: () => ({
-            title: 'Connect Claude',
-            body: ['Discordinator installs its Claude Code plugin so your Claude session can hear Discord.'],
+        connect: () => ({
+            title: `Connect ${appNames[responderApps[state.choice!] ?? 'claude-code']}`,
+            body: ['Discordinator connects it on this computer so it gets the Discord tools. Nothing to sign in to.'],
         }),
         service: () => ({
             title: 'Keep Discordinator running',
@@ -214,7 +214,7 @@ async function discordReview(state: State, button: string | undefined): Promise<
 async function aiReview(state: State, button: string | undefined): Promise<State> {
     if (button === 'Back') return back(state);
     await saveAi(state.choice!, state.endpoint);
-    return { ...fresh(state), step: state.choice === 'claude-session' ? 'plugin' : 'service' };
+    return { ...fresh(state), step: responderApps[state.choice!] ? 'connect' : 'service' };
 }
 
 function channel(state: State): State {
@@ -267,7 +267,7 @@ const steps: Partial<Record<Step, Advance>> = {
         return { ...fresh(state), step: 'ai', password: undefined, notice: 'Password saved.' };
     },
     'ai-review': aiReview,
-    plugin: (state, button) => (button === 'Skip' || !state.error ? { ...fresh(state), step: 'service' } : state),
+    connect: (state, button) => (button === 'Skip' || !state.error ? { ...fresh(state), step: 'service' } : state),
     service: (state, button) => finish(state, button),
     verify: (state, _button, onComplete) => verify(state, onComplete),
 };
@@ -292,6 +292,7 @@ async function verify(state: State, onComplete: () => void): Promise<State> {
     const checks = await verifyChecks(state.choice);
     if (!checks.every((check) => check.ok))
         return { ...state, checks, error: 'Not everything is connected yet. Follow the next step shown above.' };
+    if (state.choice?.startsWith('chatgpt-')) await markWebAdded('chatgpt', await savedPublicUrl());
     await writePhase('complete');
     onComplete();
     return { ...state, checks };
@@ -314,15 +315,15 @@ function usePhase(setState: Setter): void {
     }, [setState]);
 }
 
-function usePluginInstall(state: State, setState: Setter): void {
-    const pending = state.step === 'plugin' && !state.busy && !state.error && !state.notice;
+function useLocalConnect(state: State, setState: Setter): void {
+    const app = state.step === 'connect' && !state.busy && !state.error && !state.notice ? responderApps[state.choice!] : undefined;
     useEffect(() => {
-        if (!pending) return;
-        setState((current) => ({ ...current, busy: 'Connecting Claude Code…' }));
-        void connectApp('claude-code')
+        if (!app) return;
+        setState((current) => ({ ...current, busy: `Connecting ${appNames[app]}…` }));
+        void connectApp(app)
             .then((notice) => setState((current) => ({ ...current, busy: undefined, notice })))
             .catch((error: unknown) => setState((current) => ({ ...current, busy: undefined, error: message(error, 'Install failed.') })));
-    }, [pending, setState]);
+    }, [app, setState]);
 }
 
 function useTick(active: boolean): number {
@@ -371,7 +372,7 @@ export function Onboarding({ onComplete }: { onComplete: () => void }) {
             );
     };
     usePhase(setState);
-    usePluginInstall(state, setState);
+    useLocalConnect(state, setState);
     const setChecks = useCallback((checks: Check[]) => setState((current) => ({ ...current, checks })), []);
     useVerify(state.step === 'verify', state.choice, setChecks);
     useSgrMouse((code, x, y) => {

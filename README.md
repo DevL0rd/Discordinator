@@ -155,15 +155,19 @@ Saving a new choice switches to it, connects its app if needed, and waits for an
 <table>
   <tr>
     <td>⌨️ <b>Claude Code</b></td>
-    <td>With a public address, one Discordinator connector in claude.ai gives Claude the Discord tools on the web, phone, Desktop and Claude Code; connecting opens claude.ai with it filled in. Without one, a local plugin gives every Claude Code session the tools with nothing to sign in to.</td>
+    <td>Choosing it as the responder installs a local plugin that gives every Claude Code session, including Claude Desktop, the Discord tools. No browser, no sign-in.</td>
   </tr>
   <tr>
     <td>🧩 <b>Codex</b></td>
-    <td>One click connects Codex to Discordinator on this computer. No browser, no sign-in.</td>
+    <td>Choosing it as the responder connects Codex to Discordinator on this computer. No browser, no sign-in.</td>
   </tr>
   <tr>
-    <td>💬 <b>ChatGPT</b></td>
-    <td>Add your <code>https://your-domain/mcp</code> address in ChatGPT, sign in with your Discordinator password, then ask a chat to turn on automatic wake-ups.</td>
+    <td>🌐 <b>Claude (web)</b></td>
+    <td>An optional connector on the Apps page that gives claude.ai and the Claude phone app the Discord tools through your public address.</td>
+  </tr>
+  <tr>
+    <td>💬 <b>ChatGPT (web)</b></td>
+    <td>An optional connector on the Apps page that gives ChatGPT on the web and phone the Discord tools through your public address. ChatGPT - Dot uses it for wake-ups.</td>
   </tr>
 </table>
 
@@ -198,19 +202,19 @@ Connecting only ever touches the entry named <code>discordinator</code>. Your ot
 
 ## 📚 Docs
 
-| Need | Read |
-| :-- | :-- |
-| Start to first reply | [Getting started](docs/getting-started.md) |
-| The setup app and responders | [Operator](docs/operator.md) |
-| Every setting and file | [Configuration](docs/configuration.md) |
-| Discord bot, intents and service | [Setup and permissions](docs/setup.md) |
-| People, places, approvals | [Security](docs/security.md) |
-| Sign-in, endpoints and apps | [Connection](docs/connection.md) · [OAuth](docs/oauth.md) |
-| Every tool and its grant | [Capabilities](docs/capabilities.md) |
-| Wake-ups and recent context | [Events and context](docs/mcp-events.md) |
-| Files and interactive controls | [Files and controls](docs/media-and-controls.md) |
-| How it fits together | [Architecture](docs/architecture.md) |
-| Checks and CI | [Validation](docs/validation.md) · [Quality](docs/quality.md) |
+| Need                             | Read                                                          |
+| :------------------------------- | :------------------------------------------------------------ |
+| Start to first reply             | [Getting started](docs/getting-started.md)                    |
+| The setup app and responders     | [Operator](docs/operator.md)                                  |
+| Every setting and file           | [Configuration](docs/configuration.md)                        |
+| Discord bot, intents and service | [Setup and permissions](docs/setup.md)                        |
+| People, places, approvals        | [Security](docs/security.md)                                  |
+| Sign-in, endpoints and apps      | [Connection](docs/connection.md) · [OAuth](docs/oauth.md)     |
+| Every tool and its grant         | [Capabilities](docs/capabilities.md)                          |
+| Wake-ups and recent context      | [Events and context](docs/mcp-events.md)                      |
+| Files and interactive controls   | [Files and controls](docs/media-and-controls.md)              |
+| How it fits together             | [Architecture](docs/architecture.md)                          |
+| Checks and CI                    | [Validation](docs/validation.md) · [Quality](docs/quality.md) |
 
 ---
 

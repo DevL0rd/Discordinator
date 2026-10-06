@@ -4,8 +4,7 @@ import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { appState, connectApp, disconnectApp, type CodexDeps } from '../src/operator/connections.js';
 import { withoutServers } from '../src/operator/codex-config.js';
-import { claudeConnectorLink, connectorStatus } from '../src/operator/web-connectors.js';
-import { connectorState, parseMcpList } from '../src/operator/claude-connector.js';
+import { connectorStatus } from '../src/operator/web-connectors.js';
 
 const endpoint = { base: 'http://127.0.0.1:8788', key: 'k'.repeat(43) };
 
@@ -60,32 +59,12 @@ function checkTables(): void {
 }
 
 export async function checkApps(): Promise<void> {
-    const link = new URL(claudeConnectorLink('https://bot.example.com/mcp'));
-    assert.equal(link.searchParams.get('connectorUrl'), 'https://bot.example.com/mcp');
-    assert.equal(link.searchParams.get('modal'), 'add-custom-connector');
     assert.equal(connectorStatus(undefined, 'https://a.example/mcp').current, false);
     assert.equal(connectorStatus('https://a.example/mcp', 'https://a.example/mcp').current, true);
     assert.match(
         connectorStatus('https://a.example/mcp', 'https://b.example/mcp').text,
         /changed/,
         'a new public address flags web connectors',
-    );
-    const listed = parseMcpList(
-        [
-            'Checking MCP server health…',
-            '',
-            'claude.ai Discordinator: https://a.example/mcp - ✔ Connected',
-            'claude.ai Docs: https://docs.example/mcp - ! Needs authentication',
-            'discordinator: https://a.example/mcp (HTTP) - ✔ Connected',
-        ].join('\n'),
-    );
-    assert.equal(listed.length, 3);
-    assert.equal(connectorState(listed, 'https://a.example/mcp'), 'connected');
-    assert.equal(connectorState(listed, 'https://b.example/mcp'), 'moved', 'an old connector address is reported');
-    assert.equal(connectorState(listed.slice(1), 'https://a.example/mcp'), 'missing', 'a local entry is not the claude.ai connector');
-    assert.equal(
-        connectorState(parseMcpList('claude.ai Discordinator: https://a.example/mcp - ! Needs authentication'), 'https://a.example/mcp'),
-        'needs-sign-in',
     );
     const directory = await mkdtemp(join(tmpdir(), 'discordinator-apps-'));
     try {

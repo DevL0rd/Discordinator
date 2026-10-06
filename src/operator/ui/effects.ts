@@ -6,7 +6,7 @@ import { observations } from './observe.js';
 import { listServers } from '../servers.js';
 import { scalar } from '../../core/text.js';
 import { publicDomain } from '../connection-domain.js';
-import { markChatgptAdded, webConnectors } from '../web-connectors.js';
+import { claudeConnectorLink, markWebAdded, openInBrowser, webConnectors, type WebId } from '../web-connectors.js';
 import { liveSetupStatus } from '../setup-model.js';
 import { runtimePresent } from '../status.js';
 import type { ActionId } from './model.js';
@@ -69,7 +69,7 @@ async function activate(store: Store, enabled: boolean): Promise<void> {
 
 const appNotes: Record<AppId, string> = {
     'claude-code':
-        'With a public address, Claude uses one Discordinator connector in claude.ai on the web, phone, Desktop and Claude Code. Without one, a local plugin gives Claude Code the Discord tools with no sign-in.',
+        'Installs a local plugin that gives every Claude Code session, including Claude Desktop, the Discord tools with no sign-in.',
     codex: 'Points Codex at Discordinator on this computer with its private local key, so there is nothing to sign in to.',
 };
 
@@ -84,35 +84,55 @@ function appSheet(store: Store, id: AppId): void {
         [`Status: ${state?.status ?? 'Checking…'}. ${statusHint[state?.status ?? ''] ?? ''}`.trim(), appNotes[id]],
         [
             { label: connected ? 'Repair' : 'Connect', tone: 'good', run: connect },
-            ...(id === 'claude-code'
-                ? [{ label: 'Open in Claude Desktop', tone: 'info' as const, run: () => run(store, 'open-session') }]
-                : []),
             ...(connected ? [{ label: 'Disconnect', tone: 'bad' as const, run: disconnect }] : []),
             { label: 'Cancel', tone: 'idle', run: () => close(store) },
         ],
     );
 }
 
-function chatgptSheet(store: Store): void {
+const webGuides: Record<WebId, { title: string; steps: (url: string) => string[] }> = {
+    claude: {
+        title: 'Claude on the web and phone',
+        steps: (url) => [
+            `Open claude.ai, add a custom connector named Discordinator with ${url}, and sign in with your Discordinator password.`,
+            'Claude on the web, the phone app and Desktop chats can then use the Discord tools when you ask.',
+        ],
+    },
+    chatgpt: {
+        title: 'ChatGPT on the web and phone',
+        steps: (url) => [
+            `In ChatGPT open Settings, Apps & Connectors, turn on Developer mode, and create a connector named Discordinator with ${url}. Sign in once with your Discordinator password.`,
+        ],
+    },
+};
+
+function webSheet(store: Store, id: WebId, responder = false): void {
     const domain = publicDomain(store.get().snapshot.documents.environment.DISCORDINATOR_RESOURCE_URL);
     if (!domain) return store.set((state) => logged(state, 'Set your public domain on the Apps page first.', 'warn'));
     const url = `https://${domain}/mcp`;
-    confirm(
-        store,
-        'ChatGPT on the web and mobile',
-        [
-            `In ChatGPT open Settings, Apps & Connectors, turn on Developer mode, and create a connector named Discordinator with ${url}. Sign in once.`,
-            'Choose ChatGPT - Dot as the responder to have new Discord messages wake it.',
-        ],
-        [
-            {
-                label: 'I added it',
-                tone: 'good',
-                run: () => void task(store, 'Saving…', () => markChatgptAdded(url)).then(() => refresh(store, true)),
-            },
-            { label: 'Cancel', tone: 'idle', run: () => close(store) },
-        ],
-    );
+    const save = () => void task(store, 'Saving…', () => markWebAdded(id, url)).then(() => refresh(store, true));
+    const steps = [
+        ...webGuides[id].steps(url),
+        ...(responder ? ['Then ask a ChatGPT chat to turn on automatic Discord wake-ups so ChatGPT - Dot answers new messages.'] : []),
+    ];
+    confirm(store, webGuides[id].title, steps, [
+        ...(id === 'claude'
+            ? [
+                  {
+                      label: 'Open claude.ai',
+                      tone: 'info' as const,
+                      run: () =>
+                          void task(
+                              store,
+                              'Opening claude.ai…',
+                              async () => (await openInBrowser(claudeConnectorLink(url)), 'Opened claude.ai with Discordinator filled in.'),
+                          ),
+                  },
+              ]
+            : []),
+        { label: 'I added it', tone: 'good', run: save },
+        { label: 'Cancel', tone: 'idle', run: () => close(store) },
+    ]);
 }
 
 function service(store: Store, install: boolean): void {
@@ -189,7 +209,8 @@ export function run(store: Store, action: ActionId): void {
             task(store, 'Opening Claude Desktop…', () => openConversation(String(store.get().snapshot.documents.operator.workspace))),
         'app-claude-code': () => appSheet(store, 'claude-code'),
         'app-codex': () => appSheet(store, 'codex'),
-        'web-chatgpt': () => chatgptSheet(store),
+        'web-claude': () => webSheet(store, 'claude'),
+        'web-chatgpt': () => webSheet(store, 'chatgpt'),
         'sign-in-password': () => passwordSheet(store, 0),
         'install-service': () => service(store, true),
         'restart-service': () => service(store, false),
@@ -205,7 +226,9 @@ async function commit(store: Store): Promise<boolean> {
         return result.message;
     });
     if (!saved) return false;
-    await refresh(store, store.get().snapshot.documents.operator.mode !== before);
+    const mode = store.get().snapshot.documents.operator.mode;
+    await refresh(store, mode !== before);
+    if (mode !== before && mode === 'chatgpt-events' && !store.get().extras.web?.chatgpt) webSheet(store, 'chatgpt', true);
     return true;
 }
 

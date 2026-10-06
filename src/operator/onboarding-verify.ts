@@ -1,7 +1,7 @@
 import { useEffect } from 'react';
 import { parseEnv } from 'node:util';
 import { readFile } from 'node:fs/promises';
-import { appNames, appState, type AppId } from './connections.js';
+import { appNames, appState, responderApps } from './connections.js';
 import { readOperatorConfig } from './config.js';
 import { publicDomain } from './connection-domain.js';
 import { watchFile } from './file-watch.js';
@@ -16,11 +16,13 @@ export interface Check {
     hint: string;
 }
 
-const apps: Partial<Record<AiChoice, AppId>> = { 'claude-session': 'claude-code', 'codex-local': 'codex' };
+export async function savedPublicUrl(): Promise<string> {
+    const environment = parseEnv(await readFile('.env', 'utf8').catch(() => ''));
+    return `https://${publicDomain(environment.DISCORDINATOR_RESOURCE_URL)}/mcp`;
+}
 
 async function chatgptChecks(choice: AiChoice, subscriptions: number): Promise<Check[]> {
-    const environment = parseEnv(await readFile('.env', 'utf8').catch(() => ''));
-    const url = `https://${publicDomain(environment.DISCORDINATOR_RESOURCE_URL)}/mcp`;
+    const url = await savedPublicUrl();
     const connected = Boolean((await readPresence()).remoteAt);
     const checks: Check[] = [
         {
@@ -43,13 +45,13 @@ export async function verifyChecks(choice?: AiChoice): Promise<Check[]> {
             hint: 'Go back and install the background service, or start Discordinator with npm start.',
         },
     ];
-    const app = apps[mode];
+    const app = responderApps[mode];
     if (app) {
         const state = await appState(app);
         checks.push({
             label: `${appNames[app]} is connected`,
             ok: state.connected,
-            hint: `${appNames[app]}: ${state.status}. Connect it from the Apps page.`,
+            hint: `${appNames[app]}: ${state.status}. Go back and connect it.`,
         });
     }
     if (mode.startsWith('chatgpt-')) checks.push(...(await chatgptChecks(mode, live?.events.subscriptions ?? 0)));

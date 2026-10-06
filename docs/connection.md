@@ -14,13 +14,13 @@ Your public domain's Host and Origin are allowed automatically. Add `DISCORDINAT
 
 For an external provider, set `DISCORDINATOR_OAUTH_SERVER=external` and configure:
 
-| Variable | Required contract |
-| :-- | :-- |
-| `DISCORDINATOR_AUTH_MODE` | `oauth` |
-| `DISCORDINATOR_RESOURCE_URL` | Exact canonical HTTPS MCP resource identifier, used as JWT audience |
-| `DISCORDINATOR_OAUTH_ISSUER` | Exact HTTPS issuer in the provider’s access tokens |
+| Variable                       | Required contract                                                                 |
+| :----------------------------- | :-------------------------------------------------------------------------------- |
+| `DISCORDINATOR_AUTH_MODE`      | `oauth`                                                                           |
+| `DISCORDINATOR_RESOURCE_URL`   | Exact canonical HTTPS MCP resource identifier, used as JWT audience               |
+| `DISCORDINATOR_OAUTH_ISSUER`   | Exact HTTPS issuer in the provider’s access tokens                                |
 | `DISCORDINATOR_OAUTH_JWKS_URL` | HTTPS signing-key endpoint chosen by the operator, never a URL taken from a token |
-| `DISCORDINATOR_OAUTH_SUBJECTS` | Comma-separated allowed operator subject IDs; empty is invalid |
+| `DISCORDINATOR_OAUTH_SUBJECTS` | Comma-separated allowed operator subject IDs; empty is invalid                    |
 
 The provider must issue signed **access JWTs** with RS256 or ES256, `exp`, `iat`, `sub`, the configured issuer/audience and a space-delimited `scope` claim containing `discordinator:control`. Signatures, expiration, issuer, audience, subject whitelist and scope are checked on every request. This resource implementation does not issue tokens or implement authorization-server endpoints; opaque-token introspection, other signature algorithms and vendor-specific scope claim names are not supported. Discord credentials are never passed through as MCP credentials.
 

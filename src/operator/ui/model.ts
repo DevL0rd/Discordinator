@@ -27,6 +27,7 @@ export type ActionId =
     | 'open-session'
     | 'app-claude-code'
     | 'app-codex'
+    | 'web-claude'
     | 'web-chatgpt'
     | 'sign-in-password'
     | 'install-service'

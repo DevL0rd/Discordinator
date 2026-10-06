@@ -6,8 +6,6 @@ import { promisify } from 'node:util';
 import { localEndpoint, type LocalEndpoint } from '../mcp/local-client.js';
 import { codexCommand, codexHome, serverBlock, withoutServers, writeCodexConfig } from './codex-config.js';
 import { installPlugin, pluginState, uninstallPlugin } from './claude-plugin.js';
-import { connectorState, connectorText, parseMcpList, publicMcpUrl, type ConnectorState } from './claude-connector.js';
-import { openClaudeConnector } from './web-connectors.js';
 
 const exec = promisify(execFile);
 const name = 'discordinator';
@@ -16,13 +14,13 @@ export type AppId = 'claude-code' | 'codex';
 export const statusHint: Record<string, string> = {
     Connected: 'Everything is set up.',
     'Not connected': 'Press Connect to set it up.',
-    'Needs sign-in': 'Press Connect, then sign in with your Discordinator password.',
     'Address changed': 'Press Connect to update it to your current public address.',
     'Needs reconnect': 'Press Repair to connect it on this computer again.',
     'Not installed': 'Install the app on this computer first.',
     'Needs a public domain': 'Set your public domain below first.',
 };
 export const appNames: Record<AppId, string> = { 'claude-code': 'Claude Code', codex: 'Codex' };
+export const responderApps: Partial<Record<string, AppId>> = { 'claude-session': 'claude-code', 'codex-local': 'codex' };
 export interface AppState {
     id: AppId;
     cli: boolean;
@@ -57,25 +55,16 @@ async function codexState(deps: CodexDeps): Promise<AppState> {
     return { id: 'codex', cli: true, connected: local, status: local ? 'Connected' : 'Needs reconnect' };
 }
 
-async function claudeConnector(runner: Runner, url: string): Promise<ConnectorState> {
-    return connectorState(parseMcpList(await runner('claude', ['mcp', 'list'])), url);
-}
-
-async function claudeState(runner: Runner): Promise<AppState> {
+async function claudeState(): Promise<AppState> {
     const plugin = await pluginState();
     if (!plugin.cli) return { id: 'claude-code', cli: false, connected: false, status: 'Not installed' };
-    const url = await publicMcpUrl();
-    if (url) {
-        const state = await claudeConnector(runner, url);
-        return { id: 'claude-code', cli: true, connected: state === 'connected', status: connectorText[state] };
-    }
     const connected = plugin.installed && plugin.enabled;
     return { id: 'claude-code', cli: true, connected, status: connected ? 'Connected' : 'Not connected' };
 }
 
 export async function appState(id: AppId, deps = codexDeps): Promise<AppState> {
     try {
-        return await (id === 'codex' ? codexState(deps) : claudeState(deps.runner));
+        return await (id === 'codex' ? codexState(deps) : claudeState());
     } catch {
         return { id, cli: false, connected: false, status: 'Not installed' };
     }
@@ -97,19 +86,9 @@ async function removeClaudeEntries(runner: Runner): Promise<void> {
 }
 
 async function connectClaude(runner: Runner): Promise<string> {
-    const url = await publicMcpUrl();
-    if (!url) {
-        const message = await installPlugin();
-        await removeClaudeEntries(runner);
-        return `${message} Every Claude Code session now has the Discord tools, no sign-in needed.`;
-    }
-    if ((await claudeConnector(runner, url)) !== 'connected') {
-        await openClaudeConnector(url);
-        return 'Opened Claude in your browser with Discordinator filled in. Add it and sign in, then connect Claude Code again to finish.';
-    }
-    if ((await pluginState()).installed) await uninstallPlugin();
+    const message = await installPlugin();
     await removeClaudeEntries(runner);
-    return 'Claude uses your claude.ai Discordinator connector on the web, phone, Desktop and Claude Code.';
+    return `${message} Every Claude Code session now has the Discord tools, no sign-in needed.`;
 }
 
 export async function connectApp(id: AppId, deps = codexDeps): Promise<string> {
@@ -120,7 +99,7 @@ export async function disconnectApp(id: AppId, deps = codexDeps): Promise<string
     if (id === 'claude-code') {
         const message = (await pluginState()).installed ? await uninstallPlugin() : 'The local Claude plugin is not installed.';
         await removeClaudeEntries(deps.runner);
-        return (await publicMcpUrl()) ? `${message} Remove Discordinator under Connectors in claude.ai to disconnect it there.` : message;
+        return message;
     }
     await writeCodexConfig(await deps.home(), (toml) => `${withoutServers(toml, stale)}\n`);
     if (await codexEntry(deps)) throw new Error('Codex still lists Discordinator. Remove it from Codex.');

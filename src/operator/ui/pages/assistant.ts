@@ -4,6 +4,7 @@ import { box, line, span, wrap, type Line, type Span } from '../canvas.js';
 import { color, glyph } from '../theme.js';
 import { actionItem, heading, note, section, settingItem } from '../items.js';
 import type { Item, View } from '../model.js';
+import type { AppId } from '../../connections.js';
 import { assistants, chatgptHowTo, operator } from '../status.js';
 
 const offered: OperatingMode[] = ['claude-session', 'codex-local', 'chatgpt-events', 'manual-mcp'];
@@ -31,9 +32,9 @@ function readiness(mode: OperatingMode, view: View): Span[] {
             ...check(view.extras.apps['claude-code']?.connected, 'Discord tools connected'),
             ...check(operator(view).session?.live, 'Live in Claude Desktop'),
         ];
+    if (mode === 'codex-local') return check(view.extras.apps.codex?.connected, 'Discord tools connected');
     if (mode === 'chatgpt-events') return check((view.observed.live?.events.subscriptions ?? 0) > 0, 'Wake-ups connected');
-    if (mode === 'manual-mcp') return [span('Connect your app from the Apps page', color.muted)];
-    return [span('One ongoing conversation that survives restarts', color.muted)];
+    return [span('Connect your app from the Apps page', color.muted)];
 }
 
 function card(mode: OperatingMode): Item {
@@ -72,9 +73,13 @@ const background = (provider: 'claude' | 'codex'): Item[] => [
     settingItem('operator.activityVisibility', 'Show tool activity in Discord'),
 ];
 
-function modeSettings(mode: OperatingMode): Item[] {
+const tools = (app: AppId, view: View): Item =>
+    actionItem(`tools-${app}`, 'Discord tools', { type: 'run', action: `app-${app}` }, view.extras.apps[app]?.status ?? 'Checking…');
+
+function modeSettings(mode: OperatingMode, view: View): Item[] {
     if (mode === 'claude-session')
         return [
+            tools('claude-code', view),
             settingItem('operator.workspace', 'Working folder'),
             settingItem('operator.backgroundOnly', 'Always run in the background'),
             actionItem(
@@ -92,6 +97,7 @@ function modeSettings(mode: OperatingMode): Item[] {
         ];
     if (mode === 'codex-local')
         return [
+            tools('codex', view),
             settingItem('operator.workspace', 'Working folder'),
             settingItem('operator.backgroundOnly', 'Always run in the background'),
             ...background('codex'),
@@ -106,6 +112,6 @@ export function assistantItems(view: View): Item[] {
     return [
         heading('who', 'Primary responder', 'Exactly one answers new Discord messages'),
         ...modes.map(card),
-        ...section('mode-settings', `${assistants[mode].name} settings`, '', modeSettings(mode)),
+        ...section('mode-settings', `${assistants[mode].name} settings`, '', modeSettings(mode, view)),
     ];
 }

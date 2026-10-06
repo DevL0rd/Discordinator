@@ -4,13 +4,13 @@ The server exposes 87 tools: six bridge/discovery tools, three context tools, se
 
 ## Bridge and discovery tools
 
-| Tool | Contract |
-| :-- | :-- |
-| `discordinator_status` | Connection state, queue epoch, scope modes and counts; no credentials or whitelist IDs |
-| `events_poll` | Cursor page of up to 25 accepted triggers; bounded 0–20-second wait; epoch/gap/drop reporting |
-| `discord_guilds_list` | Bounded joined/approved guild discovery; requires `guild.read`; optional snowflake `before` |
-| `discord_respond` | Original channel/thread/DM reply or ephemeral interaction response; needs live eventId, content and idempotencyKey |
-| `discord_dm` | DM only the captured event author; same controls, no recipient field |
+| Tool                     | Contract                                                                                                                                            |
+| :----------------------- | :-------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `discordinator_status`   | Connection state, queue epoch, scope modes and counts; no credentials or whitelist IDs                                                              |
+| `events_poll`            | Cursor page of up to 25 accepted triggers; bounded 0–20-second wait; epoch/gap/drop reporting                                                       |
+| `discord_guilds_list`    | Bounded joined/approved guild discovery; requires `guild.read`; optional snowflake `before`                                                         |
+| `discord_respond`        | Original channel/thread/DM reply or ephemeral interaction response; needs live eventId, content and idempotencyKey                                  |
+| `discord_dm`             | DM only the captured event author; same controls, no recipient field                                                                                |
 | `discord_proactive_send` | Text to an individually granted guild channel; channelId, content, idempotencyKey; requires `messages.write` and a `message.send` destination grant |
 
 All tools must pass the configured MCP access boundary: bearer/OAuth credentials. See [security](security.md). Discord REST reads require their configured scope/resource grants but do not require a Discord trigger. Context reads additionally require a live allowed trigger ID. Writes require a live whitelisted triggering event (except the separately granted proactive send). Every listed mutation additionally requires `eventId` and `idempotencyKey`. Tools marked **Confirm** return a preview when `approvalId` is absent; only a fresh same-user Discord confirmation permits execution. `approvalId` is not a credential or a way to set confirmation from MCP.
@@ -19,108 +19,108 @@ Snowflakes and permission bitfields are strings. Message text is bounded to 2,00
 
 ## Messages, reactions and polls
 
-| Tool | Scope | Inputs beyond mutation controls | Guard | Behavior |
-| :-- | :-- | :-- | :-- | :-- |
-| `discord_messages_list` | `messages.read` | `channelId`, `limit`, `before` | Read | Read a bounded page of channel history. |
-| `discord_message_get` | `messages.read` | `channelId`, `messageId` | Read | Read one message. |
-| `discord_pins_list` | `messages.read` | `channelId`, `limit`, `before` | Read | Read a bounded page of pinned messages. |
-| `discord_message_edit` | `messages.write` | `channelId`, `messageId`, `content` | Trigger | Edit a message authored by this bot. Mentions stay disabled. |
-| `discord_message_pin` | `messages.write` | `channelId`, `messageId` | Trigger | Pin a whitelisted user or bot message. |
-| `discord_message_unpin` | `messages.write` | `channelId`, `messageId` | **Confirm** | Unpin a message with confirmation. |
-| `discord_reaction_add` | `reactions.write` | `channelId`, `messageId`, `emoji` | Trigger | Add a reaction to a whitelisted user or bot message. |
-| `discord_reaction_remove_own` | `reactions.write` | `channelId`, `messageId`, `emoji` | Trigger | Remove only the bot’s own reaction. |
-| `discord_reaction_users` | `messages.read` | `channelId`, `messageId`, `emoji`, `limit`, `before` | Read | Read a bounded reaction-user page; `before` maps to Discord's `after`. |
-| `discord_poll_create` | `messages.write` | `channelId`, `poll` | Trigger | Create a poll in the originating channel. |
-| `discord_poll_end` | `messages.write` | `channelId`, `messageId` | **Confirm** | End a bot-authored poll with confirmation. |
-| `discord_poll_voters` | `messages.read` | `channelId`, `messageId`, `answerId`, `limit`, `before` | Read | Read a bounded page of voters for one answer. |
+| Tool                          | Scope             | Inputs beyond mutation controls                         | Guard       | Behavior                                                               |
+| :---------------------------- | :---------------- | :------------------------------------------------------ | :---------- | :--------------------------------------------------------------------- |
+| `discord_messages_list`       | `messages.read`   | `channelId`, `limit`, `before`                          | Read        | Read a bounded page of channel history.                                |
+| `discord_message_get`         | `messages.read`   | `channelId`, `messageId`                                | Read        | Read one message.                                                      |
+| `discord_pins_list`           | `messages.read`   | `channelId`, `limit`, `before`                          | Read        | Read a bounded page of pinned messages.                                |
+| `discord_message_edit`        | `messages.write`  | `channelId`, `messageId`, `content`                     | Trigger     | Edit a message authored by this bot. Mentions stay disabled.           |
+| `discord_message_pin`         | `messages.write`  | `channelId`, `messageId`                                | Trigger     | Pin a whitelisted user or bot message.                                 |
+| `discord_message_unpin`       | `messages.write`  | `channelId`, `messageId`                                | **Confirm** | Unpin a message with confirmation.                                     |
+| `discord_reaction_add`        | `reactions.write` | `channelId`, `messageId`, `emoji`                       | Trigger     | Add a reaction to a whitelisted user or bot message.                   |
+| `discord_reaction_remove_own` | `reactions.write` | `channelId`, `messageId`, `emoji`                       | Trigger     | Remove only the bot’s own reaction.                                    |
+| `discord_reaction_users`      | `messages.read`   | `channelId`, `messageId`, `emoji`, `limit`, `before`    | Read        | Read a bounded reaction-user page; `before` maps to Discord's `after`. |
+| `discord_poll_create`         | `messages.write`  | `channelId`, `poll`                                     | Trigger     | Create a poll in the originating channel.                              |
+| `discord_poll_end`            | `messages.write`  | `channelId`, `messageId`                                | **Confirm** | End a bot-authored poll with confirmation.                             |
+| `discord_poll_voters`         | `messages.read`   | `channelId`, `messageId`, `answerId`, `limit`, `before` | Read        | Read a bounded page of voters for one answer.                          |
 
 ## Channels and threads
 
-| Tool | Scope | Inputs beyond mutation controls | Guard | Behavior |
-| :-- | :-- | :-- | :-- | :-- |
-| `discord_channel_create` | `channels.write` | `guildId`, `name`, `type`, `parentId`, `topic` | **Confirm** | Create a text, voice, category, announcement, stage or forum channel, with confirmation. |
-| `discord_channel_edit` | `channels.write` | `channelId`, `name`, `topic`, `slowmodeSeconds`, `nsfw` | **Confirm** | Change channel name, topic, slowmode or NSFW flag, with confirmation. |
-| `discord_channel_delete` | `channels.write` | `channelId` | **Confirm** | Delete a channel or thread, with confirmation. |
-| `discord_channel_overwrite_set` | `channels.write` | `channelId`, `overwriteId`, `type`, `allow`, `deny` | **Confirm** | Set a typed member/role permission overwrite, with confirmation. |
-| `discord_channel_overwrite_delete` | `channels.write` | `channelId`, `overwriteId` | **Confirm** | Delete a permission overwrite, with confirmation. |
-| `discord_thread_create` | `threads.write` | `channelId`, `name`, `autoArchiveMinutes` | Trigger | Start a public thread from the captured triggering message. |
-| `discord_forum_post_create` | `threads.write` | `channelId`, `name`, `content`, `autoArchiveMinutes` | Trigger | Create a forum post in the originating forum channel. |
-| `discord_thread_edit` | `threads.write` | `channelId`, `archived`, `locked`, `name` | **Confirm** | Archive, reopen, lock or rename a thread, with confirmation. |
-| `discord_thread_join` | `threads.write` | `channelId` | Trigger | Join an approved thread as the bot. |
-| `discord_thread_leave` | `threads.write` | `channelId` | Trigger | Leave an approved thread as the bot. |
-| `discord_thread_member_add` | `threads.write` | `channelId`, `userId` | **Confirm** | Add a whitelisted user to a thread, with confirmation. |
-| `discord_thread_member_remove` | `threads.write` | `channelId`, `userId` | **Confirm** | Remove a thread member, with confirmation. |
+| Tool                               | Scope            | Inputs beyond mutation controls                         | Guard       | Behavior                                                                                 |
+| :--------------------------------- | :--------------- | :------------------------------------------------------ | :---------- | :--------------------------------------------------------------------------------------- |
+| `discord_channel_create`           | `channels.write` | `guildId`, `name`, `type`, `parentId`, `topic`          | **Confirm** | Create a text, voice, category, announcement, stage or forum channel, with confirmation. |
+| `discord_channel_edit`             | `channels.write` | `channelId`, `name`, `topic`, `slowmodeSeconds`, `nsfw` | **Confirm** | Change channel name, topic, slowmode or NSFW flag, with confirmation.                    |
+| `discord_channel_delete`           | `channels.write` | `channelId`                                             | **Confirm** | Delete a channel or thread, with confirmation.                                           |
+| `discord_channel_overwrite_set`    | `channels.write` | `channelId`, `overwriteId`, `type`, `allow`, `deny`     | **Confirm** | Set a typed member/role permission overwrite, with confirmation.                         |
+| `discord_channel_overwrite_delete` | `channels.write` | `channelId`, `overwriteId`                              | **Confirm** | Delete a permission overwrite, with confirmation.                                        |
+| `discord_thread_create`            | `threads.write`  | `channelId`, `name`, `autoArchiveMinutes`               | Trigger     | Start a public thread from the captured triggering message.                              |
+| `discord_forum_post_create`        | `threads.write`  | `channelId`, `name`, `content`, `autoArchiveMinutes`    | Trigger     | Create a forum post in the originating forum channel.                                    |
+| `discord_thread_edit`              | `threads.write`  | `channelId`, `archived`, `locked`, `name`               | **Confirm** | Archive, reopen, lock or rename a thread, with confirmation.                             |
+| `discord_thread_join`              | `threads.write`  | `channelId`                                             | Trigger     | Join an approved thread as the bot.                                                      |
+| `discord_thread_leave`             | `threads.write`  | `channelId`                                             | Trigger     | Leave an approved thread as the bot.                                                     |
+| `discord_thread_member_add`        | `threads.write`  | `channelId`, `userId`                                   | **Confirm** | Add a whitelisted user to a thread, with confirmation.                                   |
+| `discord_thread_member_remove`     | `threads.write`  | `channelId`, `userId`                                   | **Confirm** | Remove a thread member, with confirmation.                                               |
 
 ## Members, roles, moderation and voice
 
-| Tool | Scope | Inputs beyond mutation controls | Guard | Behavior |
-| :-- | :-- | :-- | :-- | :-- |
-| `discord_message_delete` | `moderation.write` | `channelId`, `messageId` | **Confirm** | Delete one message after explicit Discord confirmation. |
-| `discord_messages_bulk_delete` | `moderation.write` | `channelId`, `messageIds` | **Confirm** | Delete 2–100 messages newer than 14 days, with confirmation. |
-| `discord_member_get` | `members.read` | `guildId`, `userId` | Read | Read one member and their role IDs. |
-| `discord_members_list` | `members.read` | `guildId`, `limit`, `before` | Read | Read a bounded member page; Server Members intent is required. |
-| `discord_member_nickname` | `members.write` | `guildId`, `userId`, `nickname` | **Confirm** | Change a member nickname, with confirmation. |
-| `discord_member_timeout` | `moderation.write` | `guildId`, `userId`, `durationSeconds`, `reason` | **Confirm** | Set or clear a member timeout, with confirmation. Discord hierarchy applies. |
-| `discord_member_kick` | `moderation.write` | `guildId`, `userId`, `reason` | **Confirm** | Kick a member, with confirmation. No automatic DM is sent. |
-| `discord_member_ban` | `moderation.write` | `guildId`, `userId`, `deleteMessageSeconds`, `reason` | **Confirm** | Ban a member, optionally delete up to seven days of messages, with confirmation. |
-| `discord_member_unban` | `moderation.write` | `guildId`, `userId`, `reason` | **Confirm** | Remove a guild ban, with confirmation. |
-| `discord_bans_list` | `members.read` | `guildId`, `limit`, `before` | Read | Read a bounded list of bans. |
-| `discord_roles_list` | `roles.read` | `guildId` | Read | Read guild roles and permission bitfields. |
-| `discord_role_create` | `roles.write` | `guildId`, `name`, `permissions`, `color`, `hoist`, `mentionable` | **Confirm** | Create a role, including explicit permission bits, with confirmation. |
-| `discord_role_edit` | `roles.write` | `guildId`, `roleId`, `name`, `permissions`, `color`, `hoist`, `mentionable` | **Confirm** | Edit a role or its permissions, with confirmation. |
-| `discord_role_delete` | `roles.write` | `guildId`, `roleId` | **Confirm** | Delete a role, with confirmation. |
-| `discord_role_position` | `roles.write` | `guildId`, `roleId`, `position` | **Confirm** | Move a role in the hierarchy, with confirmation. |
-| `discord_member_role_add` | `roles.write` | `guildId`, `userId`, `roleId` | **Confirm** | Assign a guild role, with confirmation. |
-| `discord_member_role_remove` | `roles.write` | `guildId`, `userId`, `roleId` | **Confirm** | Remove a member role, with confirmation. |
-| `discord_voice_member_edit` | `voice.write` | `guildId`, `userId`, `channelId`, `mute`, `deaf` | **Confirm** | Move, disconnect, mute or deafen a member, with confirmation; no audio capture/playback. |
+| Tool                           | Scope              | Inputs beyond mutation controls                                             | Guard       | Behavior                                                                                 |
+| :----------------------------- | :----------------- | :-------------------------------------------------------------------------- | :---------- | :--------------------------------------------------------------------------------------- |
+| `discord_message_delete`       | `moderation.write` | `channelId`, `messageId`                                                    | **Confirm** | Delete one message after explicit Discord confirmation.                                  |
+| `discord_messages_bulk_delete` | `moderation.write` | `channelId`, `messageIds`                                                   | **Confirm** | Delete 2–100 messages newer than 14 days, with confirmation.                             |
+| `discord_member_get`           | `members.read`     | `guildId`, `userId`                                                         | Read        | Read one member and their role IDs.                                                      |
+| `discord_members_list`         | `members.read`     | `guildId`, `limit`, `before`                                                | Read        | Read a bounded member page; Server Members intent is required.                           |
+| `discord_member_nickname`      | `members.write`    | `guildId`, `userId`, `nickname`                                             | **Confirm** | Change a member nickname, with confirmation.                                             |
+| `discord_member_timeout`       | `moderation.write` | `guildId`, `userId`, `durationSeconds`, `reason`                            | **Confirm** | Set or clear a member timeout, with confirmation. Discord hierarchy applies.             |
+| `discord_member_kick`          | `moderation.write` | `guildId`, `userId`, `reason`                                               | **Confirm** | Kick a member, with confirmation. No automatic DM is sent.                               |
+| `discord_member_ban`           | `moderation.write` | `guildId`, `userId`, `deleteMessageSeconds`, `reason`                       | **Confirm** | Ban a member, optionally delete up to seven days of messages, with confirmation.         |
+| `discord_member_unban`         | `moderation.write` | `guildId`, `userId`, `reason`                                               | **Confirm** | Remove a guild ban, with confirmation.                                                   |
+| `discord_bans_list`            | `members.read`     | `guildId`, `limit`, `before`                                                | Read        | Read a bounded list of bans.                                                             |
+| `discord_roles_list`           | `roles.read`       | `guildId`                                                                   | Read        | Read guild roles and permission bitfields.                                               |
+| `discord_role_create`          | `roles.write`      | `guildId`, `name`, `permissions`, `color`, `hoist`, `mentionable`           | **Confirm** | Create a role, including explicit permission bits, with confirmation.                    |
+| `discord_role_edit`            | `roles.write`      | `guildId`, `roleId`, `name`, `permissions`, `color`, `hoist`, `mentionable` | **Confirm** | Edit a role or its permissions, with confirmation.                                       |
+| `discord_role_delete`          | `roles.write`      | `guildId`, `roleId`                                                         | **Confirm** | Delete a role, with confirmation.                                                        |
+| `discord_role_position`        | `roles.write`      | `guildId`, `roleId`, `position`                                             | **Confirm** | Move a role in the hierarchy, with confirmation.                                         |
+| `discord_member_role_add`      | `roles.write`      | `guildId`, `userId`, `roleId`                                               | **Confirm** | Assign a guild role, with confirmation.                                                  |
+| `discord_member_role_remove`   | `roles.write`      | `guildId`, `userId`, `roleId`                                               | **Confirm** | Remove a member role, with confirmation.                                                 |
+| `discord_voice_member_edit`    | `voice.write`      | `guildId`, `userId`, `channelId`, `mute`, `deaf`                            | **Confirm** | Move, disconnect, mute or deafen a member, with confirmation; no audio capture/playback. |
 
 ## Guild administration, commands, invites and discovery
 
-| Tool | Scope | Inputs beyond mutation controls | Guard | Behavior |
-| :-- | :-- | :-- | :-- | :-- |
-| `discord_channels_list` | `guild.read` | `guildId` | Read | List approved channels in a guild. |
-| `discord_channel_get` | `guild.read` | `channelId` | Read | Read channel metadata. |
-| `discord_threads_active` | `guild.read` | `guildId` | Read | List approved active guild threads. |
-| `discord_threads_archived` | `guild.read` | `channelId`, `limit`, `before` | Read | Read a bounded page of public archived threads. |
-| `discord_guild_get` | `guild.read` | `guildId` | Read | Read guild metadata and approximate counts. |
-| `discord_guild_edit` | `guild.write` | `guildId`, `name`, `description`, `verificationLevel` | **Confirm** | Change guild name, description or verification level, with confirmation. |
-| `discord_audit_log` | `audit.read` | `guildId`, `limit`, `before`, `actionType` | Read | Read a bounded page of guild audit entries. |
-| `discord_invites_list` | `invites.read` | `channelId` | Read | Read invites for the approved channel. Invite codes are access-bearing data. |
-| `discord_invite_create` | `invites.write` | `channelId`, `maxAgeSeconds`, `maxUses`, `temporary` | **Confirm** | Create a bounded channel invite, with confirmation. This is not a bot installation invite. |
-| `discord_invite_delete` | `invites.write` | `channelId`, `code` | **Confirm** | Revoke an invite belonging to the specified approved channel, with confirmation. |
-| `discord_command_register` | `commands.write` | `guildId` | **Confirm** | Register /discordinator with a text option in this guild, with confirmation. No global replacement. |
-| `discord_commands_list` | `guild.read` | `guildId` | Read | Read this bot’s guild application commands. |
-| `discord_command_delete` | `commands.write` | `guildId`, `commandId` | **Confirm** | Delete one of this bot’s guild commands, with confirmation. |
+| Tool                       | Scope            | Inputs beyond mutation controls                       | Guard       | Behavior                                                                                            |
+| :------------------------- | :--------------- | :---------------------------------------------------- | :---------- | :-------------------------------------------------------------------------------------------------- |
+| `discord_channels_list`    | `guild.read`     | `guildId`                                             | Read        | List approved channels in a guild.                                                                  |
+| `discord_channel_get`      | `guild.read`     | `channelId`                                           | Read        | Read channel metadata.                                                                              |
+| `discord_threads_active`   | `guild.read`     | `guildId`                                             | Read        | List approved active guild threads.                                                                 |
+| `discord_threads_archived` | `guild.read`     | `channelId`, `limit`, `before`                        | Read        | Read a bounded page of public archived threads.                                                     |
+| `discord_guild_get`        | `guild.read`     | `guildId`                                             | Read        | Read guild metadata and approximate counts.                                                         |
+| `discord_guild_edit`       | `guild.write`    | `guildId`, `name`, `description`, `verificationLevel` | **Confirm** | Change guild name, description or verification level, with confirmation.                            |
+| `discord_audit_log`        | `audit.read`     | `guildId`, `limit`, `before`, `actionType`            | Read        | Read a bounded page of guild audit entries.                                                         |
+| `discord_invites_list`     | `invites.read`   | `channelId`                                           | Read        | Read invites for the approved channel. Invite codes are access-bearing data.                        |
+| `discord_invite_create`    | `invites.write`  | `channelId`, `maxAgeSeconds`, `maxUses`, `temporary`  | **Confirm** | Create a bounded channel invite, with confirmation. This is not a bot installation invite.          |
+| `discord_invite_delete`    | `invites.write`  | `channelId`, `code`                                   | **Confirm** | Revoke an invite belonging to the specified approved channel, with confirmation.                    |
+| `discord_command_register` | `commands.write` | `guildId`                                             | **Confirm** | Register /discordinator with a text option in this guild, with confirmation. No global replacement. |
+| `discord_commands_list`    | `guild.read`     | `guildId`                                             | Read        | Read this bot’s guild application commands.                                                         |
+| `discord_command_delete`   | `commands.write` | `guildId`, `commandId`                                | **Confirm** | Delete one of this bot’s guild commands, with confirmation.                                         |
 
 ## Scheduled events
 
-| Tool | Scope | Inputs beyond mutation controls | Guard | Behavior |
-| :-- | :-- | :-- | :-- | :-- |
-| `discord_scheduled_events_list` | `events.read` | `guildId` | Read | Read scheduled guild events. |
-| `discord_scheduled_event_create` | `events.write` | `guildId`, `name`, `description`, `start`, `end`, `location` | **Confirm** | Create an external scheduled event, with confirmation. |
-| `discord_scheduled_event_edit` | `events.write` | `guildId`, `scheduledEventId`, `name`, `description`, `status` | **Confirm** | Edit scheduled event text or transition its status, with confirmation. |
-| `discord_scheduled_event_delete` | `events.write` | `guildId`, `scheduledEventId` | **Confirm** | Delete a scheduled event, with confirmation. |
+| Tool                             | Scope          | Inputs beyond mutation controls                                | Guard       | Behavior                                                               |
+| :------------------------------- | :------------- | :------------------------------------------------------------- | :---------- | :--------------------------------------------------------------------- |
+| `discord_scheduled_events_list`  | `events.read`  | `guildId`                                                      | Read        | Read scheduled guild events.                                           |
+| `discord_scheduled_event_create` | `events.write` | `guildId`, `name`, `description`, `start`, `end`, `location`   | **Confirm** | Create an external scheduled event, with confirmation.                 |
+| `discord_scheduled_event_edit`   | `events.write` | `guildId`, `scheduledEventId`, `name`, `description`, `status` | **Confirm** | Edit scheduled event text or transition its status, with confirmation. |
+| `discord_scheduled_event_delete` | `events.write` | `guildId`, `scheduledEventId`                                  | **Confirm** | Delete a scheduled event, with confirmation.                           |
 
 ## Expressions
 
-| Tool | Scope | Inputs beyond mutation controls | Guard | Behavior |
-| :-- | :-- | :-- | :-- | :-- |
-| `discord_emojis_list` | `expressions.read` | `guildId` | Read | Read guild emoji metadata. |
-| `discord_emoji_create` | `expressions.write` | `guildId`, `name`, `image` | **Confirm** | Create an emoji from bounded image data, with confirmation; no URL fetching. |
-| `discord_emoji_rename` | `expressions.write` | `guildId`, `emojiId`, `name` | **Confirm** | Rename a guild emoji, with confirmation. |
-| `discord_emoji_delete` | `expressions.write` | `guildId`, `emojiId` | **Confirm** | Delete a guild emoji, with confirmation. |
-| `discord_stickers_list` | `expressions.read` | `guildId` | Read | Read guild sticker metadata; uploads are not implemented. |
-| `discord_sticker_edit` | `expressions.write` | `guildId`, `stickerId`, `name`, `description`, `tags` | **Confirm** | Change a guild sticker’s name, description or tags, with confirmation. |
-| `discord_sticker_delete` | `expressions.write` | `guildId`, `stickerId` | **Confirm** | Delete a guild sticker, with confirmation. |
+| Tool                     | Scope               | Inputs beyond mutation controls                       | Guard       | Behavior                                                                     |
+| :----------------------- | :------------------ | :---------------------------------------------------- | :---------- | :--------------------------------------------------------------------------- |
+| `discord_emojis_list`    | `expressions.read`  | `guildId`                                             | Read        | Read guild emoji metadata.                                                   |
+| `discord_emoji_create`   | `expressions.write` | `guildId`, `name`, `image`                            | **Confirm** | Create an emoji from bounded image data, with confirmation; no URL fetching. |
+| `discord_emoji_rename`   | `expressions.write` | `guildId`, `emojiId`, `name`                          | **Confirm** | Rename a guild emoji, with confirmation.                                     |
+| `discord_emoji_delete`   | `expressions.write` | `guildId`, `emojiId`                                  | **Confirm** | Delete a guild emoji, with confirmation.                                     |
+| `discord_stickers_list`  | `expressions.read`  | `guildId`                                             | Read        | Read guild sticker metadata; uploads are not implemented.                    |
+| `discord_sticker_edit`   | `expressions.write` | `guildId`, `stickerId`, `name`, `description`, `tags` | **Confirm** | Change a guild sticker’s name, description or tags, with confirmation.       |
+| `discord_sticker_delete` | `expressions.write` | `guildId`, `stickerId`                                | **Confirm** | Delete a guild sticker, with confirmation.                                   |
 
 ## AutoMod
 
-| Tool | Scope | Inputs beyond mutation controls | Guard | Behavior |
-| :-- | :-- | :-- | :-- | :-- |
-| `discord_automod_rules_list` | `automod.read` | `guildId` | Read | Read guild AutoMod rules. |
+| Tool                             | Scope           | Inputs beyond mutation controls                                | Guard       | Behavior                                                         |
+| :------------------------------- | :-------------- | :------------------------------------------------------------- | :---------- | :--------------------------------------------------------------- |
+| `discord_automod_rules_list`     | `automod.read`  | `guildId`                                                      | Read        | Read guild AutoMod rules.                                        |
 | `discord_automod_keyword_create` | `automod.write` | `guildId`, `name`, `keywords`, `exemptRoles`, `exemptChannels` | **Confirm** | Create an enabled keyword-block AutoMod rule, with confirmation. |
-| `discord_automod_rule_toggle` | `automod.write` | `guildId`, `ruleId`, `enabled` | **Confirm** | Enable or disable an AutoMod rule, with confirmation. |
-| `discord_automod_rule_delete` | `automod.write` | `guildId`, `ruleId` | **Confirm** | Delete an AutoMod rule, with confirmation. |
+| `discord_automod_rule_toggle`    | `automod.write` | `guildId`, `ruleId`, `enabled`                                 | **Confirm** | Enable or disable an AutoMod rule, with confirmation.            |
+| `discord_automod_rule_delete`    | `automod.write` | `guildId`, `ruleId`                                            | **Confirm** | Delete an AutoMod rule, with confirmation.                       |
 
 ## Discord prerequisites
 
@@ -150,16 +150,16 @@ Administrator cannot make absent tools appear, grant privileged intents or remov
 
 ## Media, source replies and correlated controls
 
-| Tool | Scopes | Guard and coverage |
-| :-- | :-- | :-- |
-| `media_search` | `media.read`, `messages.read` | Live trigger; newest local attachment/image matches, user/channel/message/time/ID filters, opaque pagination |
-| `media_history` | `media.read`, `messages.read` | Live trigger; one Discord channel history page or exact message; explicit pagination/truncation references |
-| `media_attachment_read` | `media.read`, `messages.read` | Live trigger/source handle; freshly verified CDN-only bounded chunks; small images also yield MCP image content |
-| `media_upload_begin` | `media.write`, `messages.write` | Live trigger; bounded reservation, filename/MIME/size/SHA-256 |
-| `media_upload_chunk` | `media.write`, `messages.write` | Same event/upload; ordered canonical base64, at most 128 KiB decoded |
-| `media_upload_seal` | `media.write`, `messages.write` | Size/hash/format/dimension verification |
-| `discord_media_reply` | `media.write`, `messages.write`; additionally read scopes for source handles | Live trigger/idempotency; up to three sealed files and three verified source links, origin-only reply |
-| `discord_prompt` | `interactions.write`, `messages.write` | Live trigger/idempotency; single-use actor/source-bound buttons/select/modal launch |
+| Tool                    | Scopes                                                                       | Guard and coverage                                                                                              |
+| :---------------------- | :--------------------------------------------------------------------------- | :-------------------------------------------------------------------------------------------------------------- |
+| `media_search`          | `media.read`, `messages.read`                                                | Live trigger; newest local attachment/image matches, user/channel/message/time/ID filters, opaque pagination    |
+| `media_history`         | `media.read`, `messages.read`                                                | Live trigger; one Discord channel history page or exact message; explicit pagination/truncation references      |
+| `media_attachment_read` | `media.read`, `messages.read`                                                | Live trigger/source handle; freshly verified CDN-only bounded chunks; small images also yield MCP image content |
+| `media_upload_begin`    | `media.write`, `messages.write`                                              | Live trigger; bounded reservation, filename/MIME/size/SHA-256                                                   |
+| `media_upload_chunk`    | `media.write`, `messages.write`                                              | Same event/upload; ordered canonical base64, at most 128 KiB decoded                                            |
+| `media_upload_seal`     | `media.write`, `messages.write`                                              | Size/hash/format/dimension verification                                                                         |
+| `discord_media_reply`   | `media.write`, `messages.write`; additionally read scopes for source handles | Live trigger/idempotency; up to three sealed files and three verified source links, origin-only reply           |
+| `discord_prompt`        | `interactions.write`, `messages.write`                                       | Live trigger/idempotency; single-use actor/source-bound buttons/select/modal launch                             |
 
 See [files and controls](media-and-controls.md) for schemas, format limits, privileged intent, resource/SSRF checks and honest host editing limitations. Sending attachments requires Attach Files as well as channel/thread send permissions. Incoming reads need View Channel/Read Message History and applicable Message Content access. Emoji arguments accept Unicode emoji sequences or `name:snowflake` for a custom emoji; Discord enforces emoji availability and Use External Emojis where applicable. Reactions remain outbound actions, not request triggers.
 

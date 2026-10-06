@@ -6,8 +6,8 @@ import { parseEnv } from 'node:util';
 import { policySchema, envSchema, validateAuth } from '../core/config.js';
 import { Policy } from '../core/policy.js';
 import { DiscordApi } from '../discord/api.js';
-import { operatorPath, operatorSchema, readOperatorConfig, writeOperatorConfig, type OperatingMode } from './config.js';
-import { appState, connectApp, type AppId } from './connections.js';
+import { operatorPath, operatorSchema, readOperatorConfig, writeOperatorConfig } from './config.js';
+import { appState, connectApp, responderApps } from './connections.js';
 import { publicDomainBlock } from './connection-domain.js';
 import { validateModel } from './providers.js';
 import { activationBlock, isLocal, liveSetupStatus } from './setup-model.js';
@@ -168,7 +168,6 @@ async function operatorApplied(next: Record<string, unknown>): Promise<boolean> 
     }
     return false;
 }
-const responderApps: Partial<Record<OperatingMode, AppId>> = { 'claude-session': 'claude-code', 'codex-local': 'codex' };
 async function selectResponder(updated: PanelSnapshot): Promise<boolean> {
     const selected = operatorSchema.parse(updated.documents.operator);
     const app = responderApps[selected.mode];

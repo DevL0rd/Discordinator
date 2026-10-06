@@ -4,29 +4,29 @@
 
 ## Pages
 
-| Page | What it is for |
-| :-- | :-- |
-| Home | Live pipeline (Discord → Discordinator → your AI), start or pause, things that need your attention and recent activity |
-| Responder | Choose the primary responder and edit its settings |
-| Discord | The bot, approved people, servers and channels (allowlist or blocklist, with a plain-English summary of where it works), abilities and triggers |
-| Apps | Connected apps |
-| Memory & media | Recent-message context and attachments |
-| System | Background service, ChatGPT events, advanced settings and backups |
+| Page           | What it is for                                                                                                                                  |
+| :------------- | :---------------------------------------------------------------------------------------------------------------------------------------------- |
+| Home           | Live pipeline (Discord → Discordinator → your AI), start or pause, things that need your attention and recent activity                          |
+| Responder      | Choose the primary responder and edit its settings                                                                                              |
+| Discord        | The bot, approved people, servers and channels (allowlist or blocklist, with a plain-English summary of where it works), abilities and triggers |
+| Apps           | Web connectors for claude.ai and ChatGPT, and your public address                                                                               |
+| Memory & media | Recent-message context and attachments                                                                                                          |
+| System         | Background service, ChatGPT events, advanced settings and backups                                                                               |
 
 ## Keys
 
-| Key | Action |
-| :-- | :-- |
-| Arrows, `j` / `k` | Move |
-| `←` / `→`, Tab | Switch between the menu and the page |
-| Enter, Space | Open or toggle |
-| `1`–`6` | Jump to a page |
-| `s` | Review and save |
-| `/` | Find any setting |
-| `p` | Start or pause |
-| `r` | Refresh |
-| `?` | Help |
-| `q` | Quit |
+| Key               | Action                               |
+| :---------------- | :----------------------------------- |
+| Arrows, `j` / `k` | Move                                 |
+| `←` / `→`, Tab    | Switch between the menu and the page |
+| Enter, Space      | Open or toggle                       |
+| `1`–`6`           | Jump to a page                       |
+| `s`               | Review and save                      |
+| `/`               | Find any setting                     |
+| `p`               | Start or pause                       |
+| `r`               | Refresh                              |
+| `?`               | Help                                 |
+| `q`               | Quit                                 |
 
 ## Saving
 
@@ -38,13 +38,13 @@ Saving a responder makes it the primary one and connects its app if needed; the 
 
 Exactly one responder answers new Discord messages.
 
-| Responder | Mode ID | How it works |
-| :-- | :-- | :-- |
-| Claude Code | `claude-session` | One ongoing Claude conversation. Prefers Claude Desktop; see below. |
-| Codex | `codex-local` | One ongoing Codex conversation in the shared Codex app-server service on this computer; see below. |
-| ChatGPT - Dot | `chatgpt-events` | The Discordinator app in ChatGPT is woken automatically. Needs a public HTTPS domain. |
-| ChatGPT · scheduled checks | `chatgpt-poll` | ChatGPT checks for new messages on a schedule you set up in ChatGPT. |
-| Another MCP app | `manual-mcp` | Any compatible MCP client; you run it yourself. |
+| Responder                  | Mode ID          | How it works                                                                                       |
+| :------------------------- | :--------------- | :------------------------------------------------------------------------------------------------- |
+| Claude Code                | `claude-session` | One ongoing Claude conversation. Prefers Claude Desktop; see below.                                |
+| Codex                      | `codex-local`    | One ongoing Codex conversation in the shared Codex app-server service on this computer; see below. |
+| ChatGPT - Dot              | `chatgpt-events` | The Discordinator app in ChatGPT is woken automatically. Needs a public HTTPS domain.              |
+| ChatGPT · scheduled checks | `chatgpt-poll`   | ChatGPT checks for new messages on a schedule you set up in ChatGPT.                               |
+| Another MCP app            | `manual-mcp`     | Any compatible MCP client; you run it yourself.                                                    |
 
 Older saved choices (`claude-local`, `claude-channel`) are migrated to `claude-session` automatically.
 
@@ -66,18 +66,25 @@ Discordinator connects to the shared Codex app-server service that the Codex com
 
 If your Codex has no shared service, or **Always run in the background** is on, Discordinator runs a private Codex app-server instead, with one conversation per person and channel. Questions and permission requests go to Discord as buttons in both cases.
 
-## Connected apps
+## Local responders
 
-Any number of apps can be connected at once. Each gets the full Discord toolset; only the primary responder receives new messages.
+Choosing Claude Code or Codex as the responder connects it on this computer, with nothing to sign in to. Its **Discord tools** row on the Responder page shows the status and can repair or disconnect it.
 
-| App | What connecting does |
-| :-- | :-- |
-| Claude Code | With a public address, one Discordinator connector in claude.ai gives Claude the Discord tools on the web, phone, Desktop and Claude Code; connecting opens claude.ai with it filled in. Without one, a local plugin gives every Claude Code session the tools with nothing to sign in to. Only one of the two is set up, so the tools never appear twice. |
-| Codex | Adds a `discordinator` entry to the config of the Codex home your `codex` command uses, pointing at Discordinator on this computer with its local key. No sign-in. |
-| Claude on the web and mobile | Add `https://YOUR-DOMAIN/mcp` as a custom connector under **Settings → Connectors** in claude.ai. Claude on the web, the mobile app and Desktop chats can then read Discord and use its tools when you ask; they are not woken by new messages. |
-| ChatGPT | Connect the app in ChatGPT using your public domain. |
+| Responder   | What connecting does                                                                                                                                   |
+| :---------- | :----------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Claude Code | Installs a local plugin that gives every Claude Code session, including Claude Desktop, the Discord tools.                                             |
+| Codex       | Adds a `discordinator` entry to the config of the Codex home your `codex` command uses, pointing at Discordinator on this computer with its local key. |
 
 Connecting only touches the entry named `discordinator`, verifies it, and removes a legacy `dotbot` entry left over from before the rename.
+
+## Web connectors
+
+The Apps page holds the connectors that give Claude and ChatGPT on the web and phone the Discord tools through your public address. They are separate from the responders and are not woken by new messages.
+
+| Connector     | How to add it                                                                                                                                          |
+| :------------ | :----------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Claude (web)  | Add `https://YOUR-DOMAIN/mcp` as a custom connector in claude.ai and sign in with your Discordinator password. **Open claude.ai** fills it in for you. |
+| ChatGPT (web) | Create a connector with `https://YOUR-DOMAIN/mcp` in ChatGPT's Apps & Connectors with Developer mode on, and sign in with your Discordinator password. |
 
 ## Domain and local access
 

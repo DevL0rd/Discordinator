@@ -5,27 +5,28 @@ import { z } from 'zod';
 
 const exec = promisify(execFile);
 const stateFile = '.data/web-connectors.json';
-const stateSchema = z.object({ chatgpt: z.string().optional() });
+const stateSchema = z.object({ claude: z.string().optional(), chatgpt: z.string().optional() });
 export type WebConnectors = z.infer<typeof stateSchema>;
+export type WebId = keyof WebConnectors;
 
 export async function webConnectors(): Promise<WebConnectors> {
     const parsed = stateSchema.safeParse(JSON.parse(await readFile(stateFile, 'utf8').catch(() => '{}')));
     return parsed.success ? parsed.data : {};
 }
 
-export async function markChatgptAdded(url: string): Promise<string> {
-    const next = { ...(await webConnectors()), chatgpt: url };
+async function saveWebConnectors(next: WebConnectors): Promise<void> {
     await mkdir('.data', { recursive: true, mode: 0o700 });
     await writeFile(`${stateFile}.tmp`, JSON.stringify(next), { mode: 0o600 });
     await rename(`${stateFile}.tmp`, stateFile);
+}
+
+export async function markWebAdded(id: WebId, url: string): Promise<string> {
+    await saveWebConnectors({ ...(await webConnectors()), [id]: url });
     return 'Saved. Discordinator will tell you if your public address changes.';
 }
 
-export async function forgetChatgpt(): Promise<void> {
-    const { chatgpt: _forgotten, ...rest } = await webConnectors();
-    await mkdir('.data', { recursive: true, mode: 0o700 });
-    await writeFile(`${stateFile}.tmp`, JSON.stringify(rest), { mode: 0o600 });
-    await rename(`${stateFile}.tmp`, stateFile);
+export async function forgetWebConnectors(): Promise<void> {
+    await saveWebConnectors({});
 }
 
 export const claudeConnectorLink = (url: string): string =>
@@ -34,8 +35,6 @@ export const claudeConnectorLink = (url: string): string =>
 export async function openInBrowser(url: string): Promise<void> {
     await exec('xdg-open', [url]);
 }
-
-export const openClaudeConnector = (url: string) => openInBrowser(claudeConnectorLink(url));
 
 export function connectorStatus(added: string | undefined, url: string | undefined): { text: string; current: boolean } {
     if (!added) return { text: 'Not connected', current: false };
