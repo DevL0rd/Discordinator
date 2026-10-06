@@ -9,7 +9,7 @@ import { SessionRouter } from '../src/operator/session-router.js';
 import { SessionActivity, transcriptSteps } from '../src/operator/session-activity.js';
 import { fixture, socketPath } from './fixtures.js';
 
-function inbox(socket: string, onMessage: () => void = () => undefined): Promise<{ received: Promise<string>; close(): void }> {
+function inbox(socket: string, onMessage: () => void = () => undefined): Promise<{ received: Promise<string>; close(): Promise<void> }> {
     let resolveText: (value: string) => void;
     const received = new Promise<string>((resolve) => (resolveText = resolve));
     const server = createServer((connection) => {
@@ -20,7 +20,9 @@ function inbox(socket: string, onMessage: () => void = () => undefined): Promise
             resolveText(text);
         });
     });
-    return new Promise((resolve) => server.listen(socket, () => resolve({ received, close: () => server.close() })));
+    return new Promise((resolve) =>
+        server.listen(socket, () => resolve({ received, close: () => new Promise<void>((done) => server.close(() => done())) })),
+    );
 }
 
 async function registry(config: string, sessionId: string, socket: string, workspace: string): Promise<void> {
@@ -67,7 +69,7 @@ export async function checkSessions(): Promise<void> {
             ],
             'the published peer key authenticates the delivery first',
         );
-        first.close();
+        await first.close();
         await mkdir('.data', { recursive: true });
         await writeFile('.data/claude-session.json', JSON.stringify({ sessionId, workspace }));
         await checkRouter(directory, sessionId, socket, workspace);
@@ -102,13 +104,13 @@ async function checkRouter(directory: string, sessionId: string, socket: string,
         const text = (JSON.parse((await second.received).trim().split('\n').at(-1)!) as { message: { content: string } }).message.content;
         assert.match(text, new RegExp(`eventId "${f.event.id}"`), 'Discord context reaches the session');
         assert.match(text, /discord_respond/);
-        second.close();
+        await second.close();
         let repeated = false;
         const third = await inbox(socket, () => (repeated = true));
         await router.route(f.event);
         await until(() => router.status().busy);
         assert.equal(repeated, false, 'a retried event is never delivered twice');
-        third.close();
+        await third.close();
         router.stop();
     }
 }

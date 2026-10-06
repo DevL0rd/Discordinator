@@ -1,3 +1,4 @@
+import { randomUUID } from 'node:crypto';
 import { join } from 'node:path';
 import type { Api, Json } from '../src/discord/api.js';
 import { policySchema, type Config } from '../src/core/config.js';
@@ -101,6 +102,6 @@ export function fakeConfig(port = 8787): Config {
 }
 
 export const socketPath = (directory: string, name: string): string =>
-    process.platform === 'win32' ? `\\\\.\\pipe\\discordinator-${name}-${process.pid}` : join(directory, `${name}.sock`);
+    process.platform === 'win32' ? `\\\\.\\pipe\\discordinator-${name}-${randomUUID()}` : join(directory, `${name}.sock`);
 
 export const posixOnly = process.platform !== 'win32';
