@@ -1,5 +1,6 @@
 import { Client, Events, GatewayIntentBits, Partials } from 'discord.js';
-import type { Message, ChatInputCommandInteraction } from 'discord.js';
+import { builtInCommands, commandDefinitions, runCommand, type CommandHandler } from './commands.js';
+import type { Message, ChatInputCommandInteraction, Interaction } from 'discord.js';
 import type { Config } from '../core/config.js';
 import type { Policy } from '../core/policy.js';
 import type { EventQueue } from '../core/queue.js';
@@ -8,17 +9,18 @@ import { Triggers } from '../core/triggers.js';
 import type { ContextIndex } from '../core/context.js';
 import { observe } from './observation.js';
 import { replyToBot } from './replies.js';
-import { payload } from '../events/schema.js';
+import { payload, interactionPayload, interactionEventName } from '../events/schema.js';
 import type { EventsService } from '../events/service.js';
 import type { Api } from './api.js';
 import type { MediaService } from '../media/service.js';
 import type { Flows } from '../interactions/flows.js';
 import { captureInteraction, handleControl } from '../interactions/gateway.js';
+import type { ReplyOrigins } from '../core/reply-origins.js';
 
 export function gatewayIntents(config: Config): number[] {
     const intents = [GatewayIntentBits.Guilds, GatewayIntentBits.GuildMessages, GatewayIntentBits.DirectMessages];
-    if (config.DOTBOT_MESSAGE_CONTENT === 'true') intents.push(GatewayIntentBits.MessageContent);
-    if (config.DOTBOT_GUILD_MEMBERS === 'true') intents.push(GatewayIntentBits.GuildMembers);
+    if (config.DISCORDINATOR_MESSAGE_CONTENT === 'true') intents.push(GatewayIntentBits.MessageContent);
+    if (config.DISCORDINATOR_GUILD_MEMBERS === 'true') intents.push(GatewayIntentBits.GuildMembers);
     return intents;
 }
 
@@ -33,6 +35,8 @@ export class Gateway {
     readonly events?: EventsService;
     readonly media?: MediaService;
     readonly flows?: Flows;
+    readonly replyOrigins?: ReplyOrigins;
+    readonly commands?: CommandHandler;
 
     constructor(
         readonly config: Config,
@@ -40,12 +44,21 @@ export class Gateway {
         readonly queue: EventQueue,
         readonly approvals: Approvals,
         readonly api: Api,
-        services: { context?: ContextIndex; events?: EventsService; media?: MediaService; flows?: Flows } = {},
+        services: {
+            context?: ContextIndex;
+            events?: EventsService;
+            media?: MediaService;
+            flows?: Flows;
+            replyOrigins?: ReplyOrigins;
+            commands?: CommandHandler;
+        } = {},
     ) {
         this.context = services.context;
         this.events = services.events;
         this.media = services.media;
         this.flows = services.flows;
+        this.replyOrigins = services.replyOrigins;
+        this.commands = services.commands;
         this.triggers = new Triggers(policy);
         this.client = new Client({
             intents: gatewayIntents(config),
@@ -56,6 +69,13 @@ export class Gateway {
         this.bindEvents();
     }
 
+    private bindMembers(): void {
+        this.client.on(Events.GuildMemberUpdate, (_old, member) =>
+            this.policy.noteRoles(member.id, member.guild.id, member.roles.cache.keys()),
+        );
+        this.client.on(Events.GuildMemberRemove, (member) => this.policy.noteRoles(member.id, member.guild.id, []));
+    }
+
     private bindEvents(): void {
         this.client.on(Events.MessageCreate, (message) => this.safely(() => this.message(message)));
         this.client.on(Events.MessageDelete, (message) => this.remove(message.id));
@@ -64,19 +84,37 @@ export class Gateway {
         });
         this.client.on(Events.MessageUpdate, (_old, message) => {
             if (!message.partial)
-                this.context?.update(message.id, message.content, this.config.DOTBOT_MESSAGE_CONTENT === 'true' || !message.guildId);
+                this.safely(async () => {
+                    await this.replyOrigins?.revokeChanged(message.id, message.content);
+                });
+            if (!message.partial)
+                this.context?.update(message.id, message.content, this.config.DISCORDINATOR_MESSAGE_CONTENT === 'true' || !message.guildId);
             this.media?.index.remove(message.id);
             if (!message.partial) this.observeMedia(message, false);
         });
+        this.bindMembers();
         this.client.on(Events.InteractionCreate, (interaction) => {
+            noteInteractionRoles(this.policy, interaction);
             if (interaction.isChatInputCommand()) this.safely(() => this.interaction(interaction));
             if (this.flows && (interaction.isButton() || interaction.isStringSelectMenu() || interaction.isModalSubmit())) {
-                this.safely(() => handleControl(interaction, this.flows!, this.policy, this.queue));
+                this.safely(() =>
+                    handleControl(
+                        interaction,
+                        this.flows!,
+                        this.policy,
+                        this.queue,
+                        (event, id) => this.events?.emit(interactionPayload(event, id), interactionEventName) ?? Promise.resolve(),
+                    ),
+                );
             }
         });
         this.client.once(Events.ClientReady, (client) => {
             this.api.botId = client.user.id;
             this.state = 'ready';
+            if (this.commands)
+                this.safely(async () => {
+                    await this.api.put(`/applications/${client.user.id}/commands`, commandDefinitions);
+                });
         });
         this.client.on(Events.ShardReconnecting, () => {
             this.state = 'reconnecting';
@@ -100,6 +138,9 @@ export class Gateway {
     }
 
     private remove(id: string): void {
+        this.safely(async () => {
+            await this.replyOrigins?.revokeMessage(id);
+        });
         this.context?.remove(id);
         this.media?.index.remove(id);
     }
@@ -131,16 +172,13 @@ export class Gateway {
         }
     }
 
-    private async safely(action: () => Promise<void>): Promise<void> {
-        try {
-            await action();
-        } catch {
-            return;
-        }
+    private safely(action: () => Promise<void>): void {
+        void action().catch(() => undefined);
     }
 
     async message(message: Message): Promise<void> {
         if (!this.claimMessage(message.id)) return;
+        if (message.member && message.guildId) this.policy.noteRoles(message.author.id, message.guildId, message.member.roles.cache.keys());
         this.activeMessages++;
         try {
             await this.capture(message);
@@ -165,7 +203,7 @@ export class Gateway {
         const trigger = await this.authorizedTrigger(message);
         this.observeMedia(message, trigger !== null);
         if (!this.policy.config.context.enabled && !this.policy.config.mcpEvents.enabled) return;
-        const observed = observe(message, this.config.DOTBOT_MESSAGE_CONTENT === 'true');
+        const observed = observe(message, this.config.DISCORDINATOR_MESSAGE_CONTENT === 'true');
         // Scope and observation authorization are independent from trigger authorization.
         try {
             this.policy.assertObservation(observed);
@@ -199,31 +237,39 @@ export class Gateway {
             text: message.content,
         };
         this.policy.assertOrigin(event);
-        const textual = this.triggers.accepts(message.author.id, message.content, this.api.botId);
-        const reply = !textual && this.policy.config.triggers.replyToBot && (await replyToBot(message, this.api.botId));
-        if (!textual && !reply) return null;
+        if (!(await this.addressed(message))) return null;
+        if (this.replyOrigins?.findMessage(message.channelId, message.id)) return null;
         const queued = this.queue.add(`message:${message.id}`, event);
         if (!queued) return null;
-        const approvalId = this.triggers.approvalId(message.content, this.api.botId);
+        await this.replyOrigins?.capture(queued);
+        const approvalId = this.triggers.approvalId(message.content, this.api.botId, message.guildId === null);
         if (approvalId) this.approvals.confirm(event, approvalId);
         return queued;
+    }
+    private async addressed(message: Message): Promise<boolean> {
+        if (message.guildId === null) return true;
+        if (this.triggers.accepts(message.author.id, message.content, this.api.botId)) return true;
+        return this.policy.config.triggers.replyToBot && (await replyToBot(message, this.api.botId));
     }
 
     async interaction(interaction: ChatInputCommandInteraction): Promise<void> {
         this.policy.assertUser(interaction.user.id);
-        if (interaction.commandName !== 'dot' || interaction.applicationId !== this.api.botId) return;
+        if (interaction.applicationId !== this.api.botId) return;
+        if (this.commands && builtInCommands.has(interaction.commandName)) return runCommand(interaction, this.commands);
+        if (interaction.commandName !== 'discordinator') return;
         const event = {
             actorId: interaction.user.id,
             channelId: interaction.channelId,
             guildId: interaction.guildId,
             kind: 'interaction' as const,
-            name: 'dot',
+            name: 'discordinator',
             text: interaction.options.getString('text') ?? '',
         };
         this.policy.assertOrigin(event);
         this.policy.assertScope('messages.write');
         const queued = await captureInteraction(interaction, event, this.policy, this.queue);
         if (!queued) return;
+        await this.events?.emit(interactionPayload(queued, interaction.id), interactionEventName);
         const approvalId = this.triggers.approvalId(event.text, this.api.botId, true);
         if (approvalId) this.approvals.confirm(event, approvalId);
     }
@@ -236,7 +282,13 @@ export class Gateway {
     }
     stop(): void {
         this.queue.close();
-        this.client.destroy();
+        void this.client.destroy().catch(() => undefined);
         this.state = 'offline';
     }
+}
+
+function noteInteractionRoles(policy: Policy, interaction: Interaction): void {
+    const member = interaction.member;
+    if (!member || !interaction.guildId) return;
+    policy.noteRoles(interaction.user.id, interaction.guildId, Array.isArray(member.roles) ? member.roles : member.roles.cache.keys());
 }

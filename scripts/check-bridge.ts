@@ -44,9 +44,7 @@ async function checkResponses(file: string): Promise<void> {
     const saved = new Journal(file);
     await saved.load();
     assert.deepEqual(
-        await saved.execute(input.idempotencyKey, { operation: 'respond', ...input }, async () => {
-            throw new Error('must not rerun');
-        }),
+        await saved.execute(input.idempotencyKey, { operation: 'respond', ...input }, () => Promise.reject(new Error('must not rerun'))),
         { id: ids.message, channel_id: ids.channel },
     );
 }
@@ -55,23 +53,21 @@ async function checkJournal(file: string): Promise<void> {
     const journal = new Journal(file);
     await journal.load();
     await assert.rejects(() =>
-        journal.execute('uncertain-key', { action: 'uncertain' }, async () => {
-            throw new Error('ambiguous network result');
-        }),
+        journal.execute('uncertain-key', { action: 'uncertain' }, () => Promise.reject(new Error('ambiguous network result'))),
     );
     const reloaded = new Journal(file);
     await reloaded.load();
-    await assert.rejects(() => reloaded.execute('uncertain-key', { action: 'uncertain' }, async () => 'duplicate'), /uncertain/);
+    await assert.rejects(() => reloaded.execute('uncertain-key', { action: 'uncertain' }, () => Promise.resolve('duplicate')), /uncertain/);
     const tiny = new Journal(`${file}.capacity`, 1);
     await tiny.load();
-    await tiny.execute('first', {}, async () => null);
-    await assert.rejects(() => tiny.execute('second', {}, async () => null), /full/);
+    await tiny.execute('first', {}, () => Promise.resolve(null));
+    await assert.rejects(() => tiny.execute('second', {}, () => Promise.resolve(null)), /full/);
 }
 
 function checkQueue(): void {
     let now = 0;
     const queue = new EventQueue(2, 100, () => now);
-    const event = { actorId: ids.user, channelId: ids.channel, guildId: ids.guild, kind: 'message' as const, text: 'DotBot' };
+    const event = { actorId: ids.user, channelId: ids.channel, guildId: ids.guild, kind: 'message' as const, text: 'Discordinator' };
     const first = queue.add('one', event)!;
     assert.equal(queue.add('one', event), null);
     queue.add('two', event);
@@ -95,7 +91,7 @@ export async function checkBridge(directory: string): Promise<void> {
         assert.equal(operation.schema.safeParse({ route: '/arbitrary' }).success, false);
         if (operation.sensitive) assert.equal(operation.mutates, true);
     }
-    const policy = new Policy(policySchema.parse({ guildScope: 'all', channelScope: 'all' }));
+    const policy = new Policy(policySchema.parse({ servers: { mode: 'blocklist' }, channels: { mode: 'blocklist' } }));
     assert.throws(() => policy.assertUser(ids.user));
     await checkMutations(`${directory}/mutations.json`);
     await checkResponses(`${directory}/responses.json`);

@@ -6,7 +6,7 @@ export const fileName = z
     .string()
     .min(1)
     .max(100)
-    .regex(/^[\p{L}\p{N}_][\p{L}\p{N}_. -]*\.[a-zA-Z0-9]{1,8}$/u)
+    .refine((value) => /^[\p{L}\p{N}_][\p{L}\p{N}_. -]*\.[a-zA-Z0-9]{1,8}$/u.test(value), 'Invalid file name')
     .refine((value) => !value.includes('..') && !/^(con|prn|aux|nul|com[1-9]|lpt[1-9])\./i.test(value));
 const binary = new Map([
     ['image/png', ['png']],

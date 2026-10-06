@@ -1,7 +1,7 @@
 import { mkdir, readFile, rename, stat, writeFile } from 'node:fs/promises';
 import { dirname } from 'node:path';
 import { z } from 'zod';
-import { filtersSchema, secretSchema } from './schema.js';
+import { eventNames, filtersSchema, secretSchema } from './schema.js';
 import { sanitizedError } from '../core/errors.js';
 
 const subscriptionSchema = z
@@ -9,8 +9,8 @@ const subscriptionSchema = z
         id: z.string(),
         owner: z.string(),
         ownerExpires: z.number().optional(),
-        url: z.string().url().max(2048),
-        name: z.literal('discord.message.created'),
+        url: z.url().max(2048),
+        name: eventNames,
         arguments: filtersSchema,
         secret: secretSchema,
         previous: z.object({ secret: secretSchema, until: z.number() }).optional(),
@@ -56,6 +56,7 @@ export class SubscriptionStore {
                 throw sanitizedError('Subscription store invalid; do not discard unreconciled state');
         }
     }
+    onChange?: (state: State) => void;
     change<T>(action: (state: State) => T): Promise<T> {
         if (this.pending >= 64) return Promise.reject(new Error('Subscription state busy'));
         this.pending++;
@@ -64,6 +65,7 @@ export class SubscriptionStore {
             const result = action(candidate);
             await this.save(candidate);
             this.state = candidate;
+            this.onChange?.(candidate);
             return result;
         });
         this.tail = next.then(

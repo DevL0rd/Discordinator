@@ -1,7 +1,12 @@
 import { createHash, randomUUID } from 'node:crypto';
 import { z } from 'zod';
 import { fileName, mimeType, inspectFile } from './formats.js';
-import type { MediaAccess } from './access.js';
+import type { Policy } from '../core/policy.js';
+
+export interface UploadAccess {
+    readonly policy: Policy;
+    event(id: string, write: boolean): { expiresAt: number };
+}
 
 export const uploadSchema = z
     .object({
@@ -33,7 +38,7 @@ interface Upload {
 export class Uploads {
     private items = new Map<string, Upload>();
     constructor(
-        readonly access: MediaAccess,
+        readonly access: UploadAccess,
         readonly now = Date.now,
     ) {}
     private prune(): void {

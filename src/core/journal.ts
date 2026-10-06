@@ -14,13 +14,14 @@ const recordSchema = z.object({
 type RecordEntry = z.infer<typeof recordSchema>;
 
 export class Journal {
-    private records: Record<string, RecordEntry> = Object.create(null);
+    private records = Object.create(null) as Record<string, RecordEntry>;
     private busy = false;
 
     constructor(
         readonly file: string,
         readonly capacity = 4096,
         readonly now = Date.now,
+        readonly retainCompleted = false,
     ) {}
 
     async load(): Promise<void> {
@@ -33,6 +34,7 @@ export class Journal {
     }
 
     private prune(): void {
+        if (this.retainCompleted) return;
         for (const [key, record] of Object.entries(this.records)) {
             if (record.state === 'done' && record.createdAt < this.now() - 24 * 60 * 60_000) delete this.records[key];
         }

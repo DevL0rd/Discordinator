@@ -1,6 +1,6 @@
 import { ProtocolError } from '@modelcontextprotocol/server';
 import type { Policy } from '../core/policy.js';
-import type { Filters, Payload } from './schema.js';
+import type { Filters, EventPayload } from './schema.js';
 import type { Principal } from './security.js';
 import type { Subscription } from './store.js';
 
@@ -13,7 +13,8 @@ export class EventAccess {
     authorize(owner: Principal, filters: Filters): void {
         this.assertOwner(owner);
         const config = this.policy.config;
-        if (!config.mcpEvents.enabled || !config.allowedUserIds.length) throw new ProtocolError(-32602, 'Events disabled');
+        if (!config.mcpEvents.enabled || (!config.allowedUserIds.length && !config.allowedRoleIds.length))
+            throw new ProtocolError(-32602, 'Events disabled');
         this.policy.assertScope('messages.read');
         if (filters.delivery === 'all' && !config.mcpEvents.allowAllMessages)
             throw new ProtocolError(-32602, 'All-message delivery disabled');
@@ -36,7 +37,7 @@ export class EventAccess {
             return false;
         }
     }
-    allowsData(subscription: Subscription, data: Payload): boolean {
+    allowsData(subscription: Subscription, data: EventPayload): boolean {
         if (!this.active(subscription)) return false;
         try {
             this.policy.assertObservation(data);

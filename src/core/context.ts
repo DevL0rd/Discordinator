@@ -13,12 +13,11 @@ export interface ObservedMessage extends Origin {
 }
 export interface ContextRecord extends ObservedMessage {
     observedAt: string;
-    truncated: boolean;
 }
 
 /** Read context is never an action origin. Only EventQueue can mint action IDs. */
 export class ContextIndex {
-    private items = new Map<string, { record: ContextRecord; expires: number }>();
+    private items = new Map<string, { record: ContextRecord }>();
     private evicted = 0;
     constructor(
         readonly policy: Policy,
@@ -26,26 +25,16 @@ export class ContextIndex {
         readonly now = Date.now,
     ) {}
 
-    private prune(): void {
-        for (const [id, item] of this.items) if (item.expires <= this.now()) this.items.delete(id);
-    }
-
     ingest(input: ObservedMessage, addressed: boolean): void {
         const config = this.policy.config.context;
         if (!config.enabled || (!addressed && config.capture !== 'all')) return;
         if (input.authorBot && !config.includeBots) return;
         this.policy.assertObservation(input);
-        this.prune();
-        const record = {
-            ...input,
-            text: input.text.slice(0, config.contentLimit),
-            truncated: input.text.length > config.contentLimit,
-            observedAt: new Date(this.now()).toISOString(),
-        };
-        this.items.set(input.messageId, { record, expires: this.now() + config.ttlMinutes * 60_000 });
+        const record = { ...input, observedAt: new Date(this.now()).toISOString() };
+        this.items.delete(input.messageId);
+        this.items.set(input.messageId, { record });
         const channel = [...this.items.values()].filter((item) => item.record.channelId === input.channelId);
         while (channel.length > config.perChannel) this.evict(channel.shift()!.record.messageId);
-        while (this.items.size > config.maxMessages) this.evict(this.items.keys().next().value!);
     }
 
     private evict(id: string): void {
@@ -57,20 +46,31 @@ export class ContextIndex {
     }
 
     update(id: string, text: string, available: boolean): void {
-        this.prune();
         const item = this.items.get(id);
         if (!item) return;
-        item.record.text = text.slice(0, this.policy.config.context.contentLimit);
-        item.record.truncated = text.length > this.policy.config.context.contentLimit;
+        item.record.text = text;
         item.record.contentAvailable = available;
     }
 
-    query(eventId: string, mode: 'recent' | 'user' | 'search', limit: number, query = '', includeParent = false) {
-        const origin = this.queue.context(eventId).event;
+    private origin(eventId: string): Origin {
+        const origin = this.queue.authorize(eventId).event;
         this.policy.assertOrigin(origin);
         this.policy.assertScope('messages.read');
         if (!this.policy.config.context.enabled) throw new Error('Context capture is disabled');
-        this.prune();
+        return origin;
+    }
+
+    history(eventId: string, wholeServer: boolean): ContextRecord[] {
+        const origin = this.origin(eventId);
+        return [...this.items.values()]
+            .map((item) => item.record)
+            .filter((record) => this.accessible(record, origin))
+            .filter((record) => (wholeServer && origin.guildId ? record.guildId === origin.guildId : record.channelId === origin.channelId))
+            .sort((a, b) => a.timestamp.localeCompare(b.timestamp));
+    }
+
+    query(eventId: string, mode: 'recent' | 'user' | 'search', limit: number, query = '', includeParent = false) {
+        const origin = this.origin(eventId);
         const records = [...this.items.values()].map((item) => item.record).filter((record) => this.accessible(record, origin));
         const anchor = records.find((record) => record.messageId === origin.messageId);
         const selected = records.filter((record) =>
@@ -82,7 +82,6 @@ export class ContextIndex {
             evicted: this.evicted,
             incomplete: true,
             search: 'case-insensitive literal substring; retained text only',
-            retentionMinutes: this.policy.config.context.ttlMinutes,
             persistent: false,
         };
     }

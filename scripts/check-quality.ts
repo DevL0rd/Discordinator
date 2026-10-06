@@ -1,11 +1,12 @@
 import { execFileSync } from 'node:child_process';
 import { readFile } from 'node:fs/promises';
 
+const deleted = new Set(execFileSync('git', ['ls-files', '--deleted', '-z'], { encoding: 'utf8' }).split('\0'));
 const files = execFileSync('git', ['ls-files', '--cached', '--others', '--exclude-standard', '-z', '--', '*.ts', '*.js'], {
     encoding: 'utf8',
 })
     .split('\0')
-    .filter(Boolean);
+    .filter((file) => file && !deleted.has(file));
 let failed = false;
 for (const file of new Set(files)) {
     const content = await readFile(file, 'utf8');

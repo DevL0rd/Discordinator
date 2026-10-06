@@ -1,15 +1,21 @@
 {
   "allowedUserIds": [],
-  "guildScope": "listed",
-  "guildIds": [],
-  "channelScope": "listed",
-  "channelIds": [],
+  "servers": {
+    "mode": "allowlist",
+    "allowed": [],
+    "blocked": []
+  },
+  "channels": {
+    "mode": "allowlist",
+    "allowed": [],
+    "blocked": []
+  },
   "scopes": [],
   "triggers": {
     "matchNames": true,
     "names": [
-      "DotBot",
-      "dot"
+      "Discordinator",
+      "disco"
     ],
     "replyToBot": true
   },
@@ -17,11 +23,9 @@
   "context": {
     "enabled": false,
     "capture": "addressed",
-    "maxMessages": 500,
+    "reach": "channel",
     "perChannel": 50,
-    "ttlMinutes": 30,
-    "contentLimit": 1000,
-    "includeBots": false
+    "includeBots": true
   },
   "mcpEvents": {
     "enabled": false,

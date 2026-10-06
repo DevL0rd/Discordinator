@@ -8,7 +8,7 @@ const attachmentSchema = z.object({
     filename: z.string().min(1).max(256),
     size: z.number().int().min(1),
     content_type: z.string().max(100).optional(),
-    url: z.string().url(),
+    url: z.url(),
     width: z.number().nullable().optional(),
     height: z.number().nullable().optional(),
 });

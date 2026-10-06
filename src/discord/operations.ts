@@ -1,13 +1,13 @@
 import { z } from 'zod';
 import { snowflake, type Scope } from '../core/config.js';
-import type { EventContext } from '../core/queue.js';
+import type { AccessContext } from '../core/queue.js';
 import type { Policy } from '../core/policy.js';
 import type { Api } from './api.js';
 
 export interface OperationContext {
     api: Api;
     policy: Policy;
-    origin?: EventContext;
+    origin?: AccessContext;
 }
 export interface Operation {
     name: string;
@@ -26,6 +26,37 @@ export const member = { ...guild, userId: snowflake };
 export const message = { ...channel, messageId: snowflake };
 export const pagination = { limit: z.number().int().min(1).max(100).default(25), before: snowflake.optional() };
 export const text = z.string().min(1).max(2000);
+const embed = z
+    .object({
+        title: z.string().max(256).optional(),
+        description: z.string().max(4096).optional(),
+        url: z.url().optional(),
+        color: z.number().int().min(0).max(0xffffff).optional(),
+        fields: z
+            .array(
+                z.object({ name: z.string().min(1).max(256), value: z.string().min(1).max(1024), inline: z.boolean().optional() }).strict(),
+            )
+            .max(25)
+            .optional(),
+        footer: z
+            .object({ text: z.string().min(1).max(2048) })
+            .strict()
+            .optional(),
+        image: z.object({ url: z.url() }).strict().optional(),
+        thumbnail: z.object({ url: z.url() }).strict().optional(),
+        timestamp: z.iso.datetime().optional(),
+    })
+    .strict();
+export const rich = {
+    content: z.string().max(2000).default('').describe('Message text. Optional when embeds are given.'),
+    embeds: z
+        .array(embed)
+        .max(10)
+        .optional()
+        .describe(
+            'Discord embeds for structured, non-conversational output: reports, results, lists, status. Keep normal chat as plain content.',
+        ),
+};
 export const shortName = z.string().min(1).max(100);
 export const reason = z.string().min(1).max(300);
 export const mentions = { parse: [], replied_user: false };
@@ -58,7 +89,7 @@ export function query(input: Record<string, unknown>): URLSearchParams {
     );
 }
 
-export function origin(context: OperationContext): EventContext {
+export function origin(context: OperationContext): AccessContext {
     if (!context.origin) throw new Error('Captured triggering event is required');
     return context.origin;
 }

@@ -1,0 +1,54 @@
+import { execFile } from 'node:child_process';
+import { promisify } from 'node:util';
+import { createConnection } from 'node:net';
+
+const exec = promisify(execFile);
+export interface ManagedServiceStatus {
+    available: boolean;
+    installed: boolean;
+    active: boolean;
+}
+export function serviceDescription(state: ManagedServiceStatus): string {
+    if (!state.available) return 'unavailable / unverified';
+    if (!state.installed) return 'not installed';
+    return state.active ? 'active' : 'installed, stopped';
+}
+export function parseServiceStatus(output: string): ManagedServiceStatus {
+    const values = Object.fromEntries(
+        output
+            .trim()
+            .split('\n')
+            .map((line) => line.split('=')),
+    ) as Record<string, string | undefined>;
+    return { available: true, installed: values.LoadState === 'loaded', active: values.ActiveState === 'active' };
+}
+export async function managedServiceStatus(): Promise<ManagedServiceStatus> {
+    try {
+        const result = await exec(
+            'systemctl',
+            ['--user', 'show', 'discordinator.service', '--property=LoadState', '--property=ActiveState'],
+            {
+                timeout: 2000,
+            },
+        );
+        return parseServiceStatus(result.stdout);
+    } catch {
+        return { available: false, installed: false, active: false };
+    }
+}
+export async function bridgeListening(): Promise<boolean> {
+    return new Promise((resolve) => {
+        const socket = createConnection({ host: '127.0.0.1', port: Number(process.env.DISCORDINATOR_PORT ?? 8787) });
+        const finish = (listening: boolean) => {
+            socket.destroy();
+            resolve(listening);
+        };
+        socket.setTimeout(500);
+        socket.once('connect', () => finish(true));
+        socket.once('error', () => finish(false));
+        socket.once('timeout', () => finish(false));
+    });
+}
+export function startBlocked(state: ManagedServiceStatus, listening: boolean, runtimeOwner: boolean): boolean {
+    return state.active || listening || runtimeOwner;
+}

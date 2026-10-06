@@ -14,7 +14,7 @@ const overwrite = {
 export const channelOperations = [
     define('channels_list', 'List approved channels in a guild.', { scope: 'guild.read', target: 'guild' }, guild, async (a, c) => {
         const channels = (await c.api.get(`/guilds/${a.guildId}/channels`)) as { id: string }[];
-        return channels.filter((item) => c.policy.config.channelScope === 'all' || c.policy.config.channelIds.includes(item.id));
+        return channels.filter((item) => c.policy.channelAllowed(item.id));
     }),
     define('channel_get', 'Read channel metadata.', { scope: 'guild.read', target: 'channel' }, channel, (a, c) =>
         c.api.get(`/channels/${a.channelId}`),
@@ -80,7 +80,7 @@ export const channelOperations = [
     ),
     define('threads_active', 'List approved active guild threads.', { scope: 'guild.read', target: 'guild' }, guild, async (a, c) => {
         const result = (await c.api.get(`/guilds/${a.guildId}/threads/active`)) as { threads: { id: string }[] };
-        return result.threads.filter((item) => c.policy.config.channelScope === 'all' || c.policy.config.channelIds.includes(item.id));
+        return result.threads.filter((item) => c.policy.channelAllowed(item.id));
     }),
     define(
         'threads_archived',
@@ -93,9 +93,7 @@ export const channelOperations = [
                 query({ limit: a.limit, before: a.before }),
             )) as { threads: { id: string }[]; has_more: boolean };
             return {
-                threads: result.threads.filter(
-                    (item) => c.policy.config.channelScope === 'all' || c.policy.config.channelIds.includes(item.id),
-                ),
+                threads: result.threads.filter((item) => c.policy.channelAllowed(item.id)),
                 has_more: result.has_more,
             };
         },

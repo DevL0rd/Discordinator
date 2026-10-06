@@ -1,0 +1,111 @@
+import { execFile } from 'node:child_process';
+import { access, mkdir, readFile, rename, writeFile } from 'node:fs/promises';
+import { dirname, join, resolve } from 'node:path';
+import { promisify } from 'node:util';
+import { buildDiscordinator } from './install.js';
+
+const exec = promisify(execFile);
+const marketplace = 'discordinator-local';
+const plugin = 'discordinator';
+const pluginId = `${plugin}@${marketplace}`;
+
+export interface PluginState {
+    cli: boolean;
+    marketplace: boolean;
+    installed: boolean;
+    enabled: boolean;
+}
+
+function pluginFiles(home: string): Record<string, unknown> {
+    const description = 'Discord messages from Discordinator arrive in this Claude session, and replies go back to the same conversation.';
+    return {
+        '.claude-plugin/marketplace.json': {
+            name: marketplace,
+            description: 'Discordinator plugins generated on this computer',
+            owner: { name: 'Discordinator' },
+            plugins: [{ name: plugin, description, source: `./${plugin}` }],
+        },
+        [`${plugin}/.claude-plugin/plugin.json`]: {
+            name: plugin,
+            version: '1.0.0',
+            description,
+            author: { name: 'DevL0rd' },
+            keywords: ['discord', 'channel'],
+        },
+        [`${plugin}/.mcp.json`]: {
+            mcpServers: {
+                discordinator: {
+                    command: process.execPath,
+                    args: [join(home, 'dist/src/channel/bridge.js')],
+                    env: { DISCORDINATOR_HOME: home },
+                },
+            },
+        },
+    };
+}
+
+async function writeIfChanged(path: string, value: unknown): Promise<boolean> {
+    const text = `${JSON.stringify(value, null, 2)}\n`;
+    if ((await readFile(path, 'utf8').catch(() => '')) === text) return false;
+    await mkdir(dirname(path), { recursive: true, mode: 0o700 });
+    await writeFile(`${path}.tmp`, text, { mode: 0o600 });
+    await rename(`${path}.tmp`, path);
+    return true;
+}
+
+async function claudeJson(args: string[]): Promise<unknown> {
+    const { stdout } = await exec('claude', [...args, '--json'], { timeout: 60_000, maxBuffer: 4 * 1024 * 1024 });
+    const line = stdout.trim().split('\n').at(-1) ?? '[]';
+    return JSON.parse(stdout.trim().startsWith('[') ? stdout : line);
+}
+
+export async function pluginState(): Promise<PluginState> {
+    try {
+        const [plugins, marketplaces] = (await Promise.all([
+            claudeJson(['plugin', 'list']),
+            claudeJson(['plugin', 'marketplace', 'list']),
+        ])) as [{ id: string; enabled?: boolean }[], { name: string }[]];
+        const installed = plugins.find((item) => item.id === pluginId);
+        return {
+            cli: true,
+            marketplace: marketplaces.some((item) => item.name === marketplace),
+            installed: Boolean(installed),
+            enabled: installed?.enabled !== false && Boolean(installed),
+        };
+    } catch {
+        return { cli: false, marketplace: false, installed: false, enabled: false };
+    }
+}
+
+async function claude(args: string[]): Promise<void> {
+    await exec('claude', args, { timeout: 120_000 });
+}
+
+async function register(root: string, before: PluginState, changed: boolean): Promise<void> {
+    if (!before.marketplace) await claude(['plugin', 'marketplace', 'add', root, '--scope', 'user']);
+    else if (changed) await claude(['plugin', 'marketplace', 'update', marketplace]);
+    if (!before.installed) await claude(['plugin', 'install', pluginId, '--scope', 'user']);
+    else if (changed) await claude(['plugin', 'update', pluginId]);
+    if (before.installed && !before.enabled) await claude(['plugin', 'enable', pluginId]);
+}
+
+export async function installPlugin(home = process.cwd()): Promise<string> {
+    const root = resolve(home, '.data/claude-plugin');
+    await buildDiscordinator();
+    await access(join(home, 'dist/src/channel/bridge.js'));
+    let changed = false;
+    for (const [path, value] of Object.entries(pluginFiles(resolve(home))))
+        changed = (await writeIfChanged(join(root, path), value)) || changed;
+    const before = await pluginState();
+    if (!before.cli) throw new Error('Claude Code is not installed or not signed in. Install it, run claude once, then try again.');
+    await register(root, before, changed);
+    const after = await pluginState();
+    if (!after.installed || !after.enabled) throw new Error('Claude did not report the Discordinator plugin as installed and enabled.');
+    return 'Discordinator plugin installed in Claude Code. Start a Claude session to begin listening.';
+}
+
+export async function uninstallPlugin(): Promise<string> {
+    if ((await pluginState()).installed) await claude(['plugin', 'uninstall', pluginId]);
+    if ((await pluginState()).installed) throw new Error('Claude Code still lists the Discordinator plugin.');
+    return 'Discordinator removed from Claude Code.';
+}

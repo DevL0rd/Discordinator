@@ -9,7 +9,7 @@ export class MediaAccess {
         readonly api: Api,
     ) {}
     event(id: string, write = false) {
-        const context = this.queue.context(id);
+        const context = this.queue.authorize(id);
         this.policy.assertOrigin(context.event);
         this.policy.assertScope(write ? 'media.write' : 'media.read');
         this.policy.assertScope(write ? 'messages.write' : 'messages.read');

@@ -5,7 +5,8 @@ import sonarjs from 'eslint-plugin-sonarjs';
 export default tseslint.config(
     {
         files: ['src/**/*.ts', 'scripts/**/*.ts'],
-        extends: [js.configs.recommended, ...tseslint.configs.recommended],
+        extends: [js.configs.recommended, ...tseslint.configs.recommendedTypeChecked],
+        languageOptions: { parserOptions: { projectService: true, tsconfigRootDir: import.meta.dirname } },
         linterOptions: { noInlineConfig: true, reportUnusedDisableDirectives: 'error' },
         plugins: { sonarjs },
         rules: {
@@ -14,6 +15,7 @@ export default tseslint.config(
             'max-statements': ['error', 35],
             'max-lines-per-function': ['error', { max: 90, skipBlankLines: true }],
             '@typescript-eslint/no-unused-vars': ['error', { argsIgnorePattern: '^_', ignoreRestSiblings: true }],
+            '@typescript-eslint/no-deprecated': 'error',
             'no-else-return': ['error', { allowElseIf: false }],
             'no-unneeded-ternary': 'error',
             'sonarjs/no-all-duplicated-branches': 'error',

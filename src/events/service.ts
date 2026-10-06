@@ -5,7 +5,17 @@ import type { Policy } from '../core/policy.js';
 import { EventAccess } from './access.js';
 import { CallbackError, httpsSender, type CallbackSender } from './https.js';
 import { Verifier, hash, signedHeaders, type Principal } from './security.js';
-import { eventName, filtersSchema, payloadSchema, matches, type Payload, type SubscribeInput, type UnsubscribeInput } from './schema.js';
+import {
+    eventName,
+    interactionEventName,
+    interactionPayloadSchema,
+    filtersSchema,
+    payloadSchema,
+    matches,
+    type EventPayload,
+    type SubscribeInput,
+    type UnsubscribeInput,
+} from './schema.js';
 import { SubscriptionStore, type Subscription, type Job } from './store.js';
 
 function identity(owner: string, input: UnsubscribeInput): string {
@@ -29,6 +39,7 @@ export class EventsService {
         ownerAllowed: (owner: string) => boolean,
         readonly sender: CallbackSender = httpsSender(),
         readonly now = Date.now,
+        readonly delivering: () => boolean = () => true,
     ) {
         this.access = new EventAccess(policy, ownerAllowed, now);
         this.verifier = new Verifier(sender, now);
@@ -45,10 +56,18 @@ export class EventsService {
                 {
                     name: eventName,
                     description:
-                        'New human messages in approved readable scope. Addressed delivery needs an allowed verified trigger; all-message observation is separately opt-in and cannot authorize responses. No replay.',
+                        'New human messages in approved readable scope. Addressed delivery needs an allowed verified trigger. Answer Discord-origin requests and ordinary follow-ups in their originating Discord conversation unless the requester explicitly asks to move them. For work that may take time, acknowledge promptly and keep the requester informed there through completion or a clear blocker. All-message observation is separately opt-in and cannot authorize responses. No replay.',
                     delivery: ['webhook'],
                     inputSchema: z.toJSONSchema(filtersSchema),
                     payloadSchema: z.toJSONSchema(payloadSchema),
+                },
+                {
+                    name: interactionEventName,
+                    description:
+                        'Verified approved-requester Discord commands and correlated button/select/modal answers. Wake the same originating conversation, fetch the captured child event and resolve its exact pending provider callback. Receipt is not proof of model processing; no replay.',
+                    delivery: ['webhook'],
+                    inputSchema: z.toJSONSchema(filtersSchema),
+                    payloadSchema: z.toJSONSchema(interactionPayloadSchema),
                 },
             ],
         };
@@ -122,29 +141,30 @@ export class EventsService {
         return {};
     }
 
-    async emit(data: Payload): Promise<void> {
-        if (this.closed) return;
+    async emit(data: EventPayload, name: SubscribeInput['name'] = eventName): Promise<void> {
+        if (this.closed || !this.delivering()) return;
         if (this.pendingEmits >= 32) {
             this.droppedIngress++;
             return;
         }
-        if (!this.store.state.subscriptions.some((item) => this.access.allowsData(item, data))) return;
+        if (!this.store.state.subscriptions.some((item) => item.name === name && this.access.allowsData(item, data))) return;
         this.pendingEmits++;
         try {
-            await this.enqueue(data);
+            await this.enqueue(data, name);
         } finally {
             this.pendingEmits--;
         }
     }
 
-    private async enqueue(data: Payload): Promise<void> {
-        payloadSchema.parse(data);
+    private async enqueue(data: EventPayload, name: SubscribeInput['name']): Promise<void> {
+        (name === interactionEventName ? interactionPayloadSchema : payloadSchema).parse(data);
         const eventId = `evt_${randomUUID()}`;
-        const body = JSON.stringify({ eventId, name: eventName, timestamp: data.timestamp, data, cursor: null });
+        const body = JSON.stringify({ eventId, name, timestamp: data.timestamp, data, cursor: null });
         if (Buffer.byteLength(body) > 262144) throw new Error('Event body exceeds 256 KiB');
         await this.store.change((state) => {
             for (const subscription of state.subscriptions) {
-                if (!this.access.allowsData(subscription, data) || !matches(subscription.arguments, data)) continue;
+                if (subscription.name !== name || !this.access.allowsData(subscription, data) || !matches(subscription.arguments, data))
+                    continue;
                 if (state.jobs.length >= 500) {
                     state.dropped++;
                     continue;
@@ -216,7 +236,8 @@ export class EventsService {
 
     private async deliver(job: Job): Promise<void> {
         const subscription = this.store.state.subscriptions.find((item) => item.id === job.subscriptionId);
-        if (!subscription || !this.access.allowsData(subscription, JSON.parse(job.body).data)) return this.removeJob(job);
+        if (!subscription || !this.access.allowsData(subscription, (JSON.parse(job.body) as { data: EventPayload }).data))
+            return this.removeJob(job);
         const controller = new AbortController();
         this.inFlight.set(subscription.id, controller);
         let status: number;

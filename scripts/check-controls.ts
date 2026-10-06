@@ -3,7 +3,7 @@ import { fixture, ids } from './fixtures.js';
 import { promptSchema } from '../src/interactions/schema.js';
 import { Flows, type ControlInput } from '../src/interactions/flows.js';
 import { handleControl } from '../src/interactions/gateway.js';
-import type { ButtonInteraction, ModalSubmitInteraction } from 'discord.js';
+import type { ButtonInteraction } from 'discord.js';
 import { operations } from '../src/discord/catalog.js';
 import { emoji } from '../src/discord/messages.js';
 
@@ -37,6 +37,7 @@ function checkButtons(file: string): void {
         promptSchema.parse({ mode: 'buttons', content: 'Choose', options: [{ key: 'ok', label: 'Continue' }] }),
     );
     const input = control(customId(prepared.components));
+    f.policy.config.allowedUserIds.push(ids.denied);
     assert.throws(() => f.bridge.flows.accept(input));
     f.bridge.flows.bind(prepared.id, ids.message);
     for (const patch of [
@@ -99,7 +100,7 @@ function checkSelectAndModal(file: string): void {
     const old = expiring.prepare(f.event.id, prompt);
     expiring.bind(old.id, ids.message);
     now += 11 * 60_000;
-    assert.throws(() => expiring.accept(control(customId(old.components))));
+    assert.ok(expiring.accept(control(customId(old.components))).modal);
 }
 
 function fakeButton(id: string, custom: string) {
@@ -116,16 +117,34 @@ function fakeButton(id: string, custom: string) {
         message: { id: ids.message, author: { id: ids.bot } },
         isModalSubmit: () => false,
         isStringSelectMenu: () => false,
-        deferReply: async () => {
+        deferReply: () => {
             calls.push('defer');
+            return Promise.resolve();
         },
-        showModal: async (value: { custom_id: string }) => {
+        deferUpdate: () => {
+            calls.push('quiet');
+            return Promise.resolve();
+        },
+        followUp: (value: { flags?: number; allowedMentions?: { parse: string[] } }) => {
+            assert.equal(value.flags, 64);
+            assert.deepEqual(value.allowedMentions?.parse, []);
+            calls.push('final');
+            return Promise.resolve({ id: ids.message, channelId: ids.channel });
+        },
+        reply: (value: { flags?: number; allowedMentions?: { parse: string[] } }) => {
+            assert.equal(value.flags, 64);
+            assert.deepEqual(value.allowedMentions?.parse, []);
+            calls.push('deny');
+            return Promise.resolve();
+        },
+        showModal: (value: { custom_id: string }) => {
             calls.push('modal');
             modals.push(value);
+            return Promise.resolve();
         },
-        editReply: async () => {
+        editReply: () => {
             calls.push('edit');
-            return { id: ids.message, channelId: ids.channel };
+            return Promise.resolve({ id: ids.message, channelId: ids.channel });
         },
     };
     return { interaction: interaction as unknown as ButtonInteraction, calls, modals };
@@ -149,13 +168,14 @@ async function checkModalGateway(file: string): Promise<void> {
         isModalSubmit: () => true,
         fields: { fields: new Map([['input', { type: 4, customId: 'input', value: `approve ${approval.approvalId}` }]]) },
     });
-    await handleControl(submit.interaction as unknown as ModalSubmitInteraction, f.bridge.flows, f.policy, f.queue);
-    assert.deepEqual(submit.calls, ['defer']);
+    await handleControl(submit.interaction, f.bridge.flows, f.policy, f.queue);
+    assert.deepEqual(submit.calls, ['quiet']);
     const event = f.queue.snapshot(0, 25).events.at(-1)!;
-    assert.equal(event.name, 'dot.modal');
+    assert.equal(event.name, 'discordinator.modal');
     assert.equal(event.sourceEventId, f.event.id);
     assert.throws(() => f.approvals.assert(approval.approvalId, f.event, approvalInput), /Fresh/);
-    await assert.rejects(() => handleControl(submit.interaction as unknown as ModalSubmitInteraction, f.bridge.flows, f.policy, f.queue));
+    await handleControl(submit.interaction, f.bridge.flows, f.policy, f.queue);
+    assert.deepEqual(submit.calls, ['quiet', 'deny']);
 }
 async function checkGateway(file: string): Promise<void> {
     const f = controlFixture(file);
@@ -170,22 +190,23 @@ async function checkGateway(file: string): Promise<void> {
     const sent = f.api.calls[0]!.body as { body: { components: ReturnType<Flows['prepare']>['components'] } };
     const button = fakeButton('button-click', customId(sent.body.components));
     await handleControl(button.interaction, f.bridge.flows, f.policy, f.queue);
-    assert.deepEqual(button.calls, ['defer']);
+    assert.deepEqual(button.calls, ['quiet']);
     const child = f.queue.snapshot(0, 25).events.at(-1)!;
     assert.equal(child.sourceEventId, f.event.id);
     assert.equal(child.actorId, ids.user);
     await f.bridge.respond({ eventId: child.id, idempotencyKey: 'child-response', content: 'Accepted' });
-    assert.deepEqual(button.calls, ['defer', 'edit']);
-    await assert.rejects(() => handleControl(button.interaction, f.bridge.flows, f.policy, f.queue));
-    const denied = fakeButton('denied', 'dot:never-inspected');
+    assert.deepEqual(button.calls, ['quiet', 'final']);
+    await handleControl(button.interaction, f.bridge.flows, f.policy, f.queue);
+    assert.deepEqual(button.calls, ['quiet', 'final', 'deny']);
+    const denied = fakeButton('denied', 'discordinator:never-inspected');
     Object.defineProperty(denied.interaction, 'customId', {
         get: () => {
             throw new Error('Must reject before reading control');
         },
     });
     Object.assign(denied.interaction, { user: { id: ids.denied } });
-    await assert.rejects(() => handleControl(denied.interaction, f.bridge.flows, f.policy, f.queue), /whitelisted/);
-    assert.equal(denied.calls.length, 0);
+    await handleControl(denied.interaction, f.bridge.flows, f.policy, f.queue);
+    assert.deepEqual(denied.calls, ['deny']);
 }
 
 async function checkRoleAndReaction(file: string): Promise<void> {
@@ -219,9 +240,43 @@ async function checkRoleAndReaction(file: string): Promise<void> {
 }
 
 export async function checkControls(directory: string): Promise<void> {
+    checkMultiSelect(`${directory}/multi-select.json`);
     checkButtons(`${directory}/buttons.json`);
     checkSelectAndModal(`${directory}/select-modal.json`);
     await checkGateway(`${directory}/controls-gateway.json`);
     await checkRoleAndReaction(`${directory}/roles-reactions.json`);
     await checkModalGateway(`${directory}/modal-gateway.json`);
+}
+function checkMultiSelect(file: string): void {
+    const f = controlFixture(file);
+    const flow = f.bridge.flows.prepare(
+        f.event.id,
+        promptSchema.parse({
+            mode: 'select',
+            content: 'Choose several',
+            maxValues: 2,
+            options: [
+                { key: 'a', label: 'A' },
+                { key: 'b', label: 'B' },
+                { key: 'c', label: 'C' },
+            ],
+        }),
+    );
+    f.bridge.flows.bind(flow.id, ids.message);
+    const input = {
+        customId: customId(flow.components),
+        actorId: ids.user,
+        applicationId: ids.bot,
+        channelId: ids.channel,
+        guildId: ids.guild,
+        messageId: ids.message,
+        messageAuthorId: ids.bot,
+        modal: false,
+        componentType: 3,
+    };
+    assert.throws(() => f.bridge.flows.accept({ ...input, values: ['a', 'b', 'c'] }));
+    assert.throws(() => f.bridge.flows.accept({ ...input, values: ['a', 'a'] }));
+    assert.throws(() => f.bridge.flows.accept({ ...input, values: ['a', 'b'], actorId: ids.denied }));
+    assert.deepEqual(JSON.parse(f.bridge.flows.accept({ ...input, values: ['a', 'b'] }).text!), { choices: ['a', 'b'] });
+    assert.throws(() => f.bridge.flows.accept({ ...input, values: ['a'] }));
 }

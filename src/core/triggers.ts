@@ -5,12 +5,10 @@ function escaped(value: string): string {
 }
 
 export class Triggers {
-    private readonly names: RegExp[];
+    constructor(readonly policy: Policy) {}
 
-    constructor(readonly policy: Policy) {
-        this.names = policy.config.triggers.names.map(
-            (name) => new RegExp(`(?<![\\p{L}\\p{N}_])${escaped(name)}(?![\\p{L}\\p{N}_])`, 'iu'),
-        );
+    private get names(): RegExp[] {
+        return this.policy.config.triggers.names.map((name) => new RegExp(`(?<![\\p{L}\\p{N}_])${escaped(name)}(?![\\p{L}\\p{N}_])`, 'iu'));
     }
 
     accepts(actorId: string, content: string, botId: string): boolean {

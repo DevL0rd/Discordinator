@@ -1,4 +1,12 @@
-import type { PolicyConfig, Scope } from './config.js';
+import type { PolicyConfig, Scope, ScopeList } from './config.js';
+
+export const admit = (list: ScopeList, id: string): ScopeList => ({
+    mode: list.mode,
+    allowed: list.mode === 'allowlist' ? [...new Set([...list.allowed, id])] : list.allowed,
+    blocked: list.blocked.filter((item) => item !== id),
+});
+const inScope = (list: ScopeList, id: string): boolean =>
+    !list.blocked.includes(id) && (list.mode === 'blocklist' || list.allowed.includes(id));
 
 export interface Origin {
     actorId: string;
@@ -8,23 +16,48 @@ export interface Origin {
 }
 
 export class Policy {
-    constructor(readonly config: PolicyConfig) {}
+    private readonly memberRoles = new Map<string, Map<string, Set<string>>>();
+
+    constructor(public config: PolicyConfig) {}
+
+    update(next: PolicyConfig): void {
+        this.config = next;
+    }
+
+    noteRoles(userId: string, guildId: string, roleIds: Iterable<string>): void {
+        const guilds = this.memberRoles.get(userId) ?? new Map<string, Set<string>>();
+        guilds.set(guildId, new Set(roleIds));
+        this.memberRoles.set(userId, guilds);
+    }
+
+    userAllowed(userId: string): boolean {
+        if (this.config.allowedUserIds.includes(userId)) return true;
+        const guilds = [...(this.memberRoles.get(userId)?.values() ?? [])];
+        return this.config.allowedRoleIds.some((role) => guilds.some((roles) => roles.has(role)));
+    }
 
     assertUser(userId: string): void {
-        if (!this.config.allowedUserIds.includes(userId)) throw new Error('Discord user is not whitelisted');
+        if (!this.userAllowed(userId)) throw new Error('Discord user is not whitelisted');
     }
 
     assertScope(scope: Scope): void {
         if (!this.config.scopes.includes(scope)) throw new Error('Capability is not approved');
     }
 
+    guildAllowed(guildId: string): boolean {
+        return inScope(this.config.servers, guildId);
+    }
+
+    channelAllowed(channelId: string): boolean {
+        return inScope(this.config.channels, channelId);
+    }
+
     assertGuild(guildId: string): void {
-        if (this.config.guildScope !== 'all' && !this.config.guildIds.includes(guildId)) throw new Error('Guild is not approved');
+        if (!this.guildAllowed(guildId)) throw new Error('Guild is not approved');
     }
 
     assertChannel(channelId: string): void {
-        if (this.config.channelScope !== 'all' && !this.config.channelIds.includes(channelId))
-            throw new Error('Channel or thread is not approved');
+        if (!this.channelAllowed(channelId)) throw new Error('Channel or thread is not approved');
     }
 
     assertOrigin(origin: Origin): void {

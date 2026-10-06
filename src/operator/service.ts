@@ -1,0 +1,239 @@
+import { channelHistory, type History } from './history.js';
+import { ContextMeter } from './context-meter.js';
+import type { Bridge } from '../core/bridge.js';
+import type { BotEvent, EventQueue } from '../core/queue.js';
+import { localModes, operatorPath, readOperatorConfig, type OperatorConfig } from './config.js';
+import { ConversationController } from './controller.js';
+import { ControllerStore } from './controller-state.js';
+import { DiscordApprovalDispatcher } from './approval-dispatcher.js';
+import { CodexAdapter } from './codex-adapter.js';
+import { ClaudeAdapter } from './claude-adapter.js';
+import { ProcessingIndicator } from './processing-indicator.js';
+import { watchFile } from './file-watch.js';
+import { SessionRouter } from './session-router.js';
+import { desktopInstalled } from './claude-sessions.js';
+import { codexDaemonSocket, daemonTransport } from './codex-daemon.js';
+import { codexCommand } from './codex-config.js';
+import { localTransport } from './codex-protocol.js';
+import type { ProviderAdapter, ProviderNotice } from './provider-adapter.js';
+import { readFile } from 'node:fs/promises';
+import { randomUUID } from 'node:crypto';
+
+const retryMs = 5000;
+
+export class OperatorService {
+    private stopped = false;
+    private cursor = 0;
+    private mode = 'disabled';
+    private appliedConfigAt: string | null = null;
+    private blockedReason: string | null = null;
+    private controller?: ConversationController;
+    private dispatcher?: DiscordApprovalDispatcher;
+    private indicator?: ProcessingIndicator;
+    private router?: SessionRouter;
+    private applying: Promise<void> = Promise.resolve();
+    private consuming?: Promise<void>;
+    private unwatch?: () => void;
+    private idleWaiters: (() => void)[] = [];
+    private readonly history: History;
+    readonly meter: ContextMeter;
+
+    constructor(
+        readonly queue: EventQueue,
+        readonly bridge: Bridge,
+    ) {
+        this.history = channelHistory(bridge.context, bridge.policy, bridge.api);
+        this.meter = new ContextMeter((eventId, content, idempotencyKey) => this.bridge.respond({ eventId, content, idempotencyKey }));
+    }
+
+    start(): void {
+        if (this.unwatch) return;
+        this.unwatch = watchFile(operatorPath, () => this.schedule());
+        this.cursor = this.queue.snapshot(0, 0).latestCursor;
+        this.schedule();
+        this.consuming = this.consume();
+    }
+    async stop(): Promise<void> {
+        this.stopped = true;
+        this.unwatch?.();
+        this.queue.close();
+        await this.applying;
+        await this.retire();
+        await this.consuming;
+    }
+    responder() {
+        const sessionId = this.router?.conversationId ?? this.controller?.store.snapshot().conversations[0]?.sessionId;
+        return { mode: this.mode, controller: this.controller, router: this.router, sessionId };
+    }
+    status() {
+        return {
+            supportedConfigVersion: 3,
+            mode: this.mode,
+            appliedConfigAt: this.appliedConfigAt,
+            blockedReason: this.blockedReason,
+            controller: this.controller?.status() ?? null,
+            session: this.router?.status() ?? null,
+        };
+    }
+    whenIdle(): Promise<void> {
+        return new Promise((resolve) => {
+            this.idleWaiters.push(resolve);
+            this.releaseIdle();
+        });
+    }
+    private releaseIdle(): void {
+        if (this.working()) return;
+        for (const resolve of this.idleWaiters.splice(0)) resolve();
+    }
+    private working(): boolean {
+        const status = this.controller?.status();
+        if (!status) return false;
+        const active = status.tasks.some((task) => ['queued', 'running', 'approval', 'recovering'].includes(task.state));
+        return active || status.busy + status.approvals + status.queued + status.pendingDelivery > 0;
+    }
+    private async notice(event: ProviderNotice): Promise<void> {
+        const origin = this.originOf(event.sessionId);
+        if (event.type === 'context') return this.meter.record(event.sessionId, event.percent, origin);
+        if (!origin) return;
+        const data = event.path ? await readFile(event.path) : Buffer.from(event.data ?? '', 'base64');
+        if (!data.length || data.length > 8 * 1024 * 1024) return;
+        await this.bridge
+            .deliver(origin, { content: '', files: [{ data, name: 'image.png', contentType: 'image/png' }] }, `image-${randomUUID()}`)
+            .catch(() => undefined);
+    }
+
+    private originOf(sessionId: string): string | undefined {
+        return this.controller?.store.snapshot().conversations.find((item) => item.sessionId === sessionId)?.originEventId;
+    }
+    private schedule(): void {
+        this.applying = this.applying
+            .then(() => this.apply())
+            .catch(() => {
+                this.blockedReason = 'Operator could not apply configuration or connect';
+            });
+    }
+    private async apply(): Promise<void> {
+        if (this.stopped) return;
+        const config = await readOperatorConfig();
+        this.mode = config.enabled ? config.mode : 'disabled';
+        this.blockedReason = localBlock(config);
+        if (!config.enabled || !localModes.includes(config.mode) || this.blockedReason) {
+            await this.retire();
+            this.appliedConfigAt = config.updatedAt;
+            return;
+        }
+        if (!(await this.prepare(config)) || this.stopped || this.controller || this.router) return;
+        await this.build(config);
+    }
+    private async build(config: OperatorConfig): Promise<void> {
+        if (config.mode === 'claude-session') {
+            if (!config.backgroundOnly && (await desktopInstalled())) return this.createRouter(config);
+            return this.createController(config, new ClaudeAdapter(), true);
+        }
+        const socket = config.backgroundOnly ? undefined : await codexDaemonSocket();
+        const cli = await codexCommand();
+        await this.createController(
+            config,
+            new CodexAdapter({ spawnTransport: socket ? () => daemonTransport(socket) : (current) => localTransport(current, cli) }),
+            Boolean(socket),
+        );
+    }
+    private async consume(): Promise<void> {
+        while (!this.stopped) {
+            const page = await this.queue.poll(this.cursor, 25, 60_000);
+            await this.applying;
+            if (!this.controller && !this.router) {
+                this.cursor = page.latestCursor;
+                continue;
+            }
+            for (const event of page.events) {
+                if (!(await this.accept(event))) {
+                    await new Promise((resolve) => setTimeout(resolve, retryMs));
+                    break;
+                }
+                this.cursor = event.cursor;
+            }
+        }
+    }
+    private async accept(event: BotEvent): Promise<boolean> {
+        try {
+            if (this.router) await this.router.route(event);
+            else if (!(await this.dispatcher!.accept(event))) await this.controller!.ingest(event);
+            this.blockedReason = null;
+            return true;
+        } catch (error) {
+            this.blockedReason = error instanceof Error ? error.message : 'A Discord request could not be handed to the assistant yet';
+            return false;
+        }
+    }
+    private async prepare(config: OperatorConfig): Promise<boolean> {
+        const status = this.controller?.status();
+        if (status?.failed) {
+            await this.retire();
+            return true;
+        }
+        if (this.appliedConfigAt === config.updatedAt) return true;
+        if (status && (status.busy || status.tasks.some((item) => ['running', 'approval'].includes(item.state)))) {
+            this.blockedReason = 'Saved provider changes wait for existing work to finish';
+            return false;
+        }
+        await this.retire();
+        return true;
+    }
+    private async retire(): Promise<void> {
+        const controller = this.controller;
+        this.controller = undefined;
+        this.dispatcher = undefined;
+        this.router?.stop();
+        this.router = undefined;
+        this.indicator?.stop();
+        this.indicator = undefined;
+        await controller?.stop();
+    }
+    private async createRouter(config: OperatorConfig): Promise<void> {
+        this.router = new SessionRouter(this.bridge, config.workspace, () => undefined, {
+            ...(config.claudeModel ? { model: config.claudeModel } : {}),
+            ...(config.claudeEffort ? { effort: config.claudeEffort } : {}),
+            activity: config.activityVisibility,
+            history: this.history,
+            context: (sessionId, percent, eventId) => this.meter.record(sessionId, percent, eventId),
+        });
+        await this.router.start();
+        this.appliedConfigAt = config.updatedAt;
+    }
+    private async createController(config: OperatorConfig, adapter: ProviderAdapter, shared: boolean): Promise<void> {
+        const dispatcher = new DiscordApprovalDispatcher(this.bridge, (key, decision, origin) =>
+            this.controller!.resolveApproval(key, decision, origin),
+        );
+        const indicator = new ProcessingIndicator((eventId) => this.bridge.typing(eventId));
+        const controller = new ConversationController(
+            adapter,
+            config,
+            new ControllerStore(`.data/controller-${config.mode}.json`),
+            (eventId, content, idempotencyKey, loose) => this.bridge.respond({ eventId, content, idempotencyKey, status: loose }),
+            (request, origin) => dispatcher.request(request, origin),
+            {
+                activity: config.activityVisibility,
+                workerCapacity: 2,
+                invalidateApproval: (key) => (key ? dispatcher.invalidate(key) : dispatcher.invalidateAll()),
+                processing: (sessionId, eventId, active) => indicator.set(sessionId, eventId, active),
+                changed: () => {
+                    this.schedule();
+                    this.releaseIdle();
+                },
+                ...(shared ? { sharedConversation: 'discordinator' } : {}),
+                history: this.history,
+                notice: (event) => void this.notice(event),
+            },
+        );
+        this.controller = controller;
+        this.dispatcher = dispatcher;
+        this.indicator = indicator;
+        await controller.start();
+        this.appliedConfigAt = config.updatedAt;
+    }
+}
+function localBlock(config: OperatorConfig): string | null {
+    if (!config.enabled || !localModes.includes(config.mode)) return null;
+    return config.exclusiveLocal ? null : 'Exclusive local ownership is not confirmed';
+}

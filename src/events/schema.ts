@@ -1,8 +1,11 @@
 import { z } from 'zod';
 import { snowflake } from '../core/config.js';
 import type { ObservedMessage } from '../core/context.js';
+import type { BotEvent } from '../core/queue.js';
 
 export const eventName = 'discord.message.created';
+export const interactionEventName = 'discord.interaction.created';
+export const eventNames = z.enum([eventName, interactionEventName]);
 export const filtersSchema = z
     .object({
         delivery: z.enum(['addressed', 'all']).default('addressed'),
@@ -12,7 +15,7 @@ export const filtersSchema = z
     })
     .strict();
 export type Filters = z.infer<typeof filtersSchema>;
-const destinationSchema = z.object({ mode: z.literal('webhook'), url: z.string().url().max(2048) }).strict();
+const destinationSchema = z.object({ mode: z.literal('webhook'), url: z.url().max(2048) }).strict();
 export const secretSchema = z
     .string()
     .max(100)
@@ -21,7 +24,7 @@ export const secretSchema = z
         const bytes = Buffer.from(value.slice(6), 'base64');
         return bytes.length >= 24 && bytes.length <= 64 && bytes.toString('base64') === value.slice(6);
     }, 'Expected whsec_ followed by canonical base64 for 24–64 bytes');
-const identity = { name: z.literal(eventName), arguments: filtersSchema, delivery: destinationSchema };
+const identity = { name: eventNames, arguments: filtersSchema, delivery: destinationSchema };
 export const unsubscribeSchema = z.object({ ...identity, _meta: z.record(z.string(), z.unknown()).optional() }).strict();
 export const subscribeSchema = unsubscribeSchema.extend({
     delivery: destinationSchema.extend({ secret: secretSchema }),
@@ -47,11 +50,35 @@ export const payloadSchema = z
     })
     .strict();
 export type Payload = z.infer<typeof payloadSchema>;
+export const interactionPayloadSchema = payloadSchema.omit({ messageId: true, parentId: true, replyToId: true }).extend({
+    text: z.string().max(4000),
+    interactionId: snowflake,
+    interactionName: z.enum(['discordinator', 'discordinator.control', 'discordinator.modal']),
+    sourceEventId: z.uuid().nullable(),
+});
+export type InteractionPayload = z.infer<typeof interactionPayloadSchema>;
+export type EventPayload = Payload | InteractionPayload;
+export function interactionPayload(input: BotEvent, interactionId: string): InteractionPayload {
+    return interactionPayloadSchema.parse({
+        actorId: input.actorId,
+        channelId: input.channelId,
+        guildId: input.guildId,
+        interactionId,
+        interactionName: input.name,
+        sourceEventId: input.sourceEventId ?? null,
+        text: input.text,
+        contentAvailable: true,
+        authorBot: false,
+        timestamp: input.receivedAt,
+        addressed: true,
+        trigger_event_id: input.id,
+    });
+}
 export function payload(input: ObservedMessage, triggerId: string | null): Payload {
     return payloadSchema.parse({ ...input, text: input.text.slice(0, 1000), addressed: triggerId !== null, trigger_event_id: triggerId });
 }
 
-export function matches(filters: Filters, data: Payload): boolean {
+export function matches(filters: Filters, data: EventPayload): boolean {
     if (filters.delivery === 'addressed' && !data.addressed) return false;
     return (
         (!filters.guild_id || filters.guild_id === data.guildId) &&

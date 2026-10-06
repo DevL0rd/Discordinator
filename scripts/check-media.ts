@@ -44,9 +44,9 @@ function mediaFixture(file: string) {
     f.policy.config.media.capture = 'all';
     const api = new MediaApi(f.policy);
     const access = new MediaAccess(f.policy, f.queue, api);
-    const media = new MediaService(access, async (url) => {
+    const media = new MediaService(access, (url) => {
         assert.equal(url.hostname, 'cdn.discordapp.com');
-        return png;
+        return Promise.resolve(png);
     });
     return { ...f, api, access, media };
 }
@@ -121,7 +121,7 @@ async function checkLookup(file: string): Promise<void> {
     assert.equal(first.attachments[0]!.messageId, ids.message);
     assert.ok(first.nextCursor);
     assert.equal('url' in first.attachments[0]!, false);
-    const next = await index.search({ ...input, cursor: first.nextCursor! });
+    const next = await index.search({ ...input, cursor: first.nextCursor });
     assert.equal(next.attachments[0]!.messageId, ids.other);
     await assert.rejects(() => index.search({ ...input, cursor: first.nextCursor!, kind: 'file' }));
     const exact = await index.search(searchSchema.parse({ eventId: f.event.id, messageId: ids.message, attachmentIds: [attachmentId] }));
@@ -150,15 +150,13 @@ async function checkIndexLimits(
     retained.ingest(record, ids.guild, false);
     now += 61 * 60_000;
     assert.equal((await retained.search(input)).attachments.length, 0);
-    f.policy.config.channelScope = 'listed';
-    f.policy.config.channelIds = [ids.channel];
+    f.policy.config.channels = { mode: 'allowlist', allowed: [ids.channel], blocked: [] };
     await assert.rejects(() => f.media.index.search({ ...input, channelId: ids.other }));
-    f.policy.config.channelScope = 'all';
+    f.policy.config.channels = { mode: 'blocklist', allowed: [], blocked: [] };
     f.media.index.ingest({ ...record, channel_id: ids.other, id: attachmentId }, ids.guild, false);
     assert.equal((await f.media.index.search({ ...input, channelId: ids.other })).attachments.length, 1);
     assert.equal((await f.media.index.search({ ...input, channelId: undefined, limit: 25 })).attachments.length, 2);
-    f.policy.config.channelScope = 'listed';
-    f.policy.config.channelIds = [ids.channel];
+    f.policy.config.channels = { mode: 'allowlist', allowed: [ids.channel], blocked: [] };
     assert.equal((await f.media.index.search({ ...input, limit: 25 })).attachments.length, 1);
 }
 
@@ -215,7 +213,7 @@ async function checkFormats(): Promise<void> {
 async function checkSourceReply(file: string): Promise<void> {
     const f = mediaFixture(file);
     const record = { ...message(), id: ids.other };
-    f.bridge.api.get = async () => record;
+    f.bridge.api.get = () => Promise.resolve(record);
     f.bridge.media.index.ingest(record, ids.guild, false);
     const found = await f.bridge.media.index.search(searchSchema.parse({ eventId: f.event.id }));
     const sourceId = found.attachments[0]!.sourceId;
@@ -233,9 +231,9 @@ async function checkSourceReply(file: string): Promise<void> {
     record.author.id = ids.user;
     await assert.rejects(() => f.bridge.mediaReply({ ...input, idempotencyKey: 'source-changed-reply' }));
     assert.equal((f.bridge.api as FakeApi).calls.length, 1);
-    const media = new MediaService(f.access, async () => {
+    const media = new MediaService(f.access, () => {
         f.policy.config.allowedUserIds = [];
-        return png;
+        return Promise.resolve(png);
     });
     const query = searchSchema.parse({ eventId: f.event.id });
     const history = await media.history({ ...query, pageSize: 25 });
@@ -265,7 +263,7 @@ async function checkDownload(): Promise<void> {
     ]) {
         assert.throws(() => attachmentUrl(value, ids.channel, attachmentId));
     }
-    await assert.rejects(() => downloader(async () => [{ address: '127.0.0.1', family: 4 }])(new URL(safe), png.length));
+    await assert.rejects(() => downloader(() => Promise.resolve([{ address: '127.0.0.1', family: 4 }]))(new URL(safe), png.length));
     assert.ok((await streamResponse(200, png, png.length)).equals(png));
     await assert.rejects(() => streamResponse(302, png, png.length));
     await assert.rejects(() => streamResponse(200, png, png.length - 1));

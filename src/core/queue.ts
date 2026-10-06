@@ -11,6 +11,7 @@ export interface Delivery {
     content: string;
     files?: { data: Buffer; name: string; contentType: string }[];
     components?: import('discord.js').APIActionRowComponent<import('discord.js').APIComponentInMessageActionRow>[];
+    embeds?: import('discord.js').APIEmbed[];
 }
 export interface BotEvent extends EventInput {
     id: string;
@@ -23,8 +24,16 @@ export interface EventContext {
     respond?: (text: string) => Promise<unknown>;
     deliver?: (payload: Delivery) => Promise<unknown>;
 }
+export interface AccessContext {
+    event: BotEvent | (Origin & { kind: 'owner'; id: string });
+    expiresAt: number;
+    respond?: EventContext['respond'];
+    deliver?: EventContext['deliver'];
+}
 
 export class EventQueue {
+    ownerContext?: (id: string) => AccessContext | undefined;
+    durableContext?: (id: string) => BotEvent | undefined;
     readonly epoch = randomUUID();
     private items: EventContext[] = [];
     private seen = new Map<string, number>();
@@ -70,7 +79,8 @@ export class EventQueue {
 
     context(id: string): EventContext {
         this.prune();
-        const item = this.items.find((item) => item.event.id === id);
+        const durable = this.durableContext?.(id);
+        const item = durable ? { event: durable, expiresAt: Number.POSITIVE_INFINITY } : this.items.find((item) => item.event.id === id);
         if (!item) throw new Error('Event expired, dropped, or unknown');
         if (item.event.sourceEventId) {
             const parent = this.context(item.event.sourceEventId).event;
@@ -78,6 +88,9 @@ export class EventQueue {
                 throw new Error('Correlated event source mismatch');
         }
         return item;
+    }
+    authorize(id: string): AccessContext {
+        return this.ownerContext?.(id) ?? this.context(id);
     }
 
     snapshot(after: number, limit: number) {

@@ -9,6 +9,7 @@ import { SubscriptionStore } from '../src/events/store.js';
 import { HttpServer } from '../src/mcp/http.js';
 import { fakeConfig, fixture } from './fixtures.js';
 import { operations } from '../src/discord/catalog.js';
+import { serverInstructions } from '../src/mcp/tools.js';
 
 async function denialChecks(url: string, token: string): Promise<void> {
     assert.equal((await fetch(url, { method: 'POST', body: '{}' })).status, 401);
@@ -29,10 +30,21 @@ async function denialChecks(url: string, token: string): Promise<void> {
         headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
         body: ' '.repeat(512_001),
     });
-    assert.equal(oversized.status, 400);
+    assert.equal(oversized.status, 413);
+    const malformed = await fetch(url, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json', Accept: 'application/json, text/event-stream' },
+        body: '{',
+    });
+    assert.equal(malformed.status, 400);
+    assert.equal(((await malformed.json()) as { error: { code: number } }).error.code, -32700);
 }
 
 export async function checkHttp(directory: string): Promise<void> {
+    assert.match(serverInstructions, /Requests received from Discord must be answered in their originating Discord/);
+    assert.match(serverInstructions, /follow-up conversation must remain there/);
+    assert.match(serverInstructions, /acknowledge the requester promptly/);
+    assert.match(serverInstructions, /concise progress updates through completion or a clear blocker/);
     const f = fixture(`${directory}/http.json`);
     const config = fakeConfig();
     f.policy.config.scopes.push('messages.read');
@@ -41,128 +53,179 @@ export async function checkHttp(directory: string): Promise<void> {
         new SubscriptionStore(`${directory}/http-subscriptions.json`),
         f.policy,
         new Authenticator(config).ownerAllowed,
-        async (_url, body) => ({ status: 200, body: JSON.stringify({ challenge: JSON.parse(body).challenge }) }),
+        (_url, body) =>
+            Promise.resolve({ status: 200, body: JSON.stringify({ challenge: (JSON.parse(body) as { challenge?: string }).challenge }) }),
     );
     const http = new HttpServer(config, f.bridge, () => ({ gateway: 'mock' }), service);
     await new Promise<void>((resolve) => http.server.listen(0, '127.0.0.1', resolve));
-    config.DOTBOT_PORT = (http.server.address() as AddressInfo).port;
-    const url = `http://127.0.0.1:${config.DOTBOT_PORT}/mcp`;
+    config.DISCORDINATOR_PORT = (http.server.address() as AddressInfo).port;
+    const url = `http://127.0.0.1:${config.DISCORDINATOR_PORT}/mcp`;
     const client = new Client({ name: 'local-validation', version: '1.0.0' });
+    const modern = new Client({ name: 'modern-validation', version: '1.0.0' }, { versionNegotiation: { mode: 'auto' } });
     try {
-        await denialChecks(url, config.DOTBOT_MCP_TOKEN!);
-        await checkEventMethods(url, config.DOTBOT_MCP_TOKEN!);
+        await denialChecks(url, config.DISCORDINATOR_MCP_TOKEN!);
+        await checkEventMethods(url, config.DISCORDINATOR_MCP_TOKEN!);
         const transport = new StreamableHTTPClientTransport(new URL(url), {
-            requestInit: { headers: { Authorization: `Bearer ${config.DOTBOT_MCP_TOKEN}` } },
+            requestInit: { headers: { Authorization: `Bearer ${config.DISCORDINATOR_MCP_TOKEN}` } },
         });
         await client.connect(transport);
-        const listed = await client.listTools();
-        assert.equal(listed.tools.length, operations.length + 17);
-        for (const name of [
-            'media_search',
-            'media_history',
-            'media_attachment_read',
-            'media_upload_begin',
-            'discord_media_reply',
-            'discord_prompt',
-        ]) {
-            assert.ok(listed.tools.some((tool) => tool.name === name));
-        }
-        const blockedMedia = await client.callTool({
-            name: 'media_search',
-            arguments: { eventId: f.event.id, url: 'https://127.0.0.1/private' },
-        });
-        assert.equal(blockedMedia.isError, true);
-        const blockedPrompt = await client.callTool({
-            name: 'discord_prompt',
-            arguments: {
-                eventId: f.event.id,
-                idempotencyKey: 'blocked-prompt',
-                content: 'Choose',
-                mode: 'buttons',
-                options: [{ key: 'a', label: 'A' }],
-                actorId: 'forged',
-            },
-        });
-        assert.equal(blockedPrompt.isError, true);
-        const polled = await client.callTool({ name: 'events_poll', arguments: { after: 0, waitMs: 0 } });
-        assert.equal(polled.isError, undefined);
-        const page = JSON.parse((polled.content as { text: string }[])[0]!.text);
-        assert.equal(page.events.length, 1);
-        const denied = await client.callTool({
-            name: 'discord_respond',
-            arguments: { eventId: f.event.id, content: 'hello', idempotencyKey: 'http-response-key', actorId: 'spoof' },
-        });
-        assert.equal(denied.isError, true);
-        assert.equal(f.api.calls.length, 0);
-        const sent = await client.callTool({
-            name: 'discord_respond',
-            arguments: { eventId: f.event.id, content: 'hello', idempotencyKey: 'http-response-key' },
-        });
-        assert.equal(sent.isError, undefined);
-        assert.equal(f.api.calls.length, 1);
+        await checkToolDescriptors(client);
+        await checkToolBoundaries(client, f);
+        await checkModern(url, config.DISCORDINATOR_MCP_TOKEN!, modern);
     } finally {
+        await modern.close();
         await client.close();
         await http.stop();
     }
 }
 
-async function checkEventMethods(url: string, token: string): Promise<void> {
-    const call = async (method: string, params = {}) => {
-        const response = await fetch(url, {
-            method: 'POST',
-            headers: {
-                Authorization: `Bearer ${token}`,
-                'Content-Type': 'application/json',
-                Accept: 'application/json, text/event-stream',
-                'MCP-Protocol-Version': '2026-07-28',
-                'Mcp-Method': method,
-            },
-            body: JSON.stringify({
-                jsonrpc: '2.0',
-                id: 1,
-                method,
-                params: {
-                    ...params,
-                    _meta: {
-                        [PROTOCOL_VERSION_META_KEY]: '2026-07-28',
-                        [CLIENT_CAPABILITIES_META_KEY]: {},
-                        [CLIENT_INFO_META_KEY]: { name: 'offline-events-check', version: '1.0.0' },
-                    },
-                },
-            }),
-        });
-        return response.json() as Promise<{
-            result?: {
-                resultType?: string;
-                supportedVersions?: string[];
-                capabilities?: { events?: unknown };
-                events?: { name: string }[];
-                id?: string;
-            };
-            error?: { code: number };
-        }>;
+async function checkToolDescriptors(client: Client): Promise<void> {
+    const listed = await client.listTools();
+    assert.equal(listed.tools.length, operations.length + 24);
+    assert.ok(JSON.stringify(listed).length < 512_000, 'Tool discovery response stays within the response budget');
+    assert.equal(new Set(listed.tools.map((entry) => entry.name)).size, listed.tools.length, 'Tool names are unique');
+    for (const tool of listed.tools) checkDescriptor(tool);
+    for (const name of [
+        'media_search',
+        'media_history',
+        'media_attachment_read',
+        'media_upload_begin',
+        'discord_media_reply',
+        'discord_prompt',
+    ])
+        assert.ok(listed.tools.some((tool) => tool.name === name));
+    const upload = listed.tools.find((tool) => tool.name === 'media_upload_begin');
+    const fileName = (upload?.inputSchema.properties as Record<string, { pattern?: string }> | undefined)?.fileName;
+    assert.equal(fileName?.pattern, undefined, 'Host discovery does not expose Unicode property escapes in file-name patterns');
+}
+function checkDescriptor(tool: Awaited<ReturnType<Client['listTools']>>['tools'][number]): void {
+    assert.ok(tool.title?.trim(), `${tool.name} has a human-readable title`);
+    assert.ok(tool.description?.trim(), `${tool.name} has a description`);
+    assert.equal(tool.inputSchema.type, 'object', `${tool.name} has an object input schema`);
+    assert.equal(typeof tool.annotations?.readOnlyHint, 'boolean', `${tool.name} declares readOnlyHint`);
+    assert.equal(typeof tool.annotations?.destructiveHint, 'boolean', `${tool.name} declares destructiveHint`);
+    assert.equal(typeof tool.annotations?.openWorldHint, 'boolean', `${tool.name} declares openWorldHint`);
+}
+
+async function checkToolBoundaries(client: Client, f: ReturnType<typeof fixture>): Promise<void> {
+    const blockedMedia = await client.callTool({
+        name: 'media_search',
+        arguments: { eventId: f.event.id, url: 'https://127.0.0.1/private' },
+    });
+    assert.equal(blockedMedia.isError, true);
+    const blockedPrompt = await client.callTool({
+        name: 'discord_prompt',
+        arguments: {
+            eventId: f.event.id,
+            idempotencyKey: 'blocked-prompt',
+            content: 'Choose',
+            mode: 'buttons',
+            options: [{ key: 'a', label: 'A' }],
+            actorId: 'forged',
+        },
+    });
+    assert.equal(blockedPrompt.isError, true);
+    const polled = await client.callTool({ name: 'events_poll', arguments: { after: 0, waitMs: 0 } });
+    assert.equal(polled.isError, undefined);
+    const page = JSON.parse((polled.content as { text: string }[])[0]!.text) as { events: unknown[] };
+    assert.equal(page.events.length, 1);
+    const denied = await client.callTool({
+        name: 'discord_respond',
+        arguments: { eventId: f.event.id, content: 'hello', idempotencyKey: 'http-response-key', actorId: 'spoof' },
+    });
+    assert.equal(denied.isError, true);
+    assert.equal(f.api.calls.length, 0);
+    const sent = await client.callTool({
+        name: 'discord_respond',
+        arguments: { eventId: f.event.id, content: 'hello', idempotencyKey: 'http-response-key' },
+    });
+    assert.equal(sent.isError, undefined);
+    assert.equal(f.api.calls.length, 1);
+}
+
+async function checkModern(url: string, token: string, client: Client): Promise<void> {
+    await client.connect(
+        new StreamableHTTPClientTransport(new URL(url), { requestInit: { headers: { Authorization: `Bearer ${token}` } } }),
+    );
+    assert.equal(client.getProtocolEra(), 'modern');
+    assert.equal(client.getNegotiatedProtocolVersion(), '2026-07-28');
+    assert.ok(client.getDiscoverResult()?.capabilities.tools);
+    assert.equal((await client.listTools()).tools.length, operations.length + 24);
+}
+
+interface EventResponse {
+    result?: {
+        resultType?: string;
+        supportedVersions?: string[];
+        capabilities?: { events?: unknown };
+        events?: { name: string; description?: string }[];
+        id?: string;
     };
-    const discovery = await call('server/discover');
+    error?: { code: number };
+}
+async function eventCall(url: string, token: string, method: string, params = {}): Promise<EventResponse> {
+    const response = await fetch(url, {
+        method: 'POST',
+        headers: {
+            Authorization: `Bearer ${token}`,
+            'Content-Type': 'application/json',
+            Accept: 'application/json, text/event-stream',
+            'MCP-Protocol-Version': '2026-07-28',
+            'Mcp-Method': method,
+        },
+        body: JSON.stringify({
+            jsonrpc: '2.0',
+            id: 1,
+            method,
+            params: {
+                ...params,
+                _meta: {
+                    [PROTOCOL_VERSION_META_KEY]: '2026-07-28',
+                    [CLIENT_CAPABILITIES_META_KEY]: {},
+                    [CLIENT_INFO_META_KEY]: { name: 'offline-events-check', version: '1.0.0' },
+                },
+            },
+        }),
+    });
+    return response.json() as Promise<EventResponse>;
+}
+async function checkEventMethods(url: string, token: string): Promise<void> {
+    await checkEventDiscovery(url, token);
+    await checkEventSubscription(url, token);
+}
+async function checkEventDiscovery(url: string, token: string): Promise<void> {
+    const discovery = await eventCall(url, token, 'server/discover');
+    checkDiscoveryResponse(discovery);
+    checkListedResponse(await eventCall(url, token, 'events/list'));
+}
+function checkDiscoveryResponse(discovery: EventResponse): void {
     assert.equal(discovery.result?.resultType, 'complete');
     assert.deepEqual(discovery.result?.supportedVersions, ['2026-07-28']);
     assert.ok(discovery.result?.capabilities?.events);
-    const listed = await call('events/list');
-    assert.equal(listed.result?.events?.[0]?.name, 'discord.message.created');
+}
+function checkListedResponse(listed: EventResponse): void {
+    const event = listed.result?.events?.[0];
+    assert.equal(event?.name, 'discord.message.created');
+    const description = event?.description ?? '';
+    assert.match(description, /Answer Discord-origin requests and ordinary follow-ups/);
+    assert.match(description, /acknowledge promptly and keep the requester informed/);
+}
+async function checkEventSubscription(url: string, token: string): Promise<void> {
     const input = {
         name: 'discord.message.created',
         arguments: { delivery: 'addressed' },
         delivery: { mode: 'webhook', url: 'https://receiver.example/callback', secret: `whsec_${Buffer.alloc(32, 7).toString('base64')}` },
         cursor: null,
     };
-    const subscribed = await call('events/subscribe', input);
+    const subscribed = await eventCall(url, token, 'events/subscribe', input);
     assert.ok(subscribed.result?.id);
-    const stopped = await call('events/unsubscribe', {
+    const stopped = await eventCall(url, token, 'events/unsubscribe', {
         name: input.name,
         arguments: input.arguments,
         delivery: { mode: input.delivery.mode, url: input.delivery.url },
     });
     assert.equal(stopped.error, undefined);
     assert.equal(stopped.result?.resultType, 'complete');
-    const invalid = await call('events/subscribe', { ...input, arguments: { delivery: 'all' } });
+    const invalid = await eventCall(url, token, 'events/subscribe', { ...input, arguments: { delivery: 'all' } });
     assert.ok(invalid.error);
 }

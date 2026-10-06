@@ -1,5 +1,7 @@
 import { readFile } from 'node:fs/promises';
 import { z } from 'zod';
+import { isIP } from 'node:net';
+import { chatgptRedirect, validAppRedirect, oauthDirectory } from '../oauth/registration.js';
 
 export const snowflake = z.string().regex(/^\d{17,20}$/);
 const scope = z.enum([
@@ -31,13 +33,40 @@ const scope = z.enum([
     'interactions.write',
 ]);
 export type Scope = z.infer<typeof scope>;
-export const policySchema = z
+const withoutRetiredKeys = (value: unknown): unknown => {
+    if (!value || typeof value !== 'object' || Array.isArray(value)) return value;
+    const { ttlMinutes: _ttl, maxMessages: _total, contentLimit: _characters, ...rest } = value as Record<string, unknown>;
+    return rest;
+};
+const scopeList = (maxItems: number) =>
+    z
+        .object({
+            mode: z.enum(['allowlist', 'blocklist']),
+            allowed: z.array(snowflake).max(maxItems).default([]),
+            blocked: z.array(snowflake).max(maxItems).default([]),
+        })
+        .strict();
+export type ScopeList = z.infer<ReturnType<typeof scopeList>>;
+function migrateScope(raw: Record<string, unknown>, legacyMode: string, legacyIds: string, target: string): void {
+    if (!(legacyMode in raw) && !(legacyIds in raw)) return;
+    const ids = Array.isArray(raw[legacyIds]) ? raw[legacyIds] : [];
+    raw[target] ??= raw[legacyMode] === 'all' ? { mode: 'blocklist', allowed: ids, blocked: [] } : { mode: 'allowlist', allowed: ids };
+    delete raw[legacyMode];
+    delete raw[legacyIds];
+}
+function migratePolicy(value: unknown): unknown {
+    if (!value || typeof value !== 'object' || Array.isArray(value)) return value;
+    const raw = { ...(value as Record<string, unknown>) };
+    migrateScope(raw, 'guildScope', 'guildIds', 'servers');
+    migrateScope(raw, 'channelScope', 'channelIds', 'channels');
+    return raw;
+}
+const policyObject = z
     .object({
         allowedUserIds: z.array(snowflake).max(100).default([]),
-        guildScope: z.enum(['listed', 'all']).default('listed'),
-        channelScope: z.enum(['listed', 'all']).default('listed'),
-        guildIds: z.array(snowflake).max(100).default([]),
-        channelIds: z.array(snowflake).max(1000).default([]),
+        allowedRoleIds: z.array(snowflake).max(100).default([]),
+        servers: scopeList(100).default({ mode: 'allowlist', allowed: [], blocked: [] }),
+        channels: scopeList(1000).default({ mode: 'allowlist', allowed: [], blocked: [] }),
         scopes: z.array(scope).default([]),
         triggers: z
             .object({
@@ -48,16 +77,18 @@ export const policySchema = z
             .strict()
             .default({ replyToBot: true, matchNames: false, names: [] }),
         context: z
-            .object({
-                enabled: z.boolean().default(false),
-                capture: z.enum(['addressed', 'all']).default('addressed'),
-                maxMessages: z.number().int().min(1).max(2000).default(500),
-                perChannel: z.number().int().min(1).max(100).default(50),
-                ttlMinutes: z.number().int().min(1).max(60).default(30),
-                contentLimit: z.number().int().min(1).max(2000).default(1000),
-                includeBots: z.boolean().default(false),
-            })
-            .strict()
+            .preprocess(
+                withoutRetiredKeys,
+                z
+                    .object({
+                        enabled: z.boolean().default(false),
+                        capture: z.enum(['addressed', 'all']).default('addressed'),
+                        reach: z.enum(['channel', 'server']).default('channel'),
+                        perChannel: z.number().int().min(1).max(100).default(50),
+                        includeBots: z.boolean().default(true),
+                    })
+                    .strict(),
+            )
             .prefault({}),
         mcpEvents: z
             .object({
@@ -94,35 +125,37 @@ export const policySchema = z
             .default([]),
     })
     .strict();
-export type PolicyConfig = z.infer<typeof policySchema>;
+export const policySchema = z.preprocess(migratePolicy, policyObject);
+export type PolicyConfig = z.infer<typeof policyObject>;
 
-const httpsUrl = z
-    .string()
-    .url()
-    .refine((value) => new URL(value).protocol === 'https:');
+const httpsUrl = z.url().refine((value) => new URL(value).protocol === 'https:');
 const optionalUrl = z.preprocess((value) => (value === '' ? undefined : value), httpsUrl.optional());
 const resourceUrl = z.preprocess(
     (value) => (value === '' ? undefined : value),
     z.union([httpsUrl, z.string().regex(/^http:\/\/127\.0\.0\.1:\d+\/mcp$/)]).optional(),
 );
-const envSchema = z.object({
+export const envSchema = z.object({
     DISCORD_BOT_TOKEN: z
         .string()
         .min(1)
         .refine((value) => !value.startsWith('replace-')),
-    DOTBOT_POLICY_FILE: z.string().default('policy.json'),
-    DOTBOT_PORT: z.coerce.number().int().min(1024).max(65535).default(8787),
-    DOTBOT_BIND_HOST: z.literal('127.0.0.1').default('127.0.0.1'),
-    DOTBOT_AUTH_MODE: z.enum(['tunnel', 'bearer', 'oauth']).default('tunnel'),
-    DOTBOT_MCP_TOKEN: z.string().optional(),
-    DOTBOT_RESOURCE_URL: resourceUrl,
-    DOTBOT_OAUTH_ISSUER: optionalUrl,
-    DOTBOT_OAUTH_JWKS_URL: optionalUrl,
-    DOTBOT_OAUTH_SUBJECTS: z.string().default(''),
-    DOTBOT_ALLOWED_HOSTS: z.string().default(''),
-    DOTBOT_ALLOWED_ORIGINS: z.string().default(''),
-    DOTBOT_MESSAGE_CONTENT: z.enum(['true', 'false']).default('true'),
-    DOTBOT_GUILD_MEMBERS: z.enum(['true', 'false']).default('false'),
+    DISCORDINATOR_POLICY_FILE: z.string().default('policy.json'),
+    DISCORDINATOR_PORT: z.coerce.number().int().min(1024).max(65535).default(8787),
+    DISCORDINATOR_BIND_HOST: z.literal('127.0.0.1').default('127.0.0.1'),
+    DISCORDINATOR_AUTH_MODE: z.enum(['bearer', 'oauth']).default('bearer'),
+    DISCORDINATOR_MCP_TOKEN: z.string().optional(),
+    DISCORDINATOR_RESOURCE_URL: resourceUrl,
+    DISCORDINATOR_OAUTH_ISSUER: optionalUrl,
+    DISCORDINATOR_OAUTH_JWKS_URL: optionalUrl,
+    DISCORDINATOR_OAUTH_SUBJECTS: z.string().default(''),
+    DISCORDINATOR_OAUTH_SERVER: z.enum(['external', 'bundled']).default('bundled'),
+    DISCORDINATOR_OAUTH_DATA_DIR: oauthDirectory,
+    DISCORDINATOR_TRUSTED_PROXIES: z.string().default(''),
+    DISCORDINATOR_OAUTH_REDIRECT_URIS: z.string().default(chatgptRedirect),
+    DISCORDINATOR_ALLOWED_HOSTS: z.string().default(''),
+    DISCORDINATOR_ALLOWED_ORIGINS: z.string().default(''),
+    DISCORDINATOR_MESSAGE_CONTENT: z.enum(['true', 'false']).default('true'),
+    DISCORDINATOR_GUILD_MEMBERS: z.enum(['true', 'false']).default('true'),
 });
 export type Config = z.infer<typeof envSchema>;
 
@@ -133,41 +166,69 @@ export function csv(value: string): string[] {
         .filter(Boolean);
 }
 
-function validateAuth(config: Config): void {
-    if (config.DOTBOT_AUTH_MODE === 'tunnel') return validateTunnelConfig(config);
-    if (config.DOTBOT_AUTH_MODE === 'bearer') {
-        const token = config.DOTBOT_MCP_TOKEN ?? '';
+function derivePublicAccess(config: Config): void {
+    const resource = config.DISCORDINATOR_RESOURCE_URL;
+    if (!resource || !httpsUrl.safeParse(resource).success) return;
+    const url = new URL(resource);
+    const add = (list: string, value: string) => [...new Set([...csv(list), value])].join(',');
+    config.DISCORDINATOR_ALLOWED_HOSTS = add(config.DISCORDINATOR_ALLOWED_HOSTS, url.host);
+    config.DISCORDINATOR_ALLOWED_ORIGINS = add(config.DISCORDINATOR_ALLOWED_ORIGINS, url.origin);
+    if (config.DISCORDINATOR_OAUTH_SERVER === 'bundled') config.DISCORDINATOR_OAUTH_ISSUER = url.origin;
+}
+
+export function validateAuth(config: Config): void {
+    derivePublicAccess(config);
+    if (config.DISCORDINATOR_AUTH_MODE === 'bearer') {
+        const token = config.DISCORDINATOR_MCP_TOKEN ?? '';
         if (token.length < 32 || token.startsWith('replace-')) throw new Error('Invalid MCP credential configuration');
         return;
     }
-    const required = [config.DOTBOT_RESOURCE_URL, config.DOTBOT_OAUTH_ISSUER, config.DOTBOT_OAUTH_JWKS_URL];
-    if (required.some((value) => !value) || !csv(config.DOTBOT_OAUTH_SUBJECTS).length) {
+    if (config.DISCORDINATOR_OAUTH_SERVER === 'bundled') return validateBundled(config);
+    const required = [config.DISCORDINATOR_RESOURCE_URL, config.DISCORDINATOR_OAUTH_ISSUER, config.DISCORDINATOR_OAUTH_JWKS_URL];
+    if (required.some((value) => !value) || !csv(config.DISCORDINATOR_OAUTH_SUBJECTS).length) {
         throw new Error('Incomplete OAuth resource configuration');
     }
-    if (!httpsUrl.safeParse(config.DOTBOT_RESOURCE_URL).success) throw new Error('OAuth requires an HTTPS resource URL');
+    if (!httpsUrl.safeParse(config.DISCORDINATOR_RESOURCE_URL).success) throw new Error('OAuth requires an HTTPS resource URL');
 }
 
-export function validateTunnelConfig(config: Config): void {
-    const credentials = [config.DOTBOT_MCP_TOKEN, config.DOTBOT_OAUTH_ISSUER, config.DOTBOT_OAUTH_JWKS_URL, config.DOTBOT_OAUTH_SUBJECTS];
-    if (credentials.some(Boolean))
-        throw new Error('Tunnel mode uses OpenAI tunnel access controls; choose bearer or oauth for MCP credentials');
-    if (config.DOTBOT_BIND_HOST !== '127.0.0.1' || config.DOTBOT_ALLOWED_HOSTS || config.DOTBOT_ALLOWED_ORIGINS) {
-        throw new Error('Tunnel mode requires loopback binding without host or origin overrides');
+function validateBundled(config: Config): void {
+    if (!config.DISCORDINATOR_RESOURCE_URL || !config.DISCORDINATOR_OAUTH_ISSUER)
+        throw new Error('Bundled OAuth requires resource and issuer URLs');
+    const issuer = new URL(config.DISCORDINATOR_OAUTH_ISSUER);
+    const resource = new URL(config.DISCORDINATOR_RESOURCE_URL);
+    if (
+        config.DISCORDINATOR_OAUTH_ISSUER !== issuer.origin ||
+        config.DISCORDINATOR_RESOURCE_URL !== `${issuer.origin}/mcp` ||
+        resource.protocol !== 'https:'
+    ) {
+        throw new Error('Bundled OAuth requires an origin-only issuer and its exact HTTPS /mcp resource');
     }
-    if (config.DOTBOT_RESOURCE_URL && config.DOTBOT_RESOURCE_URL !== `http://127.0.0.1:${config.DOTBOT_PORT}/mcp`) {
-        throw new Error('Tunnel mode requires the derived loopback resource URL');
+    if (!csv(config.DISCORDINATOR_ALLOWED_HOSTS).includes(issuer.host))
+        throw new Error('Bundled OAuth requires the exact issuer Host allowlist entry');
+    const proxies = csv(config.DISCORDINATOR_TRUSTED_PROXIES);
+    if (!proxies.length || proxies.some((proxy) => !isIP(proxy)))
+        throw new Error('Bundled OAuth requires exact trusted proxy IP addresses');
+    config.DISCORDINATOR_OAUTH_REDIRECT_URIS = bundledRedirects(config.DISCORDINATOR_OAUTH_REDIRECT_URIS);
+    config.DISCORDINATOR_OAUTH_JWKS_URL = new URL('/oauth/jwks', issuer).href;
+}
+
+function bundledRedirects(value: string): string {
+    const redirects = csv(value);
+    if (!redirects.length || redirects.length > 4 || redirects.some((redirect) => !validAppRedirect(redirect))) {
+        throw new Error('Bundled OAuth requires exact approved ChatGPT or Claude callback URLs');
     }
+    return redirects.join(',');
 }
 
 export async function loadConfig(env: NodeJS.ProcessEnv): Promise<{ config: Config; policy: PolicyConfig }> {
     const parsed = envSchema.safeParse(env);
     if (!parsed.success) throw new Error('Invalid environment configuration; check docs/configuration.md');
     validateAuth(parsed.data);
-    parsed.data.DOTBOT_RESOURCE_URL ??= `http://127.0.0.1:${parsed.data.DOTBOT_PORT}/mcp`;
-    const policy = policySchema.safeParse(JSON.parse(await readFile(parsed.data.DOTBOT_POLICY_FILE, 'utf8')));
+    parsed.data.DISCORDINATOR_RESOURCE_URL ??= `http://127.0.0.1:${parsed.data.DISCORDINATOR_PORT}/mcp`;
+    const policy = policySchema.safeParse(JSON.parse(await readFile(parsed.data.DISCORDINATOR_POLICY_FILE, 'utf8')));
     if (!policy.success) throw new Error('Invalid policy configuration; check policy.example.json');
-    if (policy.data.triggers.matchNames && parsed.data.DOTBOT_MESSAGE_CONTENT !== 'true') {
-        throw new Error('Name matching requires DOTBOT_MESSAGE_CONTENT=true and the Developer Portal Message Content intent');
+    if (policy.data.triggers.matchNames && parsed.data.DISCORDINATOR_MESSAGE_CONTENT !== 'true') {
+        throw new Error('Name matching requires DISCORDINATOR_MESSAGE_CONTENT=true and the Developer Portal Message Content intent');
     }
     return { config: parsed.data, policy: policy.data };
 }

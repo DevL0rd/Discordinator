@@ -71,8 +71,8 @@ export const guildOperations = [
         guild,
         (a, c) =>
             c.api.post(`/applications/${c.api.botId}/guilds/${a.guildId}/commands`, {
-                name: 'dot',
-                description: 'Ask DotBot through its connected MCP client',
+                name: 'discordinator',
+                description: 'Ask Discordinator through its connected MCP client',
                 type: 1,
                 options: [{ name: 'text', description: 'Your request or approval', type: 3, required: true, max_length: 2000 }],
                 default_member_permissions: '0',

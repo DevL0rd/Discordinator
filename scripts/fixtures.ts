@@ -56,10 +56,10 @@ export function fixture(file: string) {
     const policy = new Policy(
         policySchema.parse({
             allowedUserIds: [ids.user],
-            guildScope: 'all',
-            channelScope: 'all',
+            servers: { mode: 'blocklist' },
+            channels: { mode: 'blocklist' },
             scopes: ['guild.read', 'messages.write', 'moderation.write', 'channels.write'],
-            triggers: { matchNames: true, names: ['DotBot', 'dot', 'dot+'] },
+            triggers: { matchNames: true, names: ['Discordinator', 'dot', 'dot+'] },
         }),
     );
     const queue = new EventQueue();
@@ -73,7 +73,7 @@ export function fixture(file: string) {
         guildId: ids.guild,
         messageId: ids.message,
         kind: 'message',
-        text: 'DotBot help',
+        text: 'Discordinator help',
     })!;
     return { policy, queue, journal, approvals, api, bridge, event };
 }
@@ -81,15 +81,19 @@ export function fixture(file: string) {
 export function fakeConfig(port = 8787): Config {
     return {
         DISCORD_BOT_TOKEN: '',
-        DOTBOT_POLICY_FILE: 'policy.json',
-        DOTBOT_PORT: port,
-        DOTBOT_BIND_HOST: '127.0.0.1',
-        DOTBOT_AUTH_MODE: 'bearer',
-        DOTBOT_MCP_TOKEN: 'local-validation-fixture-never-a-real-credential',
-        DOTBOT_OAUTH_SUBJECTS: '',
-        DOTBOT_ALLOWED_HOSTS: '',
-        DOTBOT_ALLOWED_ORIGINS: '',
-        DOTBOT_MESSAGE_CONTENT: 'true',
-        DOTBOT_GUILD_MEMBERS: 'false',
+        DISCORDINATOR_POLICY_FILE: 'policy.json',
+        DISCORDINATOR_PORT: port,
+        DISCORDINATOR_BIND_HOST: '127.0.0.1',
+        DISCORDINATOR_AUTH_MODE: 'bearer',
+        DISCORDINATOR_MCP_TOKEN: 'local-validation-fixture-never-a-real-credential',
+        DISCORDINATOR_OAUTH_SUBJECTS: '',
+        DISCORDINATOR_OAUTH_SERVER: 'external',
+        DISCORDINATOR_OAUTH_DATA_DIR: '.data/oauth',
+        DISCORDINATOR_TRUSTED_PROXIES: '',
+        DISCORDINATOR_OAUTH_REDIRECT_URIS: 'https://chatgpt.com/connector_platform_oauth_redirect',
+        DISCORDINATOR_ALLOWED_HOSTS: '',
+        DISCORDINATOR_ALLOWED_ORIGINS: '',
+        DISCORDINATOR_MESSAGE_CONTENT: 'true',
+        DISCORDINATOR_GUILD_MEMBERS: 'false',
     };
 }

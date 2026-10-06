@@ -1,7 +1,9 @@
 import { z } from 'zod';
 
 const key = z.string().regex(/^[a-zA-Z0-9_-]{1,32}$/);
-const option = z.object({ key, label: z.string().min(1).max(80) }).strict();
+const option = z
+    .object({ key, label: z.string().min(1).max(80), style: z.enum(['primary', 'secondary', 'success', 'danger']).optional() })
+    .strict();
 const field = z
     .object({
         key,
@@ -17,21 +19,31 @@ export const promptSchema = z
         content: z.string().min(1).max(2000),
         mode: z.enum(['buttons', 'select', 'modal']),
         options: z.array(option).max(25).default([]),
-        title: z.string().min(1).max(45).default('DotBot input'),
+        maxValues: z.number().int().min(1).max(25).optional(),
+        title: z.string().min(1).max(45).default('Discordinator input'),
+        tone: z.enum(['normal', 'warning']).optional(),
         fields: z.array(field).max(5).default([]),
     })
     .strict()
     .superRefine((input, context) => {
-        if (
-            new Set(input.options.map((item) => item.key)).size !== input.options.length ||
-            new Set(input.fields.map((item) => item.key)).size !== input.fields.length
-        ) {
+        if (!uniqueKeys(input.options) || !uniqueKeys(input.fields)) {
             context.addIssue({ code: 'custom', message: 'Keys must be unique' });
         }
+        if (!validSelectionCount(input))
+            context.addIssue({ code: 'custom', message: 'Multiple selections require select mode and enough options' });
         if (input.mode === 'modal') {
             if (!input.fields.length || input.options.length) context.addIssue({ code: 'custom', message: 'Modal requires fields only' });
-        } else if (!input.options.length || input.fields.length || (input.mode === 'buttons' && input.options.length > 5)) {
+        } else if (!validOptions(input)) {
             context.addIssue({ code: 'custom', message: 'Buttons/select require valid options only' });
         }
     });
 export type Prompt = z.infer<typeof promptSchema>;
+function uniqueKeys(items: { key: string }[]): boolean {
+    return new Set(items.map((item) => item.key)).size === items.length;
+}
+function validSelectionCount(input: { maxValues?: number | undefined; mode: string; options: unknown[] }): boolean {
+    return (input.maxValues ?? 1) <= 1 || (input.mode === 'select' && input.maxValues! <= input.options.length);
+}
+function validOptions(input: { options: unknown[]; fields: unknown[]; mode: string }): boolean {
+    return input.options.length > 0 && input.fields.length === 0 && (input.mode !== 'buttons' || input.options.length <= 5);
+}

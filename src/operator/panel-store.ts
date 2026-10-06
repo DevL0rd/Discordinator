@@ -1,0 +1,247 @@
+import { mkdir, readFile, rename, stat, writeFile } from 'node:fs/promises';
+import { disconnectAffected } from './reconnect.js';
+import { ownerReady } from '../oauth/provision.js';
+import { dirname } from 'node:path';
+import { parseEnv } from 'node:util';
+import { policySchema, envSchema, validateAuth } from '../core/config.js';
+import { Policy } from '../core/policy.js';
+import { DiscordApi } from '../discord/api.js';
+import { operatorPath, operatorSchema, readOperatorConfig, writeOperatorConfig, type OperatingMode } from './config.js';
+import { appState, connectApp, type AppId } from './connections.js';
+import { publicDomainBlock } from './connection-domain.js';
+import { validateModel } from './providers.js';
+import { activationBlock, isLocal, liveSetupStatus } from './setup-model.js';
+import { previewChanges, type SettingsSource } from './settings-registry.js';
+import { managedServiceStatus } from './service-status.js';
+import { scalar } from '../core/text.js';
+import { assistantName } from './ui/status.js';
+
+export type Documents = Record<SettingsSource, Record<string, unknown>>;
+export interface PanelSnapshot {
+    documents: Documents;
+    originals: Record<SettingsSource, string>;
+    paths: Record<SettingsSource, string>;
+}
+const read = async (path: string) =>
+    readFile(path, 'utf8').catch((error: NodeJS.ErrnoException) => {
+        if (error.code === 'ENOENT') return '';
+        throw error;
+    });
+export async function readPanel(): Promise<PanelSnapshot> {
+    const paths = {
+        operator: '.data/operator-settings.json',
+        policy: process.env.DISCORDINATOR_POLICY_FILE ?? 'policy.json',
+        environment: '.env',
+    };
+    const originals = {
+        operator: await read(paths.operator),
+        policy: await read(paths.policy),
+        environment: await read(paths.environment),
+    };
+    const environment = { ...process.env, ...parseEnv(originals.environment) };
+    const resolved = Object.fromEntries(
+        Object.entries(envSchema.shape).map(([key, schema]) => {
+            const parsed = schema.safeParse(environment[key]);
+            return [key, parsed.success ? parsed.data : environment[key]];
+        }),
+    );
+    return {
+        paths,
+        originals,
+        documents: {
+            operator: { ...(await readOperatorConfig(originals.operator ? paths.operator : operatorPath)) },
+            policy: { ...policySchema.parse(originals.policy ? JSON.parse(originals.policy) : {}) },
+            environment: resolved,
+        },
+    };
+}
+export function draftChanges(snapshot: PanelSnapshot, drafts: Documents) {
+    return (Object.keys(drafts) as SettingsSource[]).flatMap((source) =>
+        previewChanges(source, snapshot.documents[source], drafts[source]),
+    );
+}
+function changedSources(snapshot: PanelSnapshot, drafts: Documents): SettingsSource[] {
+    return (Object.keys(drafts) as SettingsSource[]).filter(
+        (source) => previewChanges(source, snapshot.documents[source], drafts[source]).length > 0,
+    );
+}
+function envText(original: string, before: Record<string, unknown>, after: Record<string, unknown>): string {
+    let text = original;
+    for (const [key, value] of Object.entries(after)) {
+        if (JSON.stringify(value) === JSON.stringify(before[key])) continue;
+        if (!/^[A-Z][A-Z0-9_]+$/.test(key)) throw new Error('Invalid environment key');
+        const encoded = JSON.stringify(scalar(value));
+        const pattern = new RegExp(`^${key}=.*$`, 'm');
+        text = pattern.test(text) ? text.replace(pattern, `${key}=${encoded}`) : `${text.trimEnd()}\n${key}=${encoded}\n`;
+    }
+    return text;
+}
+async function validateDraft(snapshot: PanelSnapshot, drafts: Documents, source: SettingsSource): Promise<void> {
+    const env = envSchema.parse(drafts.environment);
+    validateAuth(env);
+    const policy = policySchema.parse(drafts.policy);
+    if (policy.triggers.matchNames && env.DISCORDINATOR_MESSAGE_CONTENT !== 'true')
+        throw new Error('Name triggers require Message Content intent.');
+    if (source === 'policy') await validatePeople(snapshot, policy, env.DISCORD_BOT_TOKEN);
+    if (
+        env.DISCORDINATOR_OAUTH_SERVER === 'bundled' &&
+        env.DISCORDINATOR_AUTH_MODE === 'oauth' &&
+        !(await ownerReady(env.DISCORDINATOR_OAUTH_DATA_DIR))
+    )
+        throw new Error('Set a sign-in password first (Apps → Sign-in password); apps on your public domain sign in with it.');
+    if (source !== 'operator') return;
+    await validateOperator(drafts.operator, drafts.environment);
+}
+async function validatePeople(snapshot: PanelSnapshot, policy: ReturnType<typeof policySchema.parse>, token: string): Promise<void> {
+    const previous = snapshot.documents.policy.allowedUserIds as string[];
+    const added = policy.allowedUserIds.filter((id) => !previous.includes(id));
+    const api = new DiscordApi(token, new Policy(policy));
+    for (const id of added) {
+        const user = (await api.get(`/users/${id}`)) as { id?: string; bot?: boolean };
+        if (user.id !== id || user.bot) throw new Error('Added Discord person could not be verified as a human.');
+    }
+}
+async function validateOperator(document: Record<string, unknown>, environment: Record<string, unknown>): Promise<void> {
+    const config = operatorSchema.parse(document);
+    const blocked = publicDomainBlock(config.mode, environment);
+    if (blocked) throw new Error(blocked);
+    if (!isLocal(config.mode)) return;
+    if (!(await stat(config.workspace)).isDirectory()) throw new Error('Workspace must be an existing directory.');
+    await validateModel(config);
+}
+export async function startSaved(snapshot: PanelSnapshot, enabled: boolean): Promise<string> {
+    const selected = operatorSchema.parse(snapshot.documents.operator);
+    const active = await readOperatorConfig();
+    const live = await liveSetupStatus();
+    const handoff = enabled ? externalStart(selected.mode, live) : undefined;
+    if (handoff) return handoff;
+    const work = persistentWorkBlock(live, active.updatedAt);
+    if (work) throw new Error('An assistant is still working. Wait for it to finish before switching.');
+    if (enabled) {
+        await validateOperator(snapshot.documents.operator, snapshot.documents.environment);
+        const blocker = activationBlock(selected, live, true);
+        if (blocker) throw new Error(blocker);
+    }
+    const target = enabled ? selected : active;
+    await writeOperatorConfig({ ...target, enabled, exclusiveLocal: enabled && isLocal(target.mode) });
+    const next = await readOperatorConfig();
+    return (await operatorApplied(next)) ? startedMessage(enabled, target.mode) : 'Request saved. Waiting for Discordinator to respond.';
+}
+function externalStart(mode: string, live: Awaited<ReturnType<typeof liveSetupStatus>>): string | undefined {
+    if (mode === 'chatgpt-poll') return 'Start scheduled checks in ChatGPT. This screen cannot start a ChatGPT task.';
+    if (mode === 'manual-mcp') return 'Connect and start your assistant in its MCP client. No assistant was started here.';
+    if (mode === 'chatgpt-events' && !live?.events.subscriptions)
+        throw new Error('Connect automatic wake-ups in ChatGPT first. No wake-up connection was found.');
+}
+function startedMessage(enabled: boolean, mode: ReturnType<typeof operatorSchema.parse>['mode']): string {
+    if (!enabled) return 'Local assistant paused. Cloud automations are managed in their app.';
+    return isLocal(mode) ? 'Assistant started.' : 'Discordinator wake-up connection selected. Replies are managed in ChatGPT.';
+}
+interface ControllerStatus {
+    busy?: number;
+    approvals?: number;
+    queued?: number;
+    pendingDelivery?: number;
+    tasks?: { state?: string }[];
+}
+export function persistentWorkBlock(live: Awaited<ReturnType<typeof liveSetupStatus>>, expectedRevision: string): string | undefined {
+    if (!live) return;
+    const operator = live.operator as typeof live.operator & { controller?: ControllerStatus | null };
+    const controller = operator.controller;
+    if (controllerOwnsWork(controller))
+        return 'Persistent controller work or recovery owns this conversation. Wait before changing responders.';
+    if (controllerHasDelivery(controller)) return 'Persistent controller delivery is pending. Wait before changing responders.';
+    if (operator.appliedConfigAt && operator.appliedConfigAt !== expectedRevision)
+        return 'A previous operator configuration is still pending application. Refresh before activating a local provider.';
+}
+function controllerOwnsWork(controller?: ControllerStatus | null): boolean {
+    const active = controller?.tasks?.some((task) => ['queued', 'running', 'approval', 'recovering'].includes(task.state ?? ''));
+    return Boolean(controller && ((controller.busy ?? 0) > 0 || (controller.approvals ?? 0) > 0 || active));
+}
+function controllerHasDelivery(controller?: ControllerStatus | null): boolean {
+    return Boolean(controller && ((controller.queued ?? 0) > 0 || (controller.pendingDelivery ?? 0) > 0));
+}
+async function operatorApplied(next: Record<string, unknown>): Promise<boolean> {
+    for (let attempt = 0; attempt < 5; attempt++) {
+        if ((await liveSetupStatus())?.operator.appliedConfigAt === next.updatedAt) return true;
+        await new Promise((resolve) => setTimeout(resolve, 400));
+    }
+    return false;
+}
+const responderApps: Partial<Record<OperatingMode, AppId>> = { 'claude-session': 'claude-code', 'codex-local': 'codex' };
+async function selectResponder(updated: PanelSnapshot): Promise<boolean> {
+    const selected = operatorSchema.parse(updated.documents.operator);
+    const app = responderApps[selected.mode];
+    if (app && !(await appState(app)).connected) await connectApp(app);
+    await writeOperatorConfig({ ...selected, enabled: true, exclusiveLocal: isLocal(selected.mode) });
+    return operatorApplied(await readOperatorConfig());
+}
+async function applyMessage(source: SettingsSource, applied: boolean, mode: string): Promise<string> {
+    if (source === 'operator' && mode === 'chatgpt-events' && !(await liveSetupStatus())?.events.subscriptions)
+        return `Saved, but ChatGPT has no wake-up connection, so nothing will answer yet. In ChatGPT, reconnect Discordinator and turn on automatic wake-ups.`;
+    if (source === 'operator')
+        return applied
+            ? `Saved. ${assistantName(mode)} is now the primary responder.`
+            : `Saved. ${assistantName(mode)} takes over once Discordinator finishes any current work.`;
+    if (source === 'policy') return 'Settings saved and applied.';
+    return (await managedServiceStatus()).active
+        ? 'Settings saved. Discordinator restarts itself to apply them once it is idle.'
+        : 'Settings saved. Start Discordinator from Service to apply them.';
+}
+async function saveSource(snapshot: PanelSnapshot, drafts: Documents, source: SettingsSource): Promise<string> {
+    const path = snapshot.paths[source];
+    if ((await read(path)) !== snapshot.originals[source])
+        throw new Error('Configuration changed elsewhere. Reload; draft has not been saved.');
+    const backup = `.data/setup-backups/${Date.now()}-${source}.json`;
+    await mkdir(dirname(backup), { recursive: true, mode: 0o700 });
+    await writeFile(backup, JSON.stringify({ path, original: snapshot.originals[source] }), { mode: 0o600, flush: true });
+    const next = source === 'operator' ? { ...drafts.operator, updatedAt: new Date().toISOString() } : drafts[source];
+    const text =
+        source === 'environment'
+            ? envText(snapshot.originals.environment, snapshot.documents.environment, next)
+            : JSON.stringify(next, null, 2) + '\n';
+    const temporary = `${path}.${process.pid}.setup.tmp`;
+    await mkdir(dirname(path), { recursive: true, mode: 0o700 });
+    await writeFile(temporary, text, { mode: 0o600, flush: true });
+    if ((await read(path)) !== snapshot.originals[source])
+        throw new Error('Concurrent edit detected. Backup retained; no target overwritten.');
+    await rename(temporary, path);
+    return text;
+}
+async function saveSources(snapshot: PanelSnapshot, drafts: Documents, sources: SettingsSource[]): Promise<void> {
+    for (const source of sources) {
+        await validateDraft(snapshot, drafts, source);
+        if ((await read(snapshot.paths[source])) !== snapshot.originals[source])
+            throw new Error('Configuration changed elsewhere. Reload; nothing has been saved.');
+    }
+    const written = new Map<SettingsSource, string>();
+    try {
+        for (const source of sources) written.set(source, await saveSource(snapshot, drafts, source));
+    } catch (error) {
+        for (const [source, saved] of written) {
+            if ((await read(snapshot.paths[source])) !== saved)
+                throw new Error('Save interrupted by another editor. Private backups are available in .data/setup-backups.', {
+                    cause: error,
+                });
+            const temporary = `${snapshot.paths[source]}.${process.pid}.rollback.tmp`;
+            await writeFile(temporary, snapshot.originals[source], { mode: 0o600, flush: true });
+            await rename(temporary, snapshot.paths[source]);
+        }
+        throw error;
+    }
+}
+export async function applyDraft(
+    snapshot: PanelSnapshot,
+    drafts: Documents,
+    reconnect: typeof disconnectAffected = disconnectAffected,
+): Promise<{ snapshot: PanelSnapshot; message: string }> {
+    const sources = changedSources(snapshot, drafts);
+    if (!sources.length) return { snapshot, message: 'No changes to save.' };
+    const changes = draftChanges(snapshot, drafts);
+    await saveSources(snapshot, drafts, sources);
+    const reconnected = await reconnect(changes);
+    const updated = await readPanel();
+    const source = (['environment', 'operator', 'policy'] as const).find((item) => sources.includes(item))!;
+    const applied = sources.includes('operator') && (await selectResponder(updated));
+    return { snapshot: updated, message: `${await applyMessage(source, applied, String(updated.documents.operator.mode))}${reconnected}` };
+}

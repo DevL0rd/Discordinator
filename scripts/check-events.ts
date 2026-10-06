@@ -26,17 +26,17 @@ function mockReceiver() {
     const deliveries: { body: string; headers: Record<string, string> }[] = [];
     let status = 200;
     let verifications = 0;
-    const sender: CallbackSender = async (_url, body, headers) => {
-        const message = JSON.parse(body);
+    const sender: CallbackSender = (_url, body, headers) => {
+        const message = JSON.parse(body) as { type?: string; challenge?: string; eventId?: string };
         new Webhook(secret).verify(body, headers);
         if (message.type === 'verification') {
             verifications++;
-            return { status: 200, body: JSON.stringify({ challenge: message.challenge }) };
+            return Promise.resolve({ status: 200, body: JSON.stringify({ challenge: message.challenge }) });
         }
         assert.equal(headers['webhook-id'], message.eventId);
         assert.equal(message.type, undefined);
         deliveries.push({ body, headers });
-        return { status, body: '' };
+        return Promise.resolve({ status, body: '' });
     };
     return {
         sender,
@@ -54,7 +54,8 @@ export async function checkEvents(directory: string): Promise<void> {
     f.policy.config.mcpEvents = { enabled: true, allowAllMessages: false };
     const store = new SubscriptionStore(`${directory}/subscriptions.json`);
     let now = Date.now(),
-        ownerAllowed = true;
+        ownerAllowed = true,
+        primary = true;
     const receiver = mockReceiver();
     const service = new EventsService(
         store,
@@ -62,6 +63,7 @@ export async function checkEvents(directory: string): Promise<void> {
         (id) => ownerAllowed && id === owner.id,
         receiver.sender,
         () => now,
+        () => primary,
     );
     const input = request(),
         sub = await service.subscribe(owner, input);
@@ -72,6 +74,10 @@ export async function checkEvents(directory: string): Promise<void> {
     await assert.rejects(() => service.subscribe(owner, request('all')));
     await service.emit(payload(observed({ actorId: ids.denied }), null));
     assert.equal(store.state.jobs.length, 0);
+    primary = false;
+    await service.emit(payload(observed(), f.event.id));
+    assert.equal(store.state.jobs.length, 0, 'wake-ups wait while another responder is primary');
+    primary = true;
     await service.emit(payload(observed(), f.event.id));
     receiver.setStatus(503);
     await service.pump();
@@ -138,33 +144,32 @@ async function checkAllMessages(service: EventsService, store: SubscriptionStore
     const unaddressed = payload(observed({ actorId: ids.denied }), null);
     await service.emit(unaddressed);
     assert.equal(store.state.jobs.length, 1);
-    assert.equal(JSON.parse(store.state.jobs[0]!.body).data.trigger_event_id, null);
+    assert.equal((JSON.parse(store.state.jobs[0]!.body) as { data: { trigger_event_id: string | null } }).data.trigger_event_id, null);
     await assert.rejects(() => f.bridge.respond({ eventId: ids.denied, content: 'bypass', idempotencyKey: 'cannot-bypass' }));
     await service.emit(payload(observed({ channelId: ids.other }), f.event.id));
     assert.equal(store.state.jobs.length, 1);
-    f.policy.config.channelScope = 'listed';
-    f.policy.config.channelIds = [];
+    f.policy.config.channels = { mode: 'allowlist', allowed: [], blocked: [] };
     await service.pump();
     assert.equal(store.state.subscriptions.length, 0);
-    f.policy.config.channelScope = 'all';
+    f.policy.config.channels = { mode: 'blocklist', allowed: [], blocked: [] };
 }
 
 async function checkRotation(directory: string, f: ReturnType<typeof fixture>) {
     let now = Date.now();
     let sent = 0;
-    const sender: CallbackSender = async (_url, body, headers) => {
-        const message = JSON.parse(body);
+    const sender: CallbackSender = (_url, body, headers) => {
+        const message = JSON.parse(body) as { type?: string; challenge?: string; eventId?: string };
         const active = message.type === 'verification' ? (sent === 1 ? replacement : secret) : replacement;
         const signedAt = new Date(Number(headers['webhook-timestamp']) * 1000);
         // The artificial clock advances beyond the library's real-time window; compare exact signatures here.
         assert.ok(headers['webhook-signature']!.split(' ').includes(new Webhook(active).sign(headers['webhook-id']!, signedAt, body)));
         if (message.type === 'verification') {
             sent++;
-            return { status: 200, body: JSON.stringify({ challenge: message.challenge }) };
+            return Promise.resolve({ status: 200, body: JSON.stringify({ challenge: message.challenge }) });
         }
         assert.ok(headers['webhook-signature']!.split(' ').includes(new Webhook(secret).sign(headers['webhook-id']!, signedAt, body)));
         assert.equal(headers['webhook-signature']!.split(' ').length, 2);
-        return { status: 200, body: '' };
+        return Promise.resolve({ status: 200, body: '' });
     };
     const store = new SubscriptionStore(`${directory}/rotation.json`);
     const service = new EventsService(
@@ -193,20 +198,18 @@ async function checkRotation(directory: string, f: ReturnType<typeof fixture>) {
 async function checkVerificationFailures() {
     assert.equal(secretSchema.safeParse('whsec_short').success, false);
     assert.equal(subscribeSchema.safeParse({ ...request(), arguments: { rawRest: true } }).success, false);
-    const verifier = new Verifier(async () => ({ status: 200, body: '{"challenge":"wrong"}' }));
+    const verifier = new Verifier(() => Promise.resolve({ status: 200, body: '{"challenge":"wrong"}' }));
     await assert.rejects(
         () => verifier.verify(owner.id, { id: 'sub_mock', url: request().delivery.url, secret }),
         (error) =>
             error instanceof ProtocolError && error.code === -32015 && (error.data as { reason: string }).reason === 'challenge_failed',
     );
-    const timeout = new Verifier(async () => {
-        throw new CallbackError('timeout');
-    });
+    const timeout = new Verifier(() => Promise.reject(new CallbackError('timeout')));
     await assert.rejects(
         () => timeout.verify(owner.id, { id: 'sub_mock', url: request().delivery.url, secret }),
         (error) => error instanceof ProtocolError && (error.data as { reason: string }).reason === 'timeout',
     );
-    const redirect = new Verifier(async () => ({ status: 302, body: '{}' }));
+    const redirect = new Verifier(() => Promise.resolve({ status: 302, body: '{}' }));
     await assert.rejects(() => redirect.verify(owner.id, { id: 'sub_mock', url: request().delivery.url, secret }));
     const signer = new Webhook(secret);
     const body = '{"data":"fixture"}';
@@ -237,18 +240,21 @@ async function checkSsrf() {
     assert.throws(() => callbackUrl('http://receiver.example'));
     assert.throws(() => callbackUrl('https://user:password@receiver.example'));
     const signal = AbortSignal.timeout(1000);
-    await assert.rejects(() => resolveCallback(request().delivery.url, async () => [{ address: '127.0.0.1', family: 4 }], signal));
+    await assert.rejects(() =>
+        resolveCallback(request().delivery.url, () => Promise.resolve([{ address: '127.0.0.1', family: 4 }]), signal),
+    );
     await assert.rejects(() =>
         resolveCallback(
             request().delivery.url,
-            async () => [
-                { address: '8.8.8.8', family: 4 },
-                { address: '10.0.0.1', family: 4 },
-            ],
+            () =>
+                Promise.resolve([
+                    { address: '8.8.8.8', family: 4 },
+                    { address: '10.0.0.1', family: 4 },
+                ]),
             signal,
         ),
     );
-    const destination = await resolveCallback(request().delivery.url, async () => [{ address: '8.8.8.8', family: 4 }], signal);
+    const destination = await resolveCallback(request().delivery.url, () => Promise.resolve([{ address: '8.8.8.8', family: 4 }]), signal);
     const options = connectionOptions(destination.url, destination.address, {}, signal);
     assert.equal(options.agent, false);
     assert.equal(options.servername, 'receiver.example');
@@ -273,7 +279,7 @@ export async function checkCancellation(directory: string): Promise<void> {
     const sender: CallbackSender = async (_url, body) => {
         entered();
         await gate;
-        return { status: 200, body: JSON.stringify({ challenge: JSON.parse(body).challenge }) };
+        return { status: 200, body: JSON.stringify({ challenge: (JSON.parse(body) as { challenge?: string }).challenge }) };
     };
     const store = new SubscriptionStore(`${directory}/cancel.json`);
     const service = new EventsService(store, f.policy, () => true, sender);

@@ -3,6 +3,8 @@ import type { Message } from 'discord.js';
 import { Gateway } from '../src/discord/gateway.js';
 import { ContextIndex, type ObservedMessage } from '../src/core/context.js';
 import { fixture, fakeConfig, ids } from './fixtures.js';
+import { channelHistory } from '../src/operator/history.js';
+import { observeRaw, type RawMessage } from '../src/discord/observation.js';
 
 export function observed(overrides: Partial<ObservedMessage> = {}): ObservedMessage {
     return {
@@ -26,10 +28,8 @@ export async function checkContext(directory: string): Promise<void> {
     f.policy.config.context = {
         enabled: true,
         capture: 'all',
-        maxMessages: 3,
+        reach: 'channel',
         perChannel: 2,
-        ttlMinutes: 1,
-        contentLimit: 10,
         includeBots: false,
     };
     let now = Date.now();
@@ -38,8 +38,7 @@ export async function checkContext(directory: string): Promise<void> {
     assert.equal(f.queue.snapshot(0, 25).events.length, 1);
     const page = index.query(f.event.id, 'recent', 25);
     assert.equal(page.records[0]?.actorId, ids.denied);
-    assert.equal(page.records[0]?.truncated, true);
-    assert.equal(page.records[0]?.text.length, 10);
+    assert.equal(page.records[0]?.text, observed().text, 'messages are kept in full');
     assert.throws(() => index.query('forged-event', 'recent', 25));
     index.ingest(observed({ messageId: ids.other, channelId: ids.other, text: 'cross' }), false);
     assert.equal(index.query(f.event.id, 'user', 25).records.length, 1);
@@ -49,8 +48,8 @@ export async function checkContext(directory: string): Promise<void> {
     assert.equal(index.query(f.event.id, 'search', 25, 'sample').records.length, 0);
     index.remove(ids.message);
     assert.equal(index.query(f.event.id, 'recent', 25).records.length, 0);
-    now += 61_000;
-    assert.equal(index.query(f.event.id, 'user', 25).records.length, 0);
+    now += 24 * 60 * 60_000;
+    assert.equal(index.query(f.event.id, 'user', 25).records.length, 1, 'messages stay until newer ones displace them');
     checkBounds(index, f);
     await checkReplies(`${directory}/replies.json`);
 }
@@ -83,9 +82,9 @@ async function checkReplies(file: string): Promise<void> {
             guildId: ids.guild,
             webhookId: null,
             reference: { channelId: ids.channel, guildId: ids.guild, messageId: ids.bot },
-            fetchReference: async () => {
+            fetchReference: () => {
                 fetched++;
-                return { id: ids.bot, channelId: targetChannel, guildId: ids.guild, author: { id: targetAuthor } };
+                return Promise.resolve({ id: ids.bot, channelId: targetChannel, guildId: ids.guild, author: { id: targetAuthor } });
             },
         }) as unknown as Message;
     await gateway.message(message(ids.denied, ids.bot, 'denied'));
@@ -96,10 +95,54 @@ async function checkReplies(file: string): Promise<void> {
     await gateway.message(message(ids.user, ids.bot, 'good-reference'));
     assert.equal(f.queue.snapshot(0, 25).events.length, 2);
     const missing = message(ids.user, ids.bot, 'deleted');
-    missing.fetchReference = async () => {
-        throw new Error('missing');
-    };
+    missing.fetchReference = () => Promise.reject(new Error('missing'));
     await gateway.message(missing);
     assert.equal(f.queue.snapshot(0, 25).events.length, 2);
     gateway.stop();
+}
+
+export async function checkHistory(directory: string): Promise<void> {
+    const f = fixture(`${directory}/history.json`);
+    f.policy.config.scopes.push('messages.read');
+    f.policy.config.context = { enabled: true, capture: 'all', reach: 'channel', perChannel: 10, includeBots: false };
+    const raw = (id: string, minute: string, content: string, channel = ids.channel): RawMessage => ({
+        id,
+        channel_id: channel,
+        content,
+        timestamp: `2026-10-07T01:${minute}:00.000Z`,
+        author: { id: ids.denied },
+    });
+    const fetched: string[] = [];
+    f.api.get = (route: string) => {
+        if (route.endsWith('/channels'))
+            return Promise.resolve([
+                { id: ids.channel, name: 'general', type: 0 },
+                { id: ids.other, name: 'random', type: 0 },
+            ]);
+        fetched.push(route);
+        if (route.includes(ids.other)) return Promise.resolve([raw('900000000000000009', '07', 'elsewhere', ids.other)]);
+        return Promise.resolve([
+            raw(ids.message, '10', 'Discordinator help'),
+            raw('900000000000000002', '05', 'second'),
+            raw('900000000000000001', '00', 'first'),
+        ]);
+    };
+    const history = channelHistory(f.bridge.context, f.policy, f.api);
+    const opening = await history(f.event, {});
+    assert.match(
+        opening.text,
+        /^Recent messages[\s\S]*first[\s\S]*second/,
+        'a restart backfills recent channel history from Discord, oldest first',
+    );
+    assert.doesNotMatch(opening.text, /Discordinator help|elsewhere/, 'only this channel, without repeating the delivered message');
+    assert.equal(opening.key, ids.channel);
+    f.bridge.context.ingest(observeRaw(raw('900000000000000003', '20', 'later'), ids.guild, null), false);
+    const update = await history(f.event, { [opening.key]: opening.latest! });
+    assert.match(update.text, /^New messages[\s\S]*later/, 'later deliveries carry only what is new, from anyone in the channel');
+    assert.doesNotMatch(update.text, /first|second/);
+    assert.equal(fetched.length, 1, 'Discord history is fetched once per channel per run');
+    f.policy.config.context.reach = 'server';
+    const server = await history(f.event, {});
+    assert.equal(server.key, `guild:${ids.guild}`);
+    assert.match(server.text, /#general[\s\S]*first[\s\S]*#random[\s\S]*elsewhere/, 'whole-server history is grouped by channel');
 }

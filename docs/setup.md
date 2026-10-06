@@ -1,6 +1,6 @@
 # Setup and permissions
 
-Start with [Connect your dot](getting-started.md). Installation only downloads npm dependencies and builds the server. It does not acquire credentials, configure OAuth, install a Discord application or start a service.
+Start with [Get started](getting-started.md); the setup app (`npm run setup`) handles the files below for you. Installing dependencies alone does not acquire credentials, configure OAuth, install a Discord application or start a service.
 
 ## Runtime files
 
@@ -22,19 +22,19 @@ Copy-Item policy.example.json policy.json
 
 Skip either copy if that local file already exists. Preserve your configured policy and whitelist. No credentials are supplied with the project.
 
-Set a real **bot** credential locally. Never use a user account token. The recommended tunnel mode needs no DotBot MCP credential; OpenAI runtime credentials belong to `tunnel-client`. Advanced bearer/OAuth configuration is in [connection](connection.md). Placeholder bot credentials are rejected.
+Set a real **bot** credential locally. Never use a user account token. Configure your public HTTPS resource and OAuth provider, or an independent credential for a local bearer client, as described in [connection](connection.md). Placeholder bot credentials are rejected.
 
-The process reads configuration once. Stop it, edit local files and restart to change policy. Node’s `--env-file=.env` reads the environment file; existing process environment values take precedence. Always run from the project directory so relative policy and journal paths resolve there.
+Responder and policy settings saved from the setup app are picked up live. When Discordinator runs as the background service, `.env` changes make it restart itself once idle. Node’s `--env-file=.env` reads the environment file; existing process environment values take precedence. Always run from the project directory so relative policy and journal paths resolve there.
 
 ## Policy
 
 See [configuration](configuration.md#policy-defaults) for every policy field and default. Keep the whitelist exact and capability grants deliberate.
 
-To avoid ID enumeration, set both scope modes to `all` in the full policy. This is explicit access to current and future joined resources. The whitelist stays exact and mandatory. Capability scopes stay explicit. Approved event provenance still constrains each mutation. The authenticated `discord_guilds_list` tool can discover guild IDs; `discord_channels_list` can discover channels. Discord permissions can make otherwise approved resources inaccessible.
+To avoid listing IDs, set `servers.mode` and `channels.mode` to `blocklist`. This allows every current and future server and channel the bot can access, except IDs in `blocked`. Blocked IDs always win, and an empty allowlist allows nothing. The whitelist stays exact and mandatory. Capability scopes stay explicit. Approved event provenance still constrains each mutation. The authenticated `discord_guilds_list` tool can discover guild IDs; `discord_channels_list` can discover channels. Discord permissions can make otherwise approved resources inaccessible.
 
-DM origins bypass guild/channel lists because they have no guild, but still require a whitelisted author and an explicit trigger. Guild-only operations do not work on a DM. `discord_dm` targets only the originating author. A configured proactive destination must be a guild channel permitted by both scope modes and have its own grant.
+DM origins bypass server/channel rules because they have no guild, but still require a whitelisted author and an explicit trigger. Guild-only operations do not work on a DM. `discord_dm` targets only the originating author. A configured proactive destination must be a guild channel permitted by both the server and channel rules and have its own grant.
 
-In listed mode, a newly created channel/thread is **not** automatically added to policy. Add its returned ID locally before using it. All-channel mode includes it if Discord permits access.
+In allowlist mode, a newly created channel or thread is **not** automatically added. Add its ID before using it. Blocklist mode includes it if Discord permits access.
 
 ## Gateway intents
 
@@ -45,12 +45,12 @@ For the default Message Content intent and name/alias triggers:
 1. Open the [Developer Portal](https://discord.com/developers/applications) and select your application.
 2. On **Bot**, find **Privileged Gateway Intents**. Turn on **Message Content Intent** and save.
 3. If the portal requires a review/approval, complete it; a local flag cannot grant platform access.
-4. Keep the default `DOTBOT_MESSAGE_CONTENT=true` (no environment entry is needed) and set `triggers.matchNames=true` in `policy.json`; supply the names. The public policy already enables `DotBot`/`dot` aliases.
-5. Restart DotBot. It requests `GatewayIntentBits.MessageContent` during identification.
+4. Keep the default `DISCORDINATOR_MESSAGE_CONTENT=true` (no environment entry is needed) and set `triggers.matchNames=true` in `policy.json`; supply the names. The public policy already enables `Discordinator`/`disco` aliases.
+5. Restart Discordinator after changing intents in the Developer Portal. It requests `GatewayIntentBits.MessageContent` during identification.
 
-Mention-only mode uses `triggers.matchNames=false` and can use `DOTBOT_MESSAGE_CONTENT=false`. The explicit mention must occur in message text; an inherited reply mention is not enough. A reply-to-bot trigger independently fetches and verifies the referenced author/message/channel/guild after whitelist checks; missing/deleted targets fail closed. Even DMs must address the bot through text or a verified reply. Message edits are not triggers. Name matching can match quoted/code text because it is literal text detection. [Discord’s Gateway reference](https://docs.discord.com/developers/events/gateway) explains intent filtering and privileged access.
+Mention-only mode uses `triggers.matchNames=false` and can use `DISCORDINATOR_MESSAGE_CONTENT=false`. The explicit mention must occur in message text; an inherited reply mention is not enough. A reply-to-bot trigger independently fetches and verifies the referenced author/message/channel/guild after whitelist checks; missing/deleted targets fail closed. Even DMs must address the bot through text or a verified reply. Message edits are not triggers. Name matching can match quoted/code text because it is literal text detection. [Discord’s Gateway reference](https://docs.discord.com/developers/events/gateway) explains intent filtering and privileged access.
 
-If member listing is needed, additionally enable **Server Members Intent** on the same portal page and set `DOTBOT_GUILD_MEMBERS=true`; request approval when Discord requires it. Keep **Presence Intent** off. Administrator does not grant privileged intents.
+Also enable **Server Members Intent** on the same portal page: Discordinator sees server members by default (`DISCORDINATOR_GUILD_MEMBERS=true`). Set it to `false` if you leave that intent off; request approval when Discord requires it. Keep **Presence Intent** off. Administrator does not grant privileged intents.
 
 ## Administrator installation guidance
 
@@ -60,9 +60,9 @@ When you separately decide to install the bot, use the application’s **Install
 
 Administrator gives broad Discord permissions and bypasses channel overwrites, but not bot role hierarchy, guild ownership, managed-role restrictions, timeout exemptions, user-install differences, privileged intents, endpoint restrictions, rate limits or platform policy. The bot role must outrank roles/members it is allowed to manage. The bot cannot transfer ownership, use user-only APIs or act as a selfbot. Elevated permissions can also depend on Discord’s server-wide 2FA requirements. [Permission hierarchy](https://docs.discord.com/developers/topics/permissions#permission-hierarchy) remains authoritative.
 
-For a smaller installation, start with View Channel, Send Messages, Read Message History and Send Messages in Threads as needed. Add Pin Messages/Add Reactions/Create Threads for those operations; management/moderation/event/expression capabilities need the corresponding permissions. Administrator does not override DotBot’s whitelist, scopes or approval gate.
+For a smaller installation, start with View Channel, Send Messages, Read Message History and Send Messages in Threads as needed. Add Pin Messages/Add Reactions/Create Threads for those operations; management/moderation/event/expression capabilities need the corresponding permissions. Administrator does not override Discordinator’s whitelist, scopes or approval gate.
 
-`discord_command_register` is an approved, confirmed operation, not startup behavior. It creates/updates this bot’s guild `/dot` command with default member permissions `"0"`, so it is admin-only until you explicitly configure a Discord command permission overwrite for a whitelisted user. Discord command permissions and DotBot’s whitelist are separate checks. See [application command permissions](https://docs.discord.com/developers/interactions/application-commands#permissions).
+`discord_command_register` is an approved, confirmed operation, not startup behavior. It creates/updates this bot’s guild `/discordinator` command with default member permissions `"0"`, so it is admin-only until you explicitly configure a Discord command permission overwrite for a whitelisted user. Discord command permissions and Discordinator’s whitelist are separate checks. See [application command permissions](https://docs.discord.com/developers/interactions/application-commands#permissions).
 
 ## Run, stop and recover
 
@@ -70,9 +70,9 @@ For a smaller installation, start with View Channel, Send Messages, Read Message
 
 A runtime lock prevents a second instance from using the same journal. A crash can leave a stale lock. Confirm the previous process is gone before manually removing **only this project’s** `.data/runtime.lock`. Do not delete the journal to fix a connection problem. Never share one data directory across concurrent instances.
 
-Gateway heartbeat/resume/reconnect and REST bucket/global rate-limit waits come from discord.js. REST network timeouts are 15 seconds; automatic 5xx retries are disabled to avoid blindly replaying mutations. A REST 401 blocks further bridge REST calls until restart. Failures return a sanitized status, not credential-bearing Discord error objects. Invalid intents or login credentials fail startup; no automatic restart service is installed.
+Gateway heartbeat/resume/reconnect and REST bucket/global rate-limit waits come from discord.js. REST network timeouts are 15 seconds; automatic 5xx retries are disabled to avoid blindly replaying mutations. A REST 401 blocks further bridge REST calls until restart. Failures return a sanitized status, not credential-bearing Discord error objects. Invalid intents or login credentials fail startup; the background service is optional and installed only from the setup app's **System** page.
 
-`dotbot_status` reports Gateway readiness/reconnection state, scope modes and counts without credentials or whitelist IDs. For unknown mutation outcomes, follow [journal recovery](architecture.md#idempotency-and-recovery).
+`discordinator_status` reports Gateway readiness/reconnection state, scope modes and counts without credentials or whitelist IDs. For unknown mutation outcomes, follow [journal recovery](architecture.md#idempotency-and-recovery).
 
 Optional context capture and official MCP Events are described in [Events and context](mcp-events.md). Context indexing can observe unlisted guild members without authorizing them. Full guild text capture needs the Message Content intent in both the runtime and Discord portal as name matching. Subscription secrets/outbox data live only in ignored `.data/`; keep those files private and preserve unresolved state during recovery.
 
