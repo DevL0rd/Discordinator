@@ -62,6 +62,7 @@ const claudeModel = (row: ModelInfo): ProviderModel => ({
     name: row.description.split(' · ')[0] || row.displayName,
     efforts: row.supportedEffortLevels ?? [],
 });
+type ClaudeSession = <T>(work: (session: Query) => Promise<T>) => Promise<T>;
 async function withClaude<T>(work: (session: Query) => Promise<T>): Promise<T> {
     const { query } = await import('@anthropic-ai/claude-agent-sdk');
     const session = query({ prompt: noPrompt, options: { cwd: homedir(), pathToClaudeCodeExecutable: await claudeExecutable() } });
@@ -72,9 +73,9 @@ async function withClaude<T>(work: (session: Query) => Promise<T>): Promise<T> {
     }
 }
 
-export async function claudeModels(): Promise<ProviderModels> {
+export async function claudeModels(open: ClaudeSession = withClaude): Promise<ProviderModels> {
     try {
-        const rows = await withClaude((session) => session.supportedModels());
+        const rows = await open((session) => session.supportedModels());
         const preset = rows.find((row) => row.value === 'default');
         return {
             source: 'Model list from your installed Claude Code',
@@ -97,10 +98,8 @@ const claudeWindows: Record<string, string> = {
     seven_day_sonnet: 'Weekly Sonnet limit',
 };
 
-export async function claudeUsage(): Promise<UsageWindow[]> {
-    const report = await withClaude((session) =>
-        session.usage_EXPERIMENTAL_MAY_CHANGE_DO_NOT_RELY_ON_THIS_API_YET({ skipBehaviors: true }),
-    );
+export async function claudeUsage(open: ClaudeSession = withClaude): Promise<UsageWindow[]> {
+    const report = await open((session) => session.usage_EXPERIMENTAL_MAY_CHANGE_DO_NOT_RELY_ON_THIS_API_YET({ skipBehaviors: true }));
     if (!report.rate_limits_available || !report.rate_limits)
         throw new Error('Claude plan limits are not available for this sign-in (API key or cloud provider).');
     const limits = report.rate_limits as Record<string, { utilization: number | null; resets_at: string | null } | undefined>;

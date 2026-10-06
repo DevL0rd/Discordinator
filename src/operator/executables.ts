@@ -7,7 +7,7 @@ export interface Program {
     args: string[];
 }
 
-const extensions = process.platform === 'win32' ? ['.exe', '.cmd'] : [''];
+const extensions = (platform: NodeJS.Platform) => (platform === 'win32' ? ['.exe', '.cmd'] : ['']);
 
 async function forcesCodexHome(path: string): Promise<boolean> {
     const info = await stat(path);
@@ -21,9 +21,13 @@ const runnable = (path: string) =>
         () => false,
     );
 
-async function findExecutable(name: string, skip: (path: string) => Promise<boolean> = () => Promise.resolve(false)): Promise<string> {
+async function findExecutable(
+    name: string,
+    platform: NodeJS.Platform,
+    skip: (path: string) => Promise<boolean> = () => Promise.resolve(false),
+): Promise<string> {
     for (const directory of (process.env.PATH ?? '').split(delimiter).filter(Boolean))
-        for (const extension of extensions) {
+        for (const extension of extensions(platform)) {
             const candidate = join(directory, `${name}${extension}`);
             if ((await runnable(candidate)) && !(await skip(candidate))) return candidate;
         }
@@ -41,8 +45,9 @@ async function program(path: string): Promise<Program> {
     return { command: process.execPath, args: [await shimTarget(path)] };
 }
 
-export const claudeProgram = async (): Promise<Program> => program(await findExecutable('claude'));
-export const codexProgram = async (): Promise<Program> => program(await findExecutable('codex', forcesCodexHome));
+export const claudeProgram = async (platform = process.platform): Promise<Program> => program(await findExecutable('claude', platform));
+export const codexProgram = async (platform = process.platform): Promise<Program> =>
+    program(await findExecutable('codex', platform, forcesCodexHome));
 
 export async function claudeExecutable(): Promise<string> {
     const found = await claudeProgram();
