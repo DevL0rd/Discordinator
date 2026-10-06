@@ -48,6 +48,14 @@ import { checkGatewayLoad } from './check-gateway-load.js';
 import { checkGatewayInteractions } from './check-gateway-interactions.js';
 import { checkGatewayLifecycle } from './check-gateway-lifecycle.js';
 import { checkCoreEdges } from './check-core-edges.js';
+import { checkWebhookHttps } from './check-webhook-https.js';
+import { checkEventsDelivery } from './check-events-delivery.js';
+import { checkEventsRules } from './check-events-rules.js';
+import { checkMcpTools } from './check-mcp-tools.js';
+import { checkMcpLocal } from './check-mcp-local.js';
+import { checkMediaEdges } from './check-media-edges.js';
+import { checkOAuthEdges } from './check-oauth-edges.js';
+import { checkInteractionEdges } from './check-interaction-edges.js';
 import { checkStatusFile } from './check-status-file.js';
 import { checkServiceHost } from './check-service-host.js';
 import { checkSupervisor } from './check-supervisor.js';
@@ -82,12 +90,18 @@ try {
             await checkEvents(directory);
             await checkCancellation(directory);
             await checkEventsPump(directory);
+            await checkEventsDelivery(directory);
+            await checkEventsRules(directory);
+            await checkWebhookHttps();
             await checkMedia(directory);
             await checkMediaLimits(directory);
+            await checkMediaEdges(directory);
             await checkControls(directory);
             await checkOperator();
             await checkReplyOrigins(directory);
             await checkProactive(directory);
+            await checkMcpTools(directory);
+            await checkMcpLocal(directory);
             await checkPeople(directory);
             await checkEnvironmentRestart(directory);
             await checkPanel();
@@ -124,6 +138,7 @@ try {
             await checkClaudeAdapter();
             await checkClaudeController(directory);
             await checkInteractionEvents(directory);
+            await checkInteractionEdges(directory);
             await checkOwnerContext(directory);
             await checkMessageOperations(directory);
             await checkAdminOperations(directory);
@@ -134,6 +149,7 @@ try {
             await checkGatewayInteractions(directory);
             await checkGatewayLifecycle(directory);
             await checkCoreEdges(directory);
+            await checkOAuthEdges(directory);
             console.log(
                 `Local validation passed: policy/triggers, Gateway mocks, approvals, idempotency, queue and bearer/OAuth MCP (${toolCount()} tools), context, MCP Events, safe media/retrieval and correlated controls. No Discord connection.`,
             );
