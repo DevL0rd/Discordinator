@@ -4,7 +4,7 @@ import type { Bridge } from '../core/bridge.js';
 import type { Principal } from '../events/security.js';
 import { snowflake } from '../core/config.js';
 import { chunkSchema, uploadSchema } from '../media/uploads.js';
-import { guarded, mutation } from './tools.js';
+import { guarded, mutation, notifyUserId } from './tools.js';
 
 const beginSchema = uploadSchema.omit({ eventId: true }).extend({
     channelId: snowflake,
@@ -55,7 +55,7 @@ export function registerProactiveMedia(server: McpServer, bridge: Bridge, princi
         {
             title: 'Send media to approved anytime channel',
             description:
-                'Authenticated owner only. Send up to three sealed safe files to their approved destination. No recent trigger; whitelist-only optional notification. No arbitrary files, paths, URLs, roles or everyone mentions.',
+                'Authenticated owner only. Send up to three sealed safe files to their approved destination. No recent trigger. notifyUserId only permits a ping of that approved person; include their <@USER_ID> mention in content to actually ping them. No arbitrary files, paths, URLs, roles or everyone mentions.',
             inputSchema: z
                 .object({
                     channelId: snowflake,
@@ -63,7 +63,7 @@ export function registerProactiveMedia(server: McpServer, bridge: Bridge, princi
                     uploadIds: z.array(z.uuid()).min(1).max(3),
                     content: z.string().max(2000).default(''),
                     idempotencyKey: mutation.idempotencyKey,
-                    notifyUserId: snowflake.optional(),
+                    notifyUserId,
                 })
                 .strict(),
             annotations,

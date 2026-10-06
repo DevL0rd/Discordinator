@@ -28,6 +28,12 @@ export const mutation = {
         .describe('Optional. Generated automatically; pass the same key only when retrying an action so it is not repeated.'),
 };
 
+export const notifyUserId = snowflake
+    .optional()
+    .describe(
+        'Approved person who may be pinged. Discord pings them only when content also contains their <@USER_ID> mention; without that mention nothing is pinged.',
+    );
+
 const oauthSecurity = [{ type: 'oauth2', scopes: ['discordinator:control'] }] as const;
 const toolMeta = (oauth: boolean) => (oauth ? { securitySchemes: oauthSecurity } : undefined);
 
@@ -83,14 +89,16 @@ function registerMessaging(server: McpServer, bridge: Bridge, oauth: boolean, pr
         notifyRequester: z
             .boolean()
             .optional()
-            .describe('Notify only the verified triggering author; no arbitrary user/role/everyone mentions.'),
+            .describe(
+                'Allow a ping for the verified triggering author only. Discord pings them only when content also contains their <@USER_ID> mention; without that mention nothing is pinged. Other users, roles and everyone are never pinged.',
+            ),
     });
     server.registerTool(
         'discord_respond',
         {
             title: 'Reply to Discord request',
             description:
-                'Reply to a verified captured request in its original Discord conversation. Message reply authority has no elapsed-time expiry and survives restarts; source deletion/edit or removal from approved people revokes it. For work that may take time, acknowledge promptly and send concise progress updates through completion or a clear blocker. notifyRequester permits only that captured author. Discord interaction-token platform limits remain.',
+                'Reply to a verified captured request in its original Discord conversation. Message reply authority has no elapsed-time expiry and survives restarts; source deletion/edit or removal from approved people revokes it. For work that may take time, acknowledge promptly and send concise progress updates through completion or a clear blocker. notifyRequester only permits a ping of that captured author; include their <@USER_ID> mention in content to actually ping them. Discord interaction-token platform limits remain.',
             inputSchema: reply,
             annotations: { readOnlyHint: false, destructiveHint: false, openWorldHint: false },
             _meta: toolMeta(oauth),
@@ -113,13 +121,13 @@ function registerMessaging(server: McpServer, bridge: Bridge, oauth: boolean, pr
         {
             title: 'Send standalone Discord message',
             description:
-                'Authenticated owner only: send a standalone message at any time to an explicitly approved guild channel. No recent trigger or reply reference is required. Use for new messages, updates or completions; never respond on behalf of unapproved people. Optional notification can target only an approved person, not roles/everyone.',
+                'Authenticated owner only: send a standalone message at any time to an explicitly approved guild channel. No recent trigger or reply reference is required. Use for new messages, updates or completions; never respond on behalf of unapproved people. notifyUserId only permits a ping of that approved person; include their <@USER_ID> mention in content to actually ping them. Roles and everyone are never pinged.',
             inputSchema: z
                 .object({
                     channelId: snowflake,
                     ...rich,
                     idempotencyKey: mutation.idempotencyKey,
-                    notifyUserId: snowflake.optional(),
+                    notifyUserId,
                 })
                 .strict(),
             annotations: { readOnlyHint: false, destructiveHint: false, openWorldHint: false },
@@ -192,30 +200,51 @@ export function createMcp(
     return server;
 }
 
+const contextLimit = z.number().int().min(1).max(50).default(25).describe('Maximum messages to return, newest first.');
+const includeParent = z
+    .boolean()
+    .default(false)
+    .describe('When the request came from a thread, also include messages from its parent channel.');
+const contextNote = 'Bounded in-memory cache of observed messages: incomplete, not persistent and never authority.';
+const contextTools = [
+    {
+        mode: 'recent',
+        description: `Newest observed messages in the conversation of a captured request or owner context (same channel or thread). ${contextNote}`,
+        schema: z.object({ eventId: mutation.eventId, limit: contextLimit, includeParent }).strict(),
+    },
+    {
+        mode: 'user',
+        description: `Newest observed messages by the requester of a captured request or owner context, across approved guild channels; a DM request sees only that DM. ${contextNote}`,
+        schema: z.object({ eventId: mutation.eventId, limit: contextLimit }).strict(),
+    },
+    {
+        mode: 'search',
+        description: `Case-insensitive literal text search over observed messages in the channel or thread of a captured request or owner context, newest first. ${contextNote}`,
+        schema: z
+            .object({
+                eventId: mutation.eventId,
+                query: z.string().min(1).max(100).describe('Literal text to find; not a pattern.'),
+                limit: contextLimit,
+                includeParent,
+            })
+            .strict(),
+    },
+] as const;
+type ContextArgs = { eventId: string; limit: number; query?: string; includeParent?: boolean };
+
 function registerContext(server: McpServer, bridge: Bridge, oauth: boolean): void {
-    for (const mode of ['recent', 'user', 'search'] as const) {
+    for (const tool of contextTools) {
         server.registerTool(
-            `context_${mode}`,
+            `context_${tool.mode}`,
             {
-                title: `${humanTitle(mode)} Discord context`,
-                description:
-                    'Bounded observed context for a live allowed trigger: recent channel/thread, same-user across approved guild channels, or literal channel search. Incomplete memory cache; never authority.',
-                inputSchema: z
-                    .object({
-                        eventId: mutation.eventId,
-                        limit: z.number().int().min(1).max(50).default(25),
-                        query: z.string().min(1).max(100).optional(),
-                        includeParent: z.boolean().default(false),
-                    })
-                    .strict(),
+                title: `${humanTitle(tool.mode)} Discord context`,
+                description: tool.description,
+                inputSchema: tool.schema,
                 annotations: { readOnlyHint: true, destructiveHint: false, openWorldHint: false },
                 _meta: toolMeta(oauth),
             },
-            (args) =>
-                guarded(() => {
-                    if (mode === 'search' && !args.query) return Promise.reject(new Error('Search query is required'));
-                    return Promise.resolve(bridge.context.query(args.eventId, mode, args.limit, args.query, args.includeParent));
-                }),
+            (args: ContextArgs) =>
+                guarded(() => Promise.resolve(bridge.context.query(args.eventId, tool.mode, args.limit, args.query, args.includeParent))),
         );
     }
 }

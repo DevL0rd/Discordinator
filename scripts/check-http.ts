@@ -97,6 +97,25 @@ async function checkToolDescriptors(client: Client): Promise<void> {
     const upload = listed.tools.find((tool) => tool.name === 'media_upload_begin');
     const fileName = (upload?.inputSchema.properties as Record<string, { pattern?: string }> | undefined)?.fileName;
     assert.equal(fileName?.pattern, undefined, 'Host discovery does not expose Unicode property escapes in file-name patterns');
+    checkContextDescriptors(listed.tools);
+}
+function checkContextDescriptors(tools: Awaited<ReturnType<Client['listTools']>>['tools']): void {
+    const shape = (name: string) => {
+        const tool = tools.find((entry) => entry.name === name)!;
+        return {
+            description: tool.description,
+            keys: Object.keys(tool.inputSchema.properties ?? {}).sort(),
+            required: tool.inputSchema.required,
+        };
+    };
+    const [recent, user, search] = ['context_recent', 'context_user', 'context_search'].map(shape);
+    assert.deepEqual(recent!.keys, ['eventId', 'includeParent', 'limit']);
+    assert.deepEqual(user!.keys, ['eventId', 'limit'], 'context_user has no ignored parameters');
+    assert.deepEqual(search!.keys, ['eventId', 'includeParent', 'limit', 'query']);
+    assert.ok(search!.required?.includes('query'), 'context_search requires its query');
+    assert.equal(new Set([recent!.description, user!.description, search!.description]).size, 3, 'Each context tool is described');
+    const respond = tools.find((entry) => entry.name === 'discord_respond')!;
+    assert.match(JSON.stringify(respond.inputSchema), /only when content also contains their <@USER_ID> mention/);
 }
 function checkDescriptor(tool: Awaited<ReturnType<Client['listTools']>>['tools'][number]): void {
     assert.ok(tool.title?.trim(), `${tool.name} has a human-readable title`);
