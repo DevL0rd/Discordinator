@@ -51,42 +51,60 @@ export async function checkChannel(directory: string): Promise<void> {
     }
 }
 
-async function bridgeLines(child: ChildProcessWithoutNullStreams, count: number): Promise<Record<string, unknown>[]> {
-    const lines: Record<string, unknown>[] = [];
+function bridgeClient(child: ChildProcessWithoutNullStreams) {
+    const waiting = new Map<number, (message: Record<string, unknown>) => void>();
     let buffer = '';
-    return new Promise((resolve, reject) => {
-        const timer = setTimeout(() => reject(new Error('bridge did not answer')), 15_000);
-        child.stdout.on('data', (chunk: Buffer) => {
-            buffer += chunk.toString();
-            const parts = buffer.split('\n');
-            buffer = parts.pop()!;
-            for (const part of parts) if (part.trim()) lines.push(JSON.parse(part) as Record<string, unknown>);
-            if (lines.length >= count) {
-                clearTimeout(timer);
-                resolve(lines);
-            }
-        });
+    let next = 0;
+    child.stdout.on('data', (chunk: Buffer) => {
+        buffer += chunk.toString();
+        const parts = buffer.split('\n');
+        buffer = parts.pop()!;
+        for (const part of parts.filter((item) => item.trim())) {
+            const message = JSON.parse(part) as Record<string, unknown>;
+            waiting.get(Number(message.id))?.(message);
+        }
     });
+    return (method: string, params: Record<string, unknown> = {}) =>
+        new Promise<Record<string, unknown>>((resolve, reject) => {
+            const id = ++next;
+            const timer = setTimeout(() => reject(new Error('bridge did not answer')), 15_000);
+            waiting.set(id, (message) => {
+                clearTimeout(timer);
+                resolve(message);
+            });
+            child.stdin.write(`${JSON.stringify({ jsonrpc: '2.0', id, method, params })}\n`);
+        });
 }
+
+const listed = (reply: Record<string, unknown>) =>
+    ((reply.result as { tools?: { name: string }[] } | undefined)?.tools ?? []).some((tool) => tool.name === 'discord_respond');
 
 export async function checkBridgeProcess(directory: string): Promise<void> {
     const { config, http } = await localServer(`${directory}/bridge.json`);
     const home = join(directory, 'bridge-home');
     await mkdir(join(home, '.data'), { recursive: true });
     await writeFile(join(home, '.env'), `DISCORDINATOR_PORT=${config.DISCORDINATOR_PORT}\n`);
-    await writeFile(join(home, '.data/local.key'), `${key}\n`);
     const child = spawn(process.execPath, ['--import', 'tsx', 'src/channel/bridge.ts'], {
         env: { ...process.env, DISCORDINATOR_HOME: home, DISCORDINATOR_PORT: String(config.DISCORDINATOR_PORT) },
     });
     try {
-        const replies = bridgeLines(child, 2);
-        child.stdin.write(
-            `${JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'initialize', params: { protocolVersion: '2025-06-18' } })}\n`,
+        const rpc = bridgeClient(child);
+        const init = await rpc('initialize', { protocolVersion: '2025-06-18' });
+        assert.equal(
+            (init.result as { protocolVersion: string }).protocolVersion,
+            '2025-06-18',
+            'The bridge starts before the local key exists',
         );
-        child.stdin.write(`${JSON.stringify({ jsonrpc: '2.0', id: 2, method: 'tools/list' })}\n`);
-        const [init, list] = (await replies).sort((a, b) => Number(a.id) - Number(b.id));
-        assert.equal((init!.result as { protocolVersion: string }).protocolVersion, '2025-06-18');
-        assert.ok(((list!.result as { tools: { name: string }[] }).tools ?? []).some((tool) => tool.name === 'discord_respond'));
+        const missing = (await rpc('tools/list')).error as { code: number } | undefined;
+        assert.equal(missing?.code, -32603, 'A missing local key is reported without stopping the bridge');
+        await writeFile(join(home, '.data/local.key'), `${key}\n`);
+        assert.ok(listed(await rpc('tools/list')), 'The key is read once it exists');
+        const rotated = 'r'.repeat(43);
+        http.attachLocal(rotated);
+        await writeFile(join(home, '.data/local.key'), `${rotated}\n`);
+        assert.ok(listed(await rpc('tools/list')), 'A rotated key is picked up after a 401');
+        const unknown = (await rpc('resources/list')).error as { code: number } | undefined;
+        assert.equal(unknown?.code, -32601, 'Unknown methods are reported as not found');
     } finally {
         child.kill();
         await http.stop();

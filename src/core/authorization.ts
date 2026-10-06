@@ -23,6 +23,8 @@ export class OwnerContexts {
             this.assertOwner();
             this.policy.assertProactive(context.event.channelId);
             this.policy.assertOrigin(context.event);
+            this.contexts.delete(id);
+            this.contexts.set(id, context);
         }
         return context;
     }
@@ -34,12 +36,7 @@ export class OwnerContexts {
         const guildId = typeof channel.guild_id === 'string' ? channel.guild_id : null;
         if (!guildId) throw new Error('Direct context requires an existing approved guild destination');
         this.policy.assertGuild(guildId);
-        if (this.contexts.size >= 1000) throw new Error('Direct authorization context capacity reached');
-        const contextId = randomUUID();
-        this.contexts.set(contextId, {
-            event: { kind: 'owner', id: contextId, actorId: requesterId, channelId, guildId },
-            expiresAt: Infinity,
-        });
+        const contextId = this.remember(channelId, requesterId, guildId);
         return {
             contextId,
             channelId,
@@ -47,6 +44,20 @@ export class OwnerContexts {
             instruction:
                 'Use contextId in the legacy eventId field. This is an owner authorization context, not a Discord event or reply reference.',
         };
+    }
+    private remember(channelId: string, requesterId: string, guildId: string): string {
+        const existing = [...this.contexts.values()].find(
+            (context) =>
+                context.event.channelId === channelId && context.event.actorId === requesterId && context.event.guildId === guildId,
+        );
+        const contextId = existing?.event.id ?? randomUUID();
+        this.contexts.delete(contextId);
+        if (this.contexts.size >= 1000) this.contexts.delete(this.contexts.keys().next().value!);
+        this.contexts.set(
+            contextId,
+            existing ?? { event: { kind: 'owner', id: contextId, actorId: requesterId, channelId, guildId }, expiresAt: Infinity },
+        );
+        return contextId;
     }
     private assertOwner(): void {
         if (!this.owner.getStore()) throw new Error('Authenticated owner required for direct authorization context');
