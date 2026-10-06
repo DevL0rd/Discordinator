@@ -57,8 +57,10 @@ async function wizard(run: (keys: Keys, screen: Screen) => Promise<void>): Promi
     });
     try {
         await run(async (text) => {
+            const before = screen.frame;
             keyboard.write(text);
-            await pause();
+            for (let attempt = 0; attempt < 50 && screen.frame === before; attempt++) await pause();
+            await new Promise((resolve) => setTimeout(resolve, 100));
         }, screen);
     } finally {
         app.unmount();
