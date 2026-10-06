@@ -155,7 +155,7 @@ Administrator cannot make absent tools appear, grant privileged intents or remov
 | `media_search` | `media.read`, `messages.read` | Live trigger; newest local attachment/image matches, user/channel/message/time/ID filters, opaque pagination |
 | `media_history` | `media.read`, `messages.read` | Live trigger; one Discord channel history page or exact message; explicit pagination/truncation references |
 | `media_attachment_read` | `media.read`, `messages.read` | Live trigger/source handle; freshly verified CDN-only bounded chunks; small images also yield MCP image content |
-| `media_upload_begin` | `media.write`, `messages.write` | Live trigger; bounded reservation, filename/MIME/size/SHA-256 |
+| `media_upload_begin` | `media.write`, `messages.write` | Live trigger; bounded reservation, filename/MIME/size, optional SHA-256 |
 | `media_upload_chunk` | `media.write`, `messages.write` | Same event/upload; ordered canonical base64, at most 128 KiB decoded |
 | `media_upload_seal` | `media.write`, `messages.write` | Size/hash/format/dimension verification |
 | `discord_media_reply` | `media.write`, `messages.write`; additionally read scopes for source handles | Live trigger/idempotency; up to three sealed files and three verified source links, origin-only reply |
