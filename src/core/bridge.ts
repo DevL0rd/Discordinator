@@ -17,6 +17,7 @@ import { ContextIndex } from './context.js';
 import type { Approvals } from './approvals.js';
 import type { ReplyOrigins } from './reply-origins.js';
 import { ProactiveUploads } from '../media/proactive.js';
+import { splitMessage } from '../operator/message-split.js';
 import { peopleRevision } from '../operator/people.js';
 
 export type Rich = { content: string; embeds?: import('discord.js').APIEmbed[] };
@@ -139,14 +140,22 @@ export class Bridge {
         return this.replyJournal.execute(input.idempotencyKey, { operation: 'respond', ...input }, async () => {
             const context = await this.replyEvent(input.eventId);
             this.policy.assertResponse(context.event, context.event.channelId);
-            if (input.embeds?.length && context.deliver)
-                return project(await context.deliver({ content: input.content, embeds: input.embeds }));
-            if (context.respond) return project(await context.respond(input.content));
+            if ((input.embeds?.length && context.deliver) || context.respond) return this.interactionReply(context, input);
             return this.send(context.event.channelId, input, input.idempotencyKey, {
                 ...(input.status ? {} : { replyTo: context.event.messageId }),
                 ...(input.notifyRequester ? { notify: context.event.actorId } : {}),
             });
         });
+    }
+
+    private async interactionReply(context: AccessContext, input: MutationInput & Rich): Promise<unknown> {
+        const [head = '', ...rest] = input.content ? splitMessage(input.content) : [''];
+        const reply =
+            input.embeds?.length && context.deliver
+                ? await context.deliver({ content: head, embeds: input.embeds })
+                : await context.respond!(head);
+        if (rest.length) await this.send(context.event.channelId, { content: rest.join('\n') }, `${input.idempotencyKey}:rest`);
+        return project(reply);
     }
 
     async mediaReply(input: MutationInput & { content: string; uploadIds: string[]; sourceIds: string[] }): Promise<unknown> {
@@ -294,16 +303,17 @@ export class Bridge {
         options: { replyTo?: string; notify?: string } = {},
     ): Promise<unknown> {
         if (!message.content && !message.embeds?.length) throw new Error('A message needs text or at least one embed');
-        const nonce = createHash('sha256').update(key).digest('hex').slice(0, 24);
-        const result = (await this.api.post(`/channels/${channelId}/messages`, {
-            content: message.content,
-            ...(message.embeds?.length ? { embeds: message.embeds } : {}),
-            allowed_mentions: options.notify ? { ...mentions, users: [options.notify] } : mentions,
-            nonce,
-            enforce_nonce: true,
-            ...(options.replyTo ? { message_reference: { message_id: options.replyTo, fail_if_not_exists: true } } : {}),
-        })) as { id: string; channel_id: string };
-        return { id: result.id, channel_id: result.channel_id };
+        const text = withMention(message.content, options);
+        const parts = text ? splitMessage(text) : [''];
+        const sent: { id: string; channel_id: string }[] = [];
+        for (const [index, content] of parts.entries())
+            sent.push(
+                (await this.api.post(`/channels/${channelId}/messages`, partBody(content, index, parts.length, message, key, options))) as {
+                    id: string;
+                    channel_id: string;
+                },
+            );
+        return { id: sent[0]!.id, channel_id: sent[0]!.channel_id, ...(sent.length > 1 ? { parts: sent.length } : {}) };
     }
 
     status() {
@@ -328,6 +338,31 @@ export class Bridge {
         const guilds = (await this.api.get('/users/@me/guilds', query)) as { id: string }[];
         return project(guilds.filter((guild) => this.policy.guildAllowed(guild.id)));
     }
+}
+
+function withMention(content: string, options: { replyTo?: string; notify?: string }): string {
+    if (!options.notify || options.replyTo || new RegExp(`<@!?${options.notify}>`).test(content)) return content;
+    return `<@${options.notify}> ${content}`.trim();
+}
+
+function partBody(
+    content: string,
+    index: number,
+    count: number,
+    message: Rich,
+    key: string,
+    options: { replyTo?: string; notify?: string },
+) {
+    const first = index === 0;
+    return {
+        content,
+        ...(index === count - 1 && message.embeds?.length ? { embeds: message.embeds } : {}),
+        allowed_mentions:
+            first && options.notify ? { ...mentions, users: [options.notify], replied_user: Boolean(options.replyTo) } : mentions,
+        nonce: createHash('sha256').update(`${key}:${index}`).digest('hex').slice(0, 24),
+        enforce_nonce: true,
+        ...(first && options.replyTo ? { message_reference: { message_id: options.replyTo, fail_if_not_exists: true } } : {}),
+    };
 }
 
 function matchesReplySource(source: import('../discord/api.js').Json, event: EventContext['event']): boolean {

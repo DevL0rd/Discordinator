@@ -3,7 +3,11 @@ import type { CommandOptions, CommandReply } from '../operator/commands.js';
 import { assistants } from '../operator/ui/status.js';
 import { responderChoices } from '../operator/commands.js';
 
-export type CommandHandler = (name: string, options: CommandOptions) => Promise<CommandReply>;
+export type CommandHandler = (
+    name: string,
+    options: CommandOptions,
+    origin: { guildId: string | null; channelId: string; actorId: string },
+) => Promise<CommandReply>;
 
 const everywhere = { contexts: [0, 1], integration_types: [0] };
 const text = (name: string, description: string, choices?: { name: string; value: string }[]) => ({
@@ -60,7 +64,8 @@ export function replyEmbed(reply: CommandReply): APIEmbed {
 export async function runCommand(interaction: ChatInputCommandInteraction, handler: CommandHandler): Promise<void> {
     await interaction.deferReply({ flags: MessageFlags.Ephemeral });
     const options: CommandOptions = Object.fromEntries(interaction.options.data.map((option) => [option.name, String(option.value ?? '')]));
-    const reply = await handler(interaction.commandName, options).catch((error: unknown): CommandReply => ({
+    const origin = { guildId: interaction.guildId, channelId: interaction.channelId, actorId: interaction.user.id };
+    const reply = await handler(interaction.commandName, options, origin).catch((error: unknown): CommandReply => ({
         title: 'Could not do that',
         tone: 'warn',
         lines: [error instanceof Error ? error.message : 'Something went wrong'],

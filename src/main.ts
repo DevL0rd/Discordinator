@@ -114,7 +114,7 @@ async function createRuntime(
         media: bridge.media,
         flows: bridge.flows,
         replyOrigins,
-        commands: (name, options) => commands.run(name, options),
+        commands: (name, options, origin) => commands.run(name, options, origin),
     });
     const operator = new OperatorService(queue, bridge);
     const commands = new CommandService(operator);

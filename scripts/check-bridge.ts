@@ -106,6 +106,21 @@ function checkQueue(): void {
     assert.throws(() => queue.context(child.id));
 }
 
+async function checkLongReply(file: string): Promise<void> {
+    const f = fixture(file);
+    const paragraph = 'word '.repeat(300).trim();
+    const content = [paragraph, paragraph, paragraph].join('\n\n');
+    await f.bridge.respond({ eventId: f.event.id, content, idempotencyKey: 'long-reply', embeds: [{ title: 'Summary' }] });
+    const bodies = f.api.calls.map(
+        (call) => call.body as { content: string; nonce: string; message_reference?: unknown; embeds?: unknown },
+    );
+    assert.equal(bodies.length, 3, 'long replies are sent as several messages');
+    assert.ok(bodies.every((body) => body.content.length <= 2000));
+    assert.equal(bodies.filter((body) => body.message_reference).length, 1, 'only the first part replies to the request');
+    assert.ok(bodies[2]!.embeds && !bodies[0]!.embeds, 'embeds come after the text');
+    assert.equal(new Set(bodies.map((body) => body.nonce)).size, 3, 'every part has its own nonce');
+}
+
 export async function checkBridge(directory: string): Promise<void> {
     assert.equal(new Set(operations.map((item) => item.name)).size, operations.length);
     for (const operation of operations) {
@@ -116,6 +131,7 @@ export async function checkBridge(directory: string): Promise<void> {
     assert.throws(() => policy.assertUser(ids.user));
     await checkMutations(`${directory}/mutations.json`);
     await checkResponses(`${directory}/responses.json`);
+    await checkLongReply(`${directory}/long-reply.json`);
     await checkJournal(`${directory}/journal.json`);
     checkQueue();
 }

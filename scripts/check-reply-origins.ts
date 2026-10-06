@@ -40,7 +40,7 @@ export async function checkReplyOrigins(directory: string): Promise<void> {
     assert.equal(sent.length, 1);
     assert.deepEqual((sent[0]!.body as { allowed_mentions: unknown }).allowed_mentions, {
         parse: [],
-        replied_user: false,
+        replied_user: true,
         users: [ids.user],
     });
     const restartedJournal = new Journal(journal.file, 16384, () => now + 5 * 24 * 60 * 60_000, week);

@@ -56,7 +56,13 @@ const embedLength = (item: Embed) =>
     (item.fields ?? []).reduce((total, field) => total + field.name.length + field.value.length, 0);
 
 export const rich = {
-    content: z.string().max(2000).default('').describe('Message text. Optional when embeds are given.'),
+    content: z
+        .string()
+        .max(8000)
+        .default('')
+        .describe(
+            'Message text, optional when embeds are given. Text over 2000 characters is sent as several messages split at paragraphs.',
+        ),
     embeds: z
         .array(embed)
         .max(10)
