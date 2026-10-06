@@ -10,6 +10,7 @@ import { checkContext, checkHistory } from './check-context.js';
 import { checkEvents, checkCancellation } from './check-events.js';
 import { checkAuth } from './check-auth.js';
 import { checkMedia } from './check-media.js';
+import { checkMediaLimits } from './check-media-limits.js';
 import { checkControls } from './check-controls.js';
 import { checkConnection } from './check-connection.js';
 import { checkOAuth } from './check-oauth.js';
@@ -55,6 +56,7 @@ try {
             await checkEvents(directory);
             await checkCancellation(directory);
             await checkMedia(directory);
+            await checkMediaLimits(directory);
             await checkControls(directory);
             await checkOperator();
             await checkReplyOrigins(directory);

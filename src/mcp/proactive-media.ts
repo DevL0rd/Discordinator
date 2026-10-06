@@ -6,6 +6,11 @@ import { snowflake } from '../core/config.js';
 import { chunkSchema, uploadSchema } from '../media/uploads.js';
 import { guarded, mutation } from './tools.js';
 
+const beginSchema = uploadSchema.omit({ eventId: true }).extend({
+    channelId: snowflake,
+    scopeId: z.uuid().optional().describe('Optional. scopeId from an earlier begin to add another file to the same send.'),
+});
+
 export function requireOwner(principal?: Principal): void {
     if (!principal) throw new Error('Authenticated owner required for proactive messages/media');
 }
@@ -22,8 +27,8 @@ export function registerProactiveMedia(server: McpServer, bridge: Bridge, princi
         {
             title: 'Begin approved-channel media upload',
             description:
-                'Authenticated owner only. Stage bounded safe media for an approved anytime destination; no trigger required. Returns scopeId, not a triggering event. Buffer expiry only frees upload memory; completion permission does not expire.',
-            inputSchema: uploadSchema.omit({ eventId: true }).extend({ channelId: snowflake }),
+                'Authenticated owner only. Stage bounded safe media for an approved anytime destination; no trigger required. Returns scopeId, not a triggering event. Pass that scopeId to later begins to stage up to three files for one discord_proactive_media_send. Buffer expiry only frees upload memory; completion permission does not expire.',
+            inputSchema: beginSchema,
             annotations,
             _meta: meta,
         },
@@ -72,7 +77,8 @@ function registerSeal(server: McpServer, bridge: Bridge, principal: Principal | 
         'media_proactive_upload_seal',
         {
             title: 'Seal approved-channel media',
-            description: 'Authenticated owner only. Verify declared bytes, SHA-256, MIME/extension and dimensions before sending.',
+            description:
+                'Authenticated owner only. Verify declared bytes, declared SHA-256 if any, MIME/extension and dimensions before sending.',
             inputSchema: z.object({ scopeId: z.uuid(), uploadId: z.uuid() }).strict(),
             annotations: { readOnlyHint: false, destructiveHint: false, openWorldHint: false },
             _meta: oauth ? { securitySchemes: [{ type: 'oauth2', scopes: ['discordinator:control'] }] } : undefined,

@@ -89,4 +89,32 @@ async function checkProactiveMedia(f: ReturnType<typeof fixture>): Promise<void>
     await f.bridge.proactiveMedia(input);
     await f.bridge.proactiveMedia(input);
     assert.equal(f.api.calls.filter((call) => call.method === 'FILES').length, 1);
+    await checkSharedScope(f, upload, png);
+}
+async function checkSharedScope(
+    f: ReturnType<typeof fixture>,
+    upload: Parameters<ReturnType<typeof fixture>['bridge']['proactiveUploads']['begin']>[0],
+    png: Buffer,
+): Promise<void> {
+    const proactive = f.bridge.proactiveUploads;
+    const first = proactive.begin({ ...upload, idempotencyKey: 'shared-scope-first' });
+    const second = proactive.begin({ ...upload, sha256: undefined, scopeId: first.scopeId, idempotencyKey: 'shared-scope-second' });
+    assert.equal(second.scopeId, first.scopeId, 'Later uploads join the given scope');
+    assert.notEqual(second.uploadId, first.uploadId);
+    assert.equal(proactive.begin({ ...upload, idempotencyKey: 'shared-scope-first' }).uploadId, first.uploadId, 'Retries stay idempotent');
+    assert.throws(() => proactive.begin({ ...upload, scopeId: first.scopeId, channelId: ids.other, idempotencyKey: 'moved' }));
+    assert.throws(() => proactive.begin({ ...upload, scopeId: crypto.randomUUID(), idempotencyKey: 'unknown-scope' }), /unavailable/);
+    for (const started of [first, second]) {
+        proactive.uploads.chunk({ eventId: first.scopeId, uploadId: started.uploadId, offset: 0, base64: png.toString('base64') });
+        await proactive.uploads.seal(first.scopeId, started.uploadId);
+    }
+    await f.bridge.proactiveMedia({
+        channelId: ids.channel,
+        scopeId: first.scopeId,
+        uploadIds: [first.uploadId, second.uploadId],
+        content: 'Two images',
+        idempotencyKey: 'proactive-two-files',
+    });
+    const sent = f.api.calls.filter((call) => call.method === 'FILES').at(-1)!.body as { files: unknown[] };
+    assert.equal(sent.files.length, 2, 'One proactive send carries several staged files');
 }

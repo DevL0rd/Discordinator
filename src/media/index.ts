@@ -121,7 +121,7 @@ export class AttachmentIndex {
     expose(eventId: string, entry: Entry) {
         this.prune();
         if (!this.allowed(eventId, entry)) throw new Error('Attachment source is outside current resource grants');
-        if (this.sources.size >= 1000) throw new Error('Attachment handle limit reached');
+        evictOldest(this.sources, 1000);
         const sourceId = randomUUID();
         this.sources.set(sourceId, { eventId, entry, expires: Math.min(this.access.event(eventId).expiresAt, this.now() + 10 * 60_000) });
         const { url: _url, ...attachment } = entry.attachment;
@@ -183,10 +183,17 @@ export class AttachmentIndex {
     }
     private save(eventId: string, fingerprint: string, entries: Entry[]): string | null {
         if (!entries.length) return null;
-        if (this.pages.size >= 16) throw new Error('Media pagination limit reached');
+        evictOldest(this.pages, 16);
         const id = randomUUID();
         this.pages.set(id, { eventId, fingerprint, entries, expires: this.now() + 60_000 });
         return id;
+    }
+}
+
+function evictOldest(map: Map<string, unknown>, capacity: number): void {
+    for (const key of map.keys()) {
+        if (map.size < capacity) return;
+        map.delete(key);
     }
 }
 

@@ -6,6 +6,22 @@ import { historySchema, readSchema } from '../media/service.js';
 import { chunkSchema, uploadSchema } from '../media/uploads.js';
 import { guarded, mutation } from './tools.js';
 
+type Guarded = Awaited<ReturnType<typeof guarded>>;
+type Attachment = Awaited<ReturnType<Bridge['media']['read']>>;
+
+export function attachmentResult(response: Guarded) {
+    if (response.isError) return response;
+    const data = JSON.parse(response.content[0]!.text) as Attachment;
+    if (!data.complete || !data.imageTypeVerified) return response;
+    const { base64, ...described } = data;
+    return {
+        content: [
+            { type: 'text' as const, text: JSON.stringify({ ...described, imageContent: true }) },
+            { type: 'image' as const, data: base64, mimeType: data.mimeType },
+        ],
+    };
+}
+
 export function registerMedia(server: McpServer, bridge: Bridge, oauth: boolean): void {
     const read = { readOnlyHint: true, destructiveHint: false, openWorldHint: false };
     const meta = oauth ? { securitySchemes: [{ type: 'oauth2', scopes: ['discordinator:control'] }] } : undefined;
@@ -38,22 +54,12 @@ export function registerMedia(server: McpServer, bridge: Bridge, oauth: boolean)
         {
             title: 'Read Discord attachment',
             description:
-                'Retrieve up to 128 KiB from a fresh source-bound attachment handle. Fixed Discord CDN only; no input URL/path. Complete small images also yield MCP image content. Larger files need client chunk assembly.',
+                'Retrieve up to 128 KiB from a fresh source-bound attachment handle. Fixed Discord CDN only; no input URL/path. Complete small images are returned as MCP image content instead of base64 text (imageContent: true). Larger files need client chunk assembly.',
             inputSchema: readSchema,
             annotations: read,
             _meta: meta,
         },
-        async (args) => {
-            const response = await guarded(() => bridge.media.read(args));
-            if (response.isError) return response;
-            const data = JSON.parse(response.content[0]!.text) as Awaited<ReturnType<typeof bridge.media.read>>;
-            if (data.complete && data.imageTypeVerified)
-                return {
-                    ...response,
-                    content: [...response.content, { type: 'image' as const, data: data.base64, mimeType: data.mimeType }],
-                };
-            return response;
-        },
+        async (args) => attachmentResult(await guarded(() => bridge.media.read(args))),
     );
     registerUploads(server, bridge, meta);
 }
@@ -65,7 +71,7 @@ function registerUploads(server: McpServer, bridge: Bridge, meta: Record<string,
         {
             title: 'Begin media upload',
             description:
-                'Reserve a bounded in-memory upload bound to a captured request or authenticated owner context. Safe filename/MIME, declared size and SHA-256. No URLs or filesystem paths. Buffer retention does not expire action authorization.',
+                'Reserve a bounded in-memory upload bound to a captured request or authenticated owner context. Safe filename/MIME and declared size; SHA-256 is optional and verified when given. No URLs or filesystem paths. Buffer retention does not expire action authorization.',
             inputSchema: uploadSchema,
             annotations: write,
             _meta: meta,
@@ -88,7 +94,8 @@ function registerUploads(server: McpServer, bridge: Bridge, meta: Record<string,
         'media_upload_seal',
         {
             title: 'Seal media upload',
-            description: 'Verify complete size, SHA-256, format/extension/MIME and image dimensions before a file can be sent.',
+            description:
+                'Verify complete size, declared SHA-256 if any, format/extension/MIME and image dimensions before a file can be sent.',
             inputSchema: z.object({ eventId: mutation.eventId, uploadId: z.uuid() }).strict(),
             annotations: write,
             _meta: meta,
