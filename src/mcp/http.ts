@@ -204,7 +204,8 @@ export class HttpServer {
     async stop(): Promise<void> {
         this.bridge.queue.close();
         this.server.closeAllConnections();
-        await new Promise<void>((resolve, reject) => this.server.close((error) => (error ? reject(error) : resolve())));
+        if (this.server.listening)
+            await new Promise<void>((resolve, reject) => this.server.close((error) => (error ? reject(error) : resolve())));
         await Promise.allSettled([...this.requests]);
         await this.oauth?.close();
     }

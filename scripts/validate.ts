@@ -65,6 +65,9 @@ import { checkOnboardingStore } from './check-onboarding-store.js';
 import { checkSetupFiles } from './check-setup-files.js';
 import { checkPanelStore } from './check-panel-store.js';
 import { checkUiApp } from './check-ui-app.js';
+import { checkStartup } from './check-startup.js';
+import { checkStdio } from './check-stdio.js';
+import { checkSetupApp } from './check-setup-app.js';
 import { checkStatusFile } from './check-status-file.js';
 import { checkServiceHost } from './check-service-host.js';
 import { checkSupervisor } from './check-supervisor.js';
@@ -168,6 +171,9 @@ try {
             await checkGatewayLifecycle(directory);
             await checkCoreEdges(directory);
             await checkOAuthEdges(directory);
+            await checkStartup(directory);
+            await checkStdio(directory);
+            await checkSetupApp(directory);
             console.log(
                 `Local validation passed: policy/triggers, Gateway mocks, approvals, idempotency, queue and bearer/OAuth MCP (${toolCount()} tools), context, MCP Events, safe media/retrieval and correlated controls. No Discord connection.`,
             );

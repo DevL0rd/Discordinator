@@ -108,8 +108,7 @@ async function run(
         console.log(`Discordinator MCP listening on http://127.0.0.1:${config.DISCORDINATOR_PORT}/mcp`);
     } catch (error) {
         failure('Discordinator startup failed', stage, error);
-        gateway.stop();
-        if (http.server.listening) await http.stop();
+        await stop();
         throw new Error('Startup failed; check credentials, intents, policy and port availability', { cause: error });
     }
 }
@@ -194,7 +193,6 @@ async function shutdown(
     gateway.stop();
     await people.stop();
     await Promise.all([events.stop(), http.stop(), operator.stop()]);
-    // Ensure dispatched subscription mutations drained before releasing the directory lock.
     await events.stop();
     await release();
 }

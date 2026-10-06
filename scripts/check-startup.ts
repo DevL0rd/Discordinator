@@ -159,6 +159,12 @@ async function checkStartupFailures(root: string): Promise<void> {
             await new Promise((done) => server.close(done));
         }
     });
+    await prepared(root, 'events', async () => {
+        await mkdir('.data', { recursive: true });
+        await writeFile(join('.data', 'presence.json'), '{not json');
+        refusedAt(await start(settings(await freePort())), { stage: 'events', error: 'SyntaxError' });
+        await lockReleased();
+    });
 }
 
 async function eventually(check: () => Promise<boolean>): Promise<boolean> {
