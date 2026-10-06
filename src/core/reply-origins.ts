@@ -21,6 +21,13 @@ const recordSchema = z.object({ event: eventSchema, revoked: z.boolean().default
 const schema = z.record(z.uuid(), recordSchema);
 type Records = z.infer<typeof schema>;
 
+const retentionMs = 30 * 24 * 60 * 60_000;
+
+function expire(records: Records, now: number): void {
+    for (const [id, record] of Object.entries(records))
+        if (record.revoked || Date.parse(record.event.receivedAt) < now - retentionMs) delete records[id];
+}
+
 export class ReplyOrigins {
     private records = Object.create(null) as Records;
     private tail = Promise.resolve();
@@ -31,6 +38,7 @@ export class ReplyOrigins {
             this.records = schema.parse(JSON.parse(await readFile(this.file, 'utf8')));
             for (const [id, record] of Object.entries(this.records))
                 if (id !== record.event.id) throw new Error('Reply origin ID mismatch');
+            expire(this.records, Date.now());
         } catch (error) {
             if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error;
         }
@@ -59,15 +67,25 @@ export class ReplyOrigins {
             records[event.id] = { event: parsed, revoked: false };
         });
     }
-    revokeMessage(messageId: string): Promise<void> {
+    private tracks(messageId: string): boolean {
+        return Object.values(this.records).some((record) => record.event.messageId === messageId);
+    }
+    async revokeMessage(messageId: string): Promise<void> {
+        if (!this.tracks(messageId)) return;
         return this.change((records) => {
             for (const record of Object.values(records)) if (record.event.messageId === messageId) record.revoked = true;
         });
     }
-    revokeChanged(messageId: string, content: string): Promise<void> {
+    async edit(messageId: string, content: string): Promise<void> {
+        if (
+            !Object.values(this.records).some(
+                (record) => record.event.messageId === messageId && record.event.text !== content.slice(0, 4000),
+            )
+        )
+            return;
         return this.change((records) => {
             for (const record of Object.values(records))
-                if (record.event.messageId === messageId && record.event.text !== content) record.revoked = true;
+                if (record.event.messageId === messageId) record.event.text = content.slice(0, 4000);
         });
     }
     revokeActors(ids: string[]): Promise<void> {
@@ -79,6 +97,7 @@ export class ReplyOrigins {
         const next = this.tail.then(async () => {
             const candidate = structuredClone(this.records);
             action(candidate);
+            expire(candidate, Date.now());
             const body = JSON.stringify(candidate);
             if (Object.keys(candidate).length > 25000 || Buffer.byteLength(body) > 16 * 1024 * 1024)
                 throw new Error('Reply origin storage full; no authorizations discarded');

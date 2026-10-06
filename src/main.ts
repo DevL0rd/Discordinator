@@ -93,7 +93,7 @@ async function createRuntime(
     await journal.load();
     const replyOrigins = new ReplyOrigins('.data/reply-origins.json');
     await replyOrigins.load();
-    const replyJournal = new Journal('.data/reply-idempotency.json', 16384, Date.now, true);
+    const replyJournal = new Journal('.data/reply-idempotency.json', 16384, Date.now, 7 * 24 * 60 * 60_000);
     await replyJournal.load();
     const approvals = new Approvals(policy);
     const api = new DiscordApi(config.DISCORD_BOT_TOKEN, policy);

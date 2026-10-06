@@ -7,3 +7,4 @@ dist/
 policy.json
 .data/
 *.log
+coverage/

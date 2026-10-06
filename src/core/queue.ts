@@ -61,7 +61,7 @@ export class EventQueue {
         if (this.seen.has(key)) return null;
         if (this.seen.size >= this.capacity * 4) {
             this.droppedOnDedupeLimit++;
-            return null;
+            this.seen.delete(this.seen.keys().next().value!);
         }
         this.seen.set(key, this.now() + this.ttlMs);
         const event: BotEvent = {

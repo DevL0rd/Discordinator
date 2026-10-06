@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { UncertainOutcome } from '../src/core/errors.js';
 import { Journal } from '../src/core/journal.js';
 import { operations } from '../src/discord/catalog.js';
 import { policySchema } from '../src/core/config.js';
@@ -53,15 +54,35 @@ async function checkJournal(file: string): Promise<void> {
     const journal = new Journal(file);
     await journal.load();
     await assert.rejects(() =>
-        journal.execute('uncertain-key', { action: 'uncertain' }, () => Promise.reject(new Error('ambiguous network result'))),
+        journal.execute('uncertain-key', { action: 'uncertain' }, () => Promise.reject(new UncertainOutcome('ambiguous network result'))),
     );
+    await assert.rejects(() =>
+        journal.execute('refused-key', { action: 'refused' }, () => Promise.reject(new Error('Discord request failed (403)'))),
+    );
+    assert.equal(
+        await journal.execute('refused-key', { action: 'refused' }, () => Promise.resolve('sent')),
+        'sent',
+        'a definite failure can be retried',
+    );
+    const both = await Promise.all([
+        journal.execute('parallel-a', {}, () => Promise.resolve('a')),
+        journal.execute('parallel-b', {}, () => Promise.resolve('b')),
+    ]);
+    assert.deepEqual(both, ['a', 'b'], 'concurrent operations queue instead of failing');
     const reloaded = new Journal(file);
     await reloaded.load();
     await assert.rejects(() => reloaded.execute('uncertain-key', { action: 'uncertain' }, () => Promise.resolve('duplicate')), /uncertain/);
     const tiny = new Journal(`${file}.capacity`, 1);
     await tiny.load();
     await tiny.execute('first', {}, () => Promise.resolve(null));
-    await assert.rejects(() => tiny.execute('second', {}, () => Promise.resolve(null)), /full/);
+    assert.equal(await tiny.execute('second', {}, () => Promise.resolve('kept')), 'kept', 'the oldest finished record makes room');
+    await assert.rejects(() => tiny.execute('stuck', {}, () => Promise.reject(new UncertainOutcome('timeout'))));
+    await assert.rejects(() => tiny.execute('third', {}, () => Promise.resolve(null)), /full of unresolved/);
+    let now = 0;
+    const aging = new Journal(`${file}.aging`, 10, () => now, 1000);
+    await aging.execute('old', {}, () => Promise.resolve('first'));
+    now = 2000;
+    assert.equal(await aging.execute('old', {}, () => Promise.resolve('again')), 'again', 'records expire after their retention');
 }
 
 function checkQueue(): void {

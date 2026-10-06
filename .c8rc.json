@@ -1,0 +1,8 @@
+{
+    "all": true,
+    "src": ["src"],
+    "include": ["src/**/*.ts"],
+    "reporter": ["text-summary", "lcov"],
+    "report-dir": "coverage",
+    "temp-directory": ".data/coverage-tmp"
+}

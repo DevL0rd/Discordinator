@@ -1,6 +1,6 @@
 import { REST, RequestMethod } from 'discord.js';
 import type { Policy } from '../core/policy.js';
-import { sanitizedError } from '../core/errors.js';
+import { sanitizedError, UncertainOutcome } from '../core/errors.js';
 
 export type Json = Record<string, unknown>;
 const methods = {
@@ -20,6 +20,12 @@ export interface Api {
     delete(route: string, reason?: string): Promise<unknown>;
     channel(id: string): Promise<Json>;
     message(channelId: string, messageId: string): Promise<Json>;
+}
+
+function requestFailure(status: number | undefined): Error {
+    if (status === undefined || status >= 500)
+        return new UncertainOutcome(`Discord request failed (${status ?? 'network/timeout'}); inspect outcome before retrying mutations`);
+    return sanitizedError(`Discord request failed (${status})`);
 }
 
 export class DiscordApi implements Api {
@@ -55,7 +61,7 @@ export class DiscordApi implements Api {
         } catch (error) {
             const status = (error as { status?: number }).status;
             if (status === 401) this.invalid = true;
-            throw sanitizedError(`Discord request failed (${status ?? 'network/timeout'}); inspect outcome before retrying mutations`);
+            throw requestFailure(status);
         }
     }
 

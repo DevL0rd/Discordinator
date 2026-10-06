@@ -24,6 +24,7 @@ export function gatewayIntents(config: Config): number[] {
     return intents;
 }
 
+const attachmentKeys = (message: Pick<Message, 'attachments'>) => [...message.attachments.keys()].sort().join(',');
 export class Gateway {
     readonly client: Client;
     private readonly triggers: Triggers;
@@ -82,15 +83,15 @@ export class Gateway {
         this.client.on(Events.MessageBulkDelete, (messages) => {
             for (const id of messages.keys()) this.remove(id);
         });
-        this.client.on(Events.MessageUpdate, (_old, message) => {
-            if (!message.partial)
-                this.safely(async () => {
-                    await this.replyOrigins?.revokeChanged(message.id, message.content);
-                });
-            if (!message.partial)
-                this.context?.update(message.id, message.content, this.config.DISCORDINATOR_MESSAGE_CONTENT === 'true' || !message.guildId);
+        this.client.on(Events.MessageUpdate, (old, message) => {
+            if (message.partial) return;
+            this.safely(async () => {
+                await this.replyOrigins?.edit(message.id, message.content);
+            });
+            this.context?.update(message.id, message.content, this.config.DISCORDINATOR_MESSAGE_CONTENT === 'true' || !message.guildId);
+            if (old.partial || attachmentKeys(old) === attachmentKeys(message)) return;
             this.media?.index.remove(message.id);
-            if (!message.partial) this.observeMedia(message, false);
+            this.observeMedia(message, false);
         });
         this.bindMembers();
         this.client.on(Events.InteractionCreate, (interaction) => {
@@ -191,10 +192,11 @@ export class Gateway {
         const now = Date.now();
         for (const [key, expires] of this.seen) if (expires <= now) this.seen.delete(key);
         if (this.seen.has(id)) return false;
-        if (this.seen.size >= 2000 || this.activeMessages >= 32) {
+        if (this.activeMessages >= 32) {
             this.droppedMessages++;
             return false;
         }
+        if (this.seen.size >= 2000) this.seen.delete(this.seen.keys().next().value!);
         this.seen.set(id, now + 10 * 60_000);
         return true;
     }
