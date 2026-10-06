@@ -16,17 +16,25 @@ function checkMeter(): void {
         return Promise.resolve();
     });
     meter.record('s', 30, 'e');
+    meter.record('s', 40);
     meter.record('s', 55, 'e');
     meter.record('s', 60, 'e');
+    meter.record('s', 76, 'e');
     meter.record('s', 91, 'e');
     meter.record('s', 95, 'e');
-    assert.equal(posted.length, 2, 'one warning at 50% and one at 90%');
-    assert.match(posted[0]!, /55% full/);
-    assert.match(posted[1]!, /91% full[\s\S]*\/compact/);
-    meter.record('s', 10, 'e');
-    meter.record('s', 52, 'e');
-    assert.equal(posted.length, 3, 'warnings re-arm after the context shrinks');
-    assert.equal(meter.percent('s'), 52);
+    assert.deepEqual(
+        posted.map((text) => /(\d+)% full/.exec(text)?.[1]),
+        ['30', '55', '76', '91'],
+        'one warning each at 25%, 50%, 75% and 90%',
+    );
+    assert.match(posted[3]!, /91% full[\s\S]*\/compact/);
+    meter.record('s', 60, 'e');
+    meter.record('s', 80, 'e');
+    assert.equal(posted.length, 5, 'warnings re-arm after the context shrinks');
+    meter.record('s', 85);
+    meter.record('s', 92);
+    assert.equal(posted.length, 5, 'nothing is posted without a Discord request');
+    assert.equal(meter.percent('s'), 92);
 }
 
 function checkCodexParsing(): void {

@@ -115,7 +115,7 @@ function checkContextDescriptors(tools: Awaited<ReturnType<Client['listTools']>>
     assert.ok(search!.required?.includes('query'), 'context_search requires its query');
     assert.equal(new Set([recent!.description, user!.description, search!.description]).size, 3, 'Each context tool is described');
     const respond = tools.find((entry) => entry.name === 'discord_respond')!;
-    assert.match(JSON.stringify(respond.inputSchema), /only when content also contains their <@USER_ID> mention/);
+    assert.match(JSON.stringify(respond.inputSchema), /Ping the person who asked through the reply/);
 }
 function checkDescriptor(tool: Awaited<ReturnType<Client['listTools']>>['tools'][number]): void {
     assert.ok(tool.title?.trim(), `${tool.name} has a human-readable title`);

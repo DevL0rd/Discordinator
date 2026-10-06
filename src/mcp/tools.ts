@@ -30,9 +30,7 @@ export const mutation = {
 
 export const notifyUserId = snowflake
     .optional()
-    .describe(
-        'Approved person who may be pinged. Discord pings them only when content also contains their <@USER_ID> mention; without that mention nothing is pinged.',
-    );
+    .describe('Approved person to ping. Their mention is added to the message when the content does not already include it.');
 
 const oauthSecurity = [{ type: 'oauth2', scopes: ['discordinator:control'] }] as const;
 const toolMeta = (oauth: boolean) => (oauth ? { securitySchemes: oauthSecurity } : undefined);
@@ -89,16 +87,14 @@ function registerMessaging(server: McpServer, bridge: Bridge, oauth: boolean, pr
         notifyRequester: z
             .boolean()
             .optional()
-            .describe(
-                'Allow a ping for the verified triggering author only. Discord pings them only when content also contains their <@USER_ID> mention; without that mention nothing is pinged. Other users, roles and everyone are never pinged.',
-            ),
+            .describe('Ping the person who asked through the reply. Other users, roles and everyone are never pinged.'),
     });
     server.registerTool(
         'discord_respond',
         {
             title: 'Reply to Discord request',
             description:
-                'Reply to a verified captured request in its original Discord conversation. Message reply authority has no elapsed-time expiry and survives restarts; source deletion/edit or removal from approved people revokes it. For work that may take time, acknowledge promptly and send concise progress updates through completion or a clear blocker. notifyRequester only permits a ping of that captured author; include their <@USER_ID> mention in content to actually ping them. Discord interaction-token platform limits remain.',
+                'Reply to a verified captured request in its original Discord conversation. Message reply authority has no elapsed-time expiry and survives restarts; source deletion/edit or removal from approved people revokes it. For work that may take time, acknowledge promptly and send concise progress updates through completion or a clear blocker. notifyRequester pings the person who asked. Discord interaction-token platform limits remain.',
             inputSchema: reply,
             annotations: { readOnlyHint: false, destructiveHint: false, openWorldHint: false },
             _meta: toolMeta(oauth),
@@ -121,7 +117,7 @@ function registerMessaging(server: McpServer, bridge: Bridge, oauth: boolean, pr
         {
             title: 'Send standalone Discord message',
             description:
-                'Authenticated owner only: send a standalone message at any time to an explicitly approved guild channel. No recent trigger or reply reference is required. Use for new messages, updates or completions; never respond on behalf of unapproved people. notifyUserId only permits a ping of that approved person; include their <@USER_ID> mention in content to actually ping them. Roles and everyone are never pinged.',
+                'Authenticated owner only: send a standalone message at any time to an explicitly approved guild channel. No recent trigger or reply reference is required. Use for new messages, updates or completions; never respond on behalf of unapproved people. notifyUserId pings that approved person. Roles and everyone are never pinged.',
             inputSchema: z
                 .object({
                     channelId: snowflake,

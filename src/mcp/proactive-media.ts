@@ -55,7 +55,7 @@ export function registerProactiveMedia(server: McpServer, bridge: Bridge, princi
         {
             title: 'Send media to approved anytime channel',
             description:
-                'Authenticated owner only. Send up to three sealed safe files to their approved destination. No recent trigger. notifyUserId only permits a ping of that approved person; include their <@USER_ID> mention in content to actually ping them. No arbitrary files, paths, URLs, roles or everyone mentions.',
+                'Authenticated owner only. Send up to three sealed safe files to their approved destination. No recent trigger. notifyUserId pings that approved person. No arbitrary files, paths, URLs, roles or everyone mentions.',
             inputSchema: z
                 .object({
                     channelId: snowflake,

@@ -284,7 +284,7 @@ export class Bridge {
                 await this.api.postFiles(
                     `/channels/${input.channelId}/messages`,
                     {
-                        content: input.content,
+                        content: withMention(input.content, { notify: input.notifyUserId }),
                         allowed_mentions: input.notifyUserId ? { ...mentions, users: [input.notifyUserId] } : mentions,
                         nonce,
                         enforce_nonce: true,
