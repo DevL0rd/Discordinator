@@ -1,10 +1,8 @@
-import { execFile } from 'node:child_process';
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
-import { promisify } from 'node:util';
 import { restartRequestFile } from './environment-watcher.js';
+import { runFile, type Runner } from './run.js';
 
-const exec = promisify(execFile);
 const runKey = 'HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Run';
 const entry = 'Discordinator';
 export const serviceLogFile = '.data/service.log';
@@ -22,14 +20,14 @@ export function launcherScript(root: string, node: string): string {
     ].join('\r\n');
 }
 
-export async function installWindowsService(root: string, node: string): Promise<void> {
+export async function installWindowsService(root: string, node: string, run: Runner = runFile): Promise<void> {
     await mkdir(join(root, '.data'), { recursive: true, mode: 0o700 });
     await writeFile(launcherPath(root), launcherScript(root, node), { mode: 0o600 });
-    await exec('reg', ['add', runKey, '/v', entry, '/t', 'REG_SZ', '/d', `wscript.exe //B //Nologo "${launcherPath(root)}"`, '/f']);
+    await run('reg', ['add', runKey, '/v', entry, '/t', 'REG_SZ', '/d', `wscript.exe //B //Nologo "${launcherPath(root)}"`, '/f']);
 }
 
-export async function startWindowsService(root: string): Promise<void> {
-    await exec('wscript.exe', ['//B', '//Nologo', launcherPath(root)]);
+export async function startWindowsService(root: string, run: Runner = runFile): Promise<void> {
+    await run('wscript.exe', ['//B', '//Nologo', launcherPath(root)]);
 }
 
 export async function supervisorRunning(): Promise<boolean> {
@@ -43,8 +41,8 @@ export async function supervisorRunning(): Promise<boolean> {
     }
 }
 
-export async function windowsServiceInstalled(): Promise<boolean> {
-    return exec('reg', ['query', runKey, '/v', entry]).then(
+export async function windowsServiceInstalled(run: Runner = runFile): Promise<boolean> {
+    return run('reg', ['query', runKey, '/v', entry]).then(
         () => true,
         () => false,
     );
