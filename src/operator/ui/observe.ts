@@ -5,14 +5,16 @@ import { runtimePresent } from '../status.js';
 import { readOperatorConfig } from '../config.js';
 import type { Observations } from './model.js';
 
-export async function observations(known?: Pick<Observations, 'codex' | 'claude'>): Promise<Observations> {
+const sources = { liveSetupStatus, runtimePresent, readOperatorConfig, codexModels, claudeModels, managedServiceStatus };
+
+export async function observations(known?: Pick<Observations, 'codex' | 'claude'>, read = sources): Promise<Observations> {
     const [live, runtime, active, codex, claude, service] = await Promise.all([
-        liveSetupStatus(),
-        runtimePresent(),
-        readOperatorConfig(),
-        known?.codex ?? codexModels(),
-        known?.claude ?? claudeModels(),
-        managedServiceStatus(),
+        read.liveSetupStatus(),
+        read.runtimePresent(),
+        read.readOperatorConfig(),
+        known?.codex ?? read.codexModels(),
+        known?.claude ?? read.claudeModels(),
+        read.managedServiceStatus(),
     ]);
     return { live, runtime, active, codex, claude, service, observedAt: new Date().toISOString() };
 }

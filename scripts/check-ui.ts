@@ -1,68 +1,15 @@
 import assert from 'node:assert/strict';
-import { defaultOperatorConfig } from '../src/operator/config.js';
-import { policySchema } from '../src/core/config.js';
-import type { PanelSnapshot } from '../src/operator/panel-store.js';
 import { hits, lineWidth } from '../src/operator/ui/canvas.js';
 import { frame } from '../src/operator/ui/frame.js';
-import { pages, type Observations } from '../src/operator/ui/model.js';
+import { pages } from '../src/operator/ui/model.js';
 import { pageItems } from '../src/operator/ui/pages/index.js';
 import { searchResults, sheetLines } from '../src/operator/ui/sheets.js';
 import { savedDiffers } from '../src/operator/ui/status.js';
-import { handleKey, type Key } from '../src/operator/ui/keys.js';
+import { handleKey } from '../src/operator/ui/keys.js';
 import { handleMouse } from '../src/operator/ui/mouse.js';
-import { initialState, selectedIndex, viewOf, type UiState } from '../src/operator/ui/state.js';
-import type { Store } from '../src/operator/ui/effects.js';
+import { selectedIndex, viewOf, type UiState } from '../src/operator/ui/state.js';
 import { wizardFrame } from '../src/operator/onboarding-view.js';
-
-const documents = {
-    operator: { ...defaultOperatorConfig(), mode: 'codex-local' },
-    policy: policySchema.parse({ servers: { mode: 'blocklist' } }),
-    environment: {
-        DISCORDINATOR_RESOURCE_URL: 'https://bot.example.com/mcp',
-        DISCORD_BOT_TOKEN: 'secret',
-        DISCORDINATOR_AUTH_MODE: 'bearer',
-    },
-};
-const snapshot: PanelSnapshot = {
-    documents: structuredClone(documents),
-    originals: { operator: '', policy: '', environment: '' },
-    paths: { operator: '', policy: '', environment: '' },
-};
-const models = { source: 'fixture', observedAt: '', note: '', defaultModel: { id: '', name: 'Default', efforts: ['high'] }, models: [] };
-const observed: Observations = {
-    live: { gateway: 'ready', events: { subscriptions: 0 }, operator: { mode: 'codex-local', appliedConfigAt: null } },
-    runtime: true,
-    active: { ...defaultOperatorConfig(), mode: 'codex-local', enabled: true },
-    codex: models,
-    claude: models,
-    service: { available: true, installed: false, active: false },
-    observedAt: '',
-};
-const key = (patch: Partial<Key> = {}): Key => ({
-    ctrl: false,
-    meta: false,
-    escape: false,
-    return: false,
-    tab: false,
-    shift: false,
-    backspace: false,
-    delete: false,
-    upArrow: false,
-    downArrow: false,
-    leftArrow: false,
-    rightArrow: false,
-    pageUp: false,
-    pageDown: false,
-    ...patch,
-});
-
-function store(): Store & { state: UiState } {
-    const value = { state: initialState(snapshot, observed) } as Store & { state: UiState };
-    value.get = () => value.state;
-    value.set = (update) => (value.state = update(value.state));
-    value.exit = () => undefined;
-    return value;
-}
+import { key, observed, uiStore } from './ui-fixtures.js';
 
 function render(state: UiState, width: number, height: number) {
     const view = viewOf(state);
@@ -81,7 +28,7 @@ function render(state: UiState, width: number, height: number) {
 }
 
 function checkFrames(): void {
-    const ui = store();
+    const ui = uiStore();
     for (const [width, height] of [
         [80, 23],
         [120, 39],
@@ -97,7 +44,7 @@ function checkFrames(): void {
 }
 
 function checkKeyboard(): void {
-    const ui = store();
+    const ui = uiStore();
     handleKey(ui, '2', key());
     assert.equal(ui.state.page, 'assistant');
     handleKey(ui, '', key({ return: true }));
@@ -137,7 +84,7 @@ const text = (state: UiState) =>
         .join('\n');
 
 function checkResponderPage(): void {
-    const ui = store();
+    const ui = uiStore();
     const drafted = (operator: Record<string, unknown>): UiState => ({
         ...ui.state,
         page: 'assistant',
@@ -169,7 +116,7 @@ function checkResponderPage(): void {
 }
 
 function checkMouse(): void {
-    const ui = store();
+    const ui = uiStore();
     const click = (target: string) => {
         const map = hits(render(ui.state, 120, 39));
         const spot = map.find((item) => item.target === target);

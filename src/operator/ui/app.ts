@@ -10,7 +10,7 @@ import { color } from './theme.js';
 import { frame } from './frame.js';
 import { h, Frame } from './render.js';
 import { sheetLines } from './sheets.js';
-import { refresh, refreshLive, refreshStatus, reloadPanel, type Store } from './effects.js';
+import { refresh, refreshLive, refreshStatus, reloadPanel, type Services, type Store } from './effects.js';
 import { handleKey } from './keys.js';
 import { handleMouse } from './mouse.js';
 import { useSgrMouse } from './use-mouse.js';
@@ -19,7 +19,7 @@ import { initialState, selectedIndex, viewOf, type UiState } from './state.js';
 import { assistantSignal } from './status.js';
 import type { Observations } from './model.js';
 
-function useStore(snapshot: PanelSnapshot, observed: Observations, exit: () => void): [UiState, Store] {
+function useStore(snapshot: PanelSnapshot, observed: Observations, exit: () => void, services?: Services): [UiState, Store] {
     const [state, setState] = useState(() => initialState(snapshot, observed));
     const current = useRef(state);
     const store = useMemo<Store>(
@@ -30,8 +30,9 @@ function useStore(snapshot: PanelSnapshot, observed: Observations, exit: () => v
                 setState(current.current);
             },
             exit,
+            ...(services ? { services } : {}),
         }),
-        [exit],
+        [exit, services],
     );
     return [state, store];
 }
@@ -87,10 +88,10 @@ const tooSmall = (width: number, height: number): Line[] =>
             : blank(),
     );
 
-export function Dashboard({ initial, observed }: { initial: PanelSnapshot; observed: Observations }) {
+export function Dashboard({ initial, observed, services }: { initial: PanelSnapshot; observed: Observations; services?: Services }) {
     const { exit } = useApp();
     const size = useSize();
-    const [state, store] = useStore(initial, observed, exit);
+    const [state, store] = useStore(initial, observed, exit, services);
     const map = useRef<Hit[]>([]);
     useLive(store);
     useMotion(store, state);
