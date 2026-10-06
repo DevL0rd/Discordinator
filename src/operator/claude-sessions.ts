@@ -1,14 +1,12 @@
-import { execFile } from 'node:child_process';
 import { createConnection } from 'node:net';
 import { access, readdir, readFile } from 'node:fs/promises';
 import { homedir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { createHash } from 'node:crypto';
 import { z } from 'zod';
-import { promisify } from 'node:util';
 import { watchDirectory } from './file-watch.js';
+import { handlesScheme, openUrl } from './open-url.js';
 
-const exec = promisify(execFile);
 export interface LiveSession {
     pid: number;
     sessionId: string;
@@ -87,10 +85,7 @@ export async function conversationExists(sessionId: string): Promise<boolean> {
     return (await transcriptPath(sessionId)) !== undefined;
 }
 
-export async function desktopInstalled(): Promise<boolean> {
-    const handler = await exec('xdg-mime', ['query', 'default', 'x-scheme-handler/claude']).catch(() => ({ stdout: '' }));
-    return handler.stdout.trim().length > 0;
-}
+export const desktopInstalled = (): Promise<boolean> => handlesScheme('claude');
 
 export function waitForSession(
     sessionId: string,
@@ -113,7 +108,7 @@ export function waitForSession(
 const idle = (session: LiveSession) => session.status === 'idle';
 
 export async function showInDesktop(sessionId: string): Promise<void> {
-    await exec('xdg-open', [`claude://resume?session=${sessionId}`]);
+    await openUrl(`claude://resume?session=${sessionId}`);
 }
 
 export async function openInDesktop(sessionId: string, waitMs = 90_000): Promise<LiveSession> {

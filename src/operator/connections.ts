@@ -5,7 +5,7 @@ import { join } from 'node:path';
 import { promisify } from 'node:util';
 import { localEndpoint, type LocalEndpoint } from '../mcp/local-client.js';
 import { codexCommand, codexHome, serverBlock, withoutServers, writeCodexConfig } from './codex-config.js';
-import { installPlugin, pluginState, uninstallPlugin } from './claude-plugin.js';
+import { installPlugin, pluginState, runClaude, uninstallPlugin } from './claude-plugin.js';
 
 const exec = promisify(execFile);
 const name = 'discordinator';
@@ -27,21 +27,16 @@ export interface AppState {
     connected: boolean;
     status: string;
 }
-type Runner = (command: string, args: string[]) => Promise<string>;
-const run: Runner = async (command, args) =>
-    (await exec(command, args, { cwd: tmpdir(), timeout: 120_000, maxBuffer: 4 * 1024 * 1024 })).stdout;
-
 export interface CodexDeps {
-    runner: Runner;
     codex(args: string[]): Promise<string>;
     home(): Promise<string>;
     endpoint(): Promise<LocalEndpoint>;
 }
 const runCodex = async (args: string[]) => {
-    const { command, env } = await codexCommand();
-    return (await exec(command, args, { cwd: tmpdir(), env, timeout: 120_000, maxBuffer: 4 * 1024 * 1024 })).stdout;
+    const { command, args: prefix, env } = await codexCommand();
+    return (await exec(command, [...prefix, ...args], { cwd: tmpdir(), env, timeout: 120_000, maxBuffer: 4 * 1024 * 1024 })).stdout;
 };
-const codexDeps: CodexDeps = { runner: run, codex: runCodex, home: codexHome, endpoint: () => localEndpoint() };
+const codexDeps: CodexDeps = { codex: runCodex, home: codexHome, endpoint: () => localEndpoint() };
 
 async function codexEntry(deps: CodexDeps): Promise<string | undefined> {
     const list = JSON.parse(await deps.codex(['mcp', 'list', '--json'])) as { name: string; transport?: { url?: string } }[];
@@ -79,26 +74,26 @@ async function connectCodex(deps: CodexDeps): Promise<string> {
     return 'Codex connected to Discordinator on this computer. No sign-in needed.';
 }
 
-async function removeClaudeEntries(runner: Runner): Promise<void> {
+async function removeClaudeEntries(): Promise<void> {
     const file = join(process.env.CLAUDE_CONFIG_DIR ?? homedir(), '.claude.json');
     const config = JSON.parse(await readFile(file, 'utf8').catch(() => '{}')) as { mcpServers?: Record<string, unknown> };
-    for (const entry of stale) if (config.mcpServers?.[entry]) await runner('claude', ['mcp', 'remove', entry, '--scope', 'user']);
+    for (const entry of stale) if (config.mcpServers?.[entry]) await runClaude(['mcp', 'remove', entry, '--scope', 'user']);
 }
 
-async function connectClaude(runner: Runner): Promise<string> {
+async function connectClaude(): Promise<string> {
     const message = await installPlugin();
-    await removeClaudeEntries(runner);
+    await removeClaudeEntries();
     return `${message} Every Claude Code session now has the Discord tools, no sign-in needed.`;
 }
 
 export async function connectApp(id: AppId, deps = codexDeps): Promise<string> {
-    return id === 'codex' ? connectCodex(deps) : connectClaude(deps.runner);
+    return id === 'codex' ? connectCodex(deps) : connectClaude();
 }
 
 export async function disconnectApp(id: AppId, deps = codexDeps): Promise<string> {
     if (id === 'claude-code') {
         const message = (await pluginState()).installed ? await uninstallPlugin() : 'The local Claude plugin is not installed.';
-        await removeClaudeEntries(deps.runner);
+        await removeClaudeEntries();
         return message;
     }
     await writeCodexConfig(await deps.home(), (toml) => `${withoutServers(toml, stale)}\n`);

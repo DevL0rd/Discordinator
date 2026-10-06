@@ -45,7 +45,7 @@ npm run build
 npm start
 ```
 
-or install the background service from the setup app's **System** page. On Linux this is a systemd user service named `discordinator.service`. Installing it never stops a Discordinator you started by hand.
+or install the background service from the setup app's **System** page. On Linux this is a systemd user service named `discordinator.service`. On Windows it starts hidden when you sign in, through your account's startup entries, with no admin rights needed, and logs to `.data/service.log`. Installing it never stops a Discordinator you started by hand.
 
 The responder you pick starts when you save it. Press **p** on the setup app's **Home** page (or use Pause and Start) to pause and resume it.
 

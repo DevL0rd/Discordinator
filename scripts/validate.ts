@@ -30,6 +30,7 @@ import { checkSlashCommands } from './check-commands.js';
 import { checkSessionActivity, checkSessions } from './check-sessions.js';
 import { checkCodexDaemon } from './check-codex-daemon.js';
 import { checkUi } from './check-ui.js';
+import { checkWindows } from './check-windows.js';
 
 await mkdir('.data', { recursive: true, mode: 0o700 });
 const directory = await mkdtemp(join('.data', 'validation-'));
@@ -68,6 +69,7 @@ try {
             await checkSessions();
             await checkSessionActivity(directory);
             await checkCodexDaemon();
+            await checkWindows(directory);
             checkUi();
             await checkController(directory);
             await checkProviderApproval(directory);

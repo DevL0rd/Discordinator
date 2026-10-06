@@ -19,7 +19,6 @@ function fakeCodex(home: string): CodexDeps {
     return {
         home: () => Promise.resolve(home),
         endpoint: () => Promise.resolve(endpoint),
-        runner: () => Promise.reject(new Error('unused')),
         codex: async (args) => (args[1] === 'list' ? JSON.stringify(servers(await readFile(join(home, 'config.toml'), 'utf8'))) : ''),
     };
 }

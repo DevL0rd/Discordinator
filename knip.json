@@ -3,6 +3,7 @@
     "entry": [
         "src/main.ts",
         "src/channel/bridge.ts",
+        "src/service.ts",
         "scripts/validate.ts",
         "scripts/check-banner.ts",
         "scripts/check-quality.ts",

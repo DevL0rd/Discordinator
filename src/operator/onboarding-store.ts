@@ -3,7 +3,7 @@ import { listServers, uniqueMembers } from './servers.js';
 import { requestOwnerPassword } from '../oauth/provision.js';
 import { oauthDirectory } from '../oauth/registration.js';
 import { codexCommand } from './codex-config.js';
-import { claudeExecutable } from './executables.js';
+import { claudeProgram } from './executables.js';
 import { execFile } from 'node:child_process';
 import { mkdir, readFile, rename, writeFile } from 'node:fs/promises';
 import { dirname } from 'node:path';
@@ -144,8 +144,8 @@ export async function writePhase(phase: Exclude<OnboardingPhase, 'discord'>, mar
 }
 async function cliAuthenticated(command: 'claude' | 'codex', args: string[]): Promise<void> {
     try {
-        const cli = command === 'codex' ? await codexCommand() : { command: await claudeExecutable(), env: process.env };
-        const { stdout, stderr } = await exec(cli.command, args, { env: cli.env, timeout: 8_000, maxBuffer: 128 * 1024 });
+        const cli = command === 'codex' ? await codexCommand() : { ...(await claudeProgram()), env: process.env };
+        const { stdout, stderr } = await exec(cli.command, [...cli.args, ...args], { env: cli.env, timeout: 8_000, maxBuffer: 128 * 1024 });
         if (command === 'codex') {
             if (!/Logged in using (ChatGPT|an API key)/.test(`${stdout}\n${stderr}`)) throw new Error('not authenticated');
         } else {

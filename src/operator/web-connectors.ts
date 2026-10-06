@@ -1,9 +1,6 @@
-import { execFile } from 'node:child_process';
 import { mkdir, readFile, rename, writeFile } from 'node:fs/promises';
-import { promisify } from 'node:util';
 import { z } from 'zod';
 
-const exec = promisify(execFile);
 const stateFile = '.data/web-connectors.json';
 const stateSchema = z.object({ claude: z.string().optional(), chatgpt: z.string().optional() });
 export type WebConnectors = z.infer<typeof stateSchema>;
@@ -31,10 +28,6 @@ export async function forgetWebConnectors(): Promise<void> {
 
 export const claudeConnectorLink = (url: string): string =>
     `https://claude.ai/customize/connectors?${new URLSearchParams({ modal: 'add-custom-connector', connectorName: 'Discordinator', connectorUrl: url })}`;
-
-export async function openInBrowser(url: string): Promise<void> {
-    await exec('xdg-open', [url]);
-}
 
 export function connectorStatus(added: string | undefined, url: string | undefined): { text: string; current: boolean } {
     if (!added) return { text: 'Not connected', current: false };

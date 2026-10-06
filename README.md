@@ -72,7 +72,7 @@ The setup app walks you through everything on first run: your Discord bot, who a
   </tr>
   <tr>
     <td>🖥️ <b>Needs</b></td>
-    <td>Node.js 22.16 or newer and a Discord bot. A public HTTPS domain is only needed for apps that connect from the cloud, like ChatGPT or Claude Desktop.</td>
+    <td>Node.js 22.16 or newer and a Discord bot. A public HTTPS domain is only needed for apps that connect from the cloud, like ChatGPT or Claude on the web.</td>
   </tr>
 </table>
 

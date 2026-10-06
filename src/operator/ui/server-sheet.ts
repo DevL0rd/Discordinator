@@ -1,4 +1,4 @@
-import { openInBrowser } from '../web-connectors.js';
+import { openUrl } from '../open-url.js';
 import { inviteLink } from '../onboarding-invite.js';
 import { serverState, withServerAllowed, withServerChannels, type ServerInfo } from '../servers.js';
 import type { SettingDefinition } from '../settings-registry.js';
@@ -76,7 +76,7 @@ export function commitServerChannels(store: Store, sheet: Extract<Sheet, { kind:
 function inviteServer(store: Store): void {
     const botId = store.get().extras.servers?.botId;
     if (!botId) return store.set((state) => logged(state, 'The bot has not loaded yet. Press R to refresh, then try again.', 'warn'));
-    void openInBrowser(inviteLink(botId)).catch(() => undefined);
+    void openUrl(inviteLink(botId)).catch(() => undefined);
     store.set((state) => logged(state, 'Opened the invite in your browser. After adding the bot, press R to see the new server.', 'info'));
 }
 

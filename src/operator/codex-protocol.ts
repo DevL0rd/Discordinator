@@ -1,4 +1,5 @@
 import { spawn } from 'node:child_process';
+import type { CodexCli } from './codex-config.js';
 import { randomUUID } from 'node:crypto';
 import type { Readable, Writable } from 'node:stream';
 import type { OperatorConfig } from './config.js';
@@ -69,8 +70,8 @@ export const finalText = (items: unknown): string => {
     const fallback = messages.filter((item) => !item.phase);
     return (finals.length ? finals : fallback).map((item) => string(item.text)).join('\n\n');
 };
-export function localTransport(config: OperatorConfig, cli: { command: string; env: NodeJS.ProcessEnv }): CodexTransport {
-    const child = spawn(cli.command, ['app-server', '--listen', 'stdio://'], {
+export function localTransport(config: OperatorConfig, cli: CodexCli): CodexTransport {
+    const child = spawn(cli.command, [...cli.args, 'app-server', '--listen', 'stdio://'], {
         cwd: config.workspace,
         env: cli.env,
         stdio: ['pipe', 'pipe', 'pipe'],

@@ -1,4 +1,5 @@
 import { execFile } from 'node:child_process';
+import { claudeProgram } from './executables.js';
 import { access, mkdir, readFile, rename, writeFile } from 'node:fs/promises';
 import { dirname, join, resolve } from 'node:path';
 import { promisify } from 'node:util';
@@ -54,7 +55,8 @@ async function writeIfChanged(path: string, value: unknown): Promise<boolean> {
 }
 
 async function claudeJson(args: string[]): Promise<unknown> {
-    const { stdout } = await exec('claude', [...args, '--json'], { timeout: 60_000, maxBuffer: 4 * 1024 * 1024 });
+    const claude = await claudeProgram();
+    const { stdout } = await exec(claude.command, [...claude.args, ...args, '--json'], { timeout: 60_000, maxBuffer: 4 * 1024 * 1024 });
     const line = stdout.trim().split('\n').at(-1) ?? '[]';
     return JSON.parse(stdout.trim().startsWith('[') ? stdout : line);
 }
@@ -77,16 +79,17 @@ export async function pluginState(): Promise<PluginState> {
     }
 }
 
-async function claude(args: string[]): Promise<void> {
-    await exec('claude', args, { timeout: 120_000 });
+export async function runClaude(args: string[]): Promise<void> {
+    const claude = await claudeProgram();
+    await exec(claude.command, [...claude.args, ...args], { timeout: 120_000 });
 }
 
 async function register(root: string, before: PluginState, changed: boolean): Promise<void> {
-    if (!before.marketplace) await claude(['plugin', 'marketplace', 'add', root, '--scope', 'user']);
-    else if (changed) await claude(['plugin', 'marketplace', 'update', marketplace]);
-    if (!before.installed) await claude(['plugin', 'install', pluginId, '--scope', 'user']);
-    else if (changed) await claude(['plugin', 'update', pluginId]);
-    if (before.installed && !before.enabled) await claude(['plugin', 'enable', pluginId]);
+    if (!before.marketplace) await runClaude(['plugin', 'marketplace', 'add', root, '--scope', 'user']);
+    else if (changed) await runClaude(['plugin', 'marketplace', 'update', marketplace]);
+    if (!before.installed) await runClaude(['plugin', 'install', pluginId, '--scope', 'user']);
+    else if (changed) await runClaude(['plugin', 'update', pluginId]);
+    if (before.installed && !before.enabled) await runClaude(['plugin', 'enable', pluginId]);
 }
 
 export async function installPlugin(home = process.cwd()): Promise<string> {
@@ -105,7 +108,7 @@ export async function installPlugin(home = process.cwd()): Promise<string> {
 }
 
 export async function uninstallPlugin(): Promise<string> {
-    if ((await pluginState()).installed) await claude(['plugin', 'uninstall', pluginId]);
+    if ((await pluginState()).installed) await runClaude(['plugin', 'uninstall', pluginId]);
     if ((await pluginState()).installed) throw new Error('Claude Code still lists the Discordinator plugin.');
     return 'Discordinator removed from Claude Code.';
 }

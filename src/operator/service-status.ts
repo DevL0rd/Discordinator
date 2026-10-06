@@ -1,6 +1,7 @@
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import { createConnection } from 'node:net';
+import { supervisorRunning, windowsServiceInstalled } from './windows-service.js';
 
 const exec = promisify(execFile);
 export interface ManagedServiceStatus {
@@ -23,6 +24,8 @@ export function parseServiceStatus(output: string): ManagedServiceStatus {
     return { available: true, installed: values.LoadState === 'loaded', active: values.ActiveState === 'active' };
 }
 export async function managedServiceStatus(): Promise<ManagedServiceStatus> {
+    if (process.platform === 'win32')
+        return { available: true, installed: await windowsServiceInstalled(), active: await supervisorRunning() };
     try {
         const result = await exec(
             'systemctl',

@@ -17,7 +17,7 @@ import {
     type LiveSession,
 } from './claude-sessions.js';
 import { watchDirectory } from './file-watch.js';
-import { claudeExecutable } from './executables.js';
+import { claudeProgram } from './executables.js';
 import { SessionActivity } from './session-activity.js';
 import type { History } from './history.js';
 
@@ -129,7 +129,8 @@ export class SessionRouter {
             ...(this.launch.model ? ['--model', this.launch.model] : []),
             ...(this.launch.effort ? ['--effort', this.launch.effort] : []),
         ];
-        await exec(await claudeExecutable(), ['-p', '--session-id', sessionId, '--name', 'Discordinator', ...options, greeting], {
+        const claude = await claudeProgram();
+        await exec(claude.command, [...claude.args, '-p', '--session-id', sessionId, '--name', 'Discordinator', ...options, greeting], {
             cwd: this.workspace,
             timeout: 180_000,
         });

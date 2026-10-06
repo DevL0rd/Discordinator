@@ -94,4 +94,4 @@ Local tools such as the setup app and the Claude plugin reach the runtime with a
 
 ## Background service
 
-The **System** page installs, starts and removes the background service. On Linux it is a systemd user service named `discordinator.service`. It never stops a Discordinator you started by hand.
+The **System** page installs, starts and removes the background service. On Linux it is a systemd user service named `discordinator.service`. On Windows it starts hidden when you sign in, through your account's startup entries, with no admin rights needed, and logs to `.data/service.log`. It never stops a Discordinator you started by hand.

@@ -1,7 +1,8 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { savedPublicUrl, useVerify, verifyChecks, verifyLines, type Check } from './onboarding-verify.js';
 import { inviteCopy, inviteLink, inviteReady, ownerFrom, ownerMatches } from './onboarding-invite.js';
-import { markWebAdded, openInBrowser } from './web-connectors.js';
+import { markWebAdded } from './web-connectors.js';
+import { openUrl } from './open-url.js';
 import { passwordError } from '../oauth/provision.js';
 import { useApp, useInput, useStdout } from 'ink';
 import { installService } from './install.js';
@@ -234,7 +235,7 @@ const steps: Partial<Record<Step, Advance>> = {
     invite: async (state, button) => {
         if (inviteReady(state.discovery)) return { ...fresh(state), step: 'owner' };
         if (button === 'Open invite' && state.discovery) {
-            await openInBrowser(inviteLink(state.discovery.botId));
+            await openUrl(inviteLink(state.discovery.botId));
             return { ...state, notice: 'Opened the invite in your browser. Add the bot, then choose Check again.' };
         }
         const discovery = await discoverDiscord(state.draft.token);

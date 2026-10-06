@@ -3,7 +3,7 @@ import { writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { peopleRevision } from '../src/operator/people.js';
 import { PolicyWatcher } from '../src/operator/policy-watcher.js';
-import { restartOnEnvironmentChange } from '../src/operator/environment-watcher.js';
+import { restartOnChange } from '../src/operator/environment-watcher.js';
 import { fixture, ids } from './fixtures.js';
 import { ReplyOrigins } from '../src/core/reply-origins.js';
 
@@ -38,13 +38,13 @@ export async function checkPeople(directory: string): Promise<void> {
 export async function checkEnvironmentRestart(directory: string): Promise<void> {
     const path = join(directory, 'restart.env');
     await writeFile(path, 'DISCORDINATOR_PORT=1\n');
-    const previous = process.env.INVOCATION_ID;
-    process.env.INVOCATION_ID = 'check';
+    const previous = process.env.DISCORDINATOR_SERVICE;
+    process.env.DISCORDINATOR_SERVICE = '1';
     const steps: string[] = [];
     let release = () => undefined as void;
     const idle = new Promise<void>((resolve) => (release = resolve));
-    const stop = restartOnEnvironmentChange(
-        path,
+    const stop = restartOnChange(
+        [path],
         () => {
             steps.push('waiting');
             return idle;
@@ -65,9 +65,23 @@ export async function checkEnvironmentRestart(directory: string): Promise<void> 
         release();
         await until(() => steps.length === 2);
         assert.deepEqual(steps, ['waiting', 'restart']);
+        const request = join(directory, 'restart-request');
+        let requested = false;
+        const stopRequest = restartOnChange(
+            [path, request],
+            () => Promise.resolve(),
+            () => {
+                requested = true;
+                return Promise.resolve();
+            },
+        );
+        await new Promise((resolve) => setTimeout(resolve, 50));
+        await writeFile(request, new Date().toISOString());
+        await until(() => requested);
+        stopRequest();
     } finally {
         stop();
-        if (previous === undefined) delete process.env.INVOCATION_ID;
-        else process.env.INVOCATION_ID = previous;
+        if (previous === undefined) delete process.env.DISCORDINATOR_SERVICE;
+        else process.env.DISCORDINATOR_SERVICE = previous;
     }
 }

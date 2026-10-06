@@ -1,14 +1,20 @@
 import { mkdir, readFile, rename, writeFile } from 'node:fs/promises';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
-import { codexExecutable } from './executables.js';
+import { codexProgram } from './executables.js';
 
 export function codexHome(): Promise<string> {
     return Promise.resolve(process.env.CODEX_HOME ?? join(homedir(), '.codex'));
 }
 
-export async function codexCommand(): Promise<{ command: string; env: NodeJS.ProcessEnv }> {
-    return { command: await codexExecutable(), env: { ...process.env, CODEX_HOME: await codexHome() } };
+export interface CodexCli {
+    command: string;
+    args: string[];
+    env: NodeJS.ProcessEnv;
+}
+
+export async function codexCommand(): Promise<CodexCli> {
+    return { ...(await codexProgram()), env: { ...process.env, CODEX_HOME: await codexHome() } };
 }
 
 const tableName = (header: string) => header.replace(/"/g, '');

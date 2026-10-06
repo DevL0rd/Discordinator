@@ -6,7 +6,8 @@ import { observations } from './observe.js';
 import { listServers } from '../servers.js';
 import { scalar } from '../../core/text.js';
 import { publicDomain } from '../connection-domain.js';
-import { claudeConnectorLink, markWebAdded, openInBrowser, webConnectors, type WebId } from '../web-connectors.js';
+import { claudeConnectorLink, markWebAdded, webConnectors, type WebId } from '../web-connectors.js';
+import { openUrl } from '../open-url.js';
 import { liveSetupStatus } from '../setup-model.js';
 import { runtimePresent } from '../status.js';
 import type { ActionId } from './model.js';
@@ -125,7 +126,7 @@ function webSheet(store: Store, id: WebId, responder = false): void {
                           void task(
                               store,
                               'Opening claude.ai…',
-                              async () => (await openInBrowser(claudeConnectorLink(url)), 'Opened claude.ai with Discordinator filled in.'),
+                              async () => (await openUrl(claudeConnectorLink(url)), 'Opened claude.ai with Discordinator filled in.'),
                           ),
                   },
               ]

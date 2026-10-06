@@ -16,7 +16,7 @@ import { acquireRuntime } from './core/runtime.js';
 import { BundledOAuth } from './oauth/server.js';
 import { OperatorService } from './operator/service.js';
 import { loadLocalKey } from './mcp/local-key.js';
-import { restartOnEnvironmentChange } from './operator/environment-watcher.js';
+import { restartOnChange, restartRequestFile } from './operator/environment-watcher.js';
 import { migrateEnvironment } from './core/env-migration.js';
 import { ReplyOrigins } from './core/reply-origins.js';
 import { PolicyWatcher } from './operator/policy-watcher.js';
@@ -65,8 +65,8 @@ async function run(
         operator.start();
         people.start();
         await presence.start(events.status().subscriptions);
-        restartOnEnvironmentChange(
-            '.env',
+        restartOnChange(
+            ['.env', restartRequestFile],
             () => operator.whenIdle(),
             async () => {
                 await stop();

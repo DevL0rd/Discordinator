@@ -1,6 +1,13 @@
 import { access, readFile, stat } from 'node:fs/promises';
 import { constants } from 'node:fs';
-import { delimiter, join } from 'node:path';
+import { delimiter, dirname, join } from 'node:path';
+
+export interface Program {
+    command: string;
+    args: string[];
+}
+
+const extensions = process.platform === 'win32' ? ['.exe', '.cmd'] : [''];
 
 async function forcesCodexHome(path: string): Promise<boolean> {
     const info = await stat(path);
@@ -8,20 +15,36 @@ async function forcesCodexHome(path: string): Promise<boolean> {
     return /^\s*(export\s+)?CODEX_HOME=/m.test(await readFile(path, 'utf8'));
 }
 
+const runnable = (path: string) =>
+    access(path, constants.X_OK).then(
+        () => true,
+        () => false,
+    );
+
 async function findExecutable(name: string, skip: (path: string) => Promise<boolean> = () => Promise.resolve(false)): Promise<string> {
-    for (const directory of (process.env.PATH ?? '').split(delimiter).filter(Boolean)) {
-        const candidate = join(directory, name);
-        if (
-            !(await access(candidate, constants.X_OK).then(
-                () => true,
-                () => false,
-            ))
-        )
-            continue;
-        if (!(await skip(candidate))) return candidate;
-    }
+    for (const directory of (process.env.PATH ?? '').split(delimiter).filter(Boolean))
+        for (const extension of extensions) {
+            const candidate = join(directory, `${name}${extension}`);
+            if ((await runnable(candidate)) && !(await skip(candidate))) return candidate;
+        }
     throw new Error(`${name === 'claude' ? 'Claude Code' : 'Codex'} is not installed or not on PATH`);
 }
 
-export const claudeExecutable = () => findExecutable('claude');
-export const codexExecutable = () => findExecutable('codex', forcesCodexHome);
+export async function shimTarget(path: string): Promise<string> {
+    const match = /"%dp0%\\([^"]+\.[cm]?js)"\s+%\*/i.exec(await readFile(path, 'utf8'));
+    if (!match) throw new Error(`${path} is not an npm command shim Discordinator can run`);
+    return join(dirname(path), ...match[1]!.split('\\'));
+}
+
+async function program(path: string): Promise<Program> {
+    if (!/\.cmd$/i.test(path)) return { command: path, args: [] };
+    return { command: process.execPath, args: [await shimTarget(path)] };
+}
+
+export const claudeProgram = async (): Promise<Program> => program(await findExecutable('claude'));
+export const codexProgram = async (): Promise<Program> => program(await findExecutable('codex', forcesCodexHome));
+
+export async function claudeExecutable(): Promise<string> {
+    const found = await claudeProgram();
+    return found.args[0] ?? found.command;
+}
