@@ -22,6 +22,8 @@ npm run setup:spelling
 npm run quality
 ```
 
+Tests run with `npm run coverage`, the offline validation suite under c8. CI runs it on both Ubuntu and Windows and fails when coverage drops below 88% of lines, statements and functions or 80% of branches.
+
 All npm tools and their transitive dependencies resolve through `package-lock.json`. New direct development dependencies have exact versions: typos wrapper 1.50.3, jscpd 5.4.0, ESLint JS configuration 10.0.1, SonarJS 4.2.2, Prettier 3.9.9 and Knip 6.39.0. Konveyor installs rolling Arch tools and invokes `npx jscpd@5`; Discordinator pins the resolved versions for repeatable installs. The audited spelling wrapper alone receives a scoped rebuild after the general install disables lifecycle scripts. It downloads the fixed upstream typos 1.50.3 release binary; that binary archive is outside npm's lockfile integrity coverage. `allowScripts` also restricts the approved install script to wrapper version 1.50.3 on npm versions that support this field.
 
 | Reference check and settings | Discordinator counterpart |
