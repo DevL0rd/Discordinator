@@ -61,8 +61,10 @@ export class SubscriptionStore {
         if (this.pending >= 64) return Promise.reject(new Error('Subscription state busy'));
         this.pending++;
         const next = this.tail.then(async () => {
+            const before = JSON.stringify(this.state);
             const candidate = structuredClone(this.state);
             const result = action(candidate);
+            if (JSON.stringify(candidate) === before) return result;
             await this.save(candidate);
             this.state = candidate;
             this.onChange?.(candidate);

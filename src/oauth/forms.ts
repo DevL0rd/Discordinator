@@ -52,11 +52,17 @@ function loginBody(): string {
     return '<h1>Welcome back</h1><p>Enter your Discordinator password to connect this app.</p><label for="password">Password</label><input id="password" type="password" name="password" autocomplete="current-password" required maxlength="1024" autofocus><div class="actions"><button class="primary" name="action" value="login">Sign in</button><button class="ghost" name="action" value="deny" formnovalidate>Cancel</button></div>';
 }
 
-function consentBody(clientId: string, redirect: string): string {
-    return `<h1>Allow access?</h1><p>An app wants to use Discordinator on your behalf.</p><div class="app"><div class="row"><span>App</span><span>${escape(clientId)}</span></div><div class="row"><span>Returns to</span><span>${escape(new URL(redirect).host)}</span></div><div class="row"><span>Access</span><span><span class="chip">discordinator:control</span></span></div></div><p class="note">It can read and act in Discord only within your existing policy, and sensitive actions still need your approval in Discord.</p><div class="actions"><button class="primary" name="action" value="allow">Allow</button><button class="ghost" name="action" value="deny">Deny</button></div>`;
+function consentBody(clientName: string | undefined, redirect: string): string {
+    return `<h1>Allow access?</h1><p>An app wants to use Discordinator on your behalf.</p><div class="app"><div class="row"><span>App</span><span>${escape(clientName ?? 'Unnamed app')}</span></div><div class="row"><span>Returns to</span><span>${escape(new URL(redirect).host)}</span></div><div class="row"><span>Access</span><span><span class="chip">discordinator:control</span></span></div></div><p class="note">It can read and act in Discord only within your existing policy, and sensitive actions still need your approval in Discord.</p><div class="actions"><button class="primary" name="action" value="allow">Allow</button><button class="ghost" name="action" value="deny">Deny</button></div>`;
 }
 
-export function interactionPage(response: ServerResponse, prompt: string, csrf: string, clientId: string, redirect: string): void {
+export function interactionPage(
+    response: ServerResponse,
+    prompt: string,
+    csrf: string,
+    clientName: string | undefined,
+    redirect: string,
+): void {
     const callbackOrigin = new URL(redirect).origin;
     response.writeHead(200, {
         'Content-Type': 'text/html; charset=utf-8',
@@ -66,7 +72,7 @@ export function interactionPage(response: ServerResponse, prompt: string, csrf: 
         'Referrer-Policy': 'same-origin',
         'X-Content-Type-Options': 'nosniff',
     });
-    const body = prompt === 'login' ? loginBody() : consentBody(clientId, redirect);
+    const body = prompt === 'login' ? loginBody() : consentBody(clientName, redirect);
     response.end(
         `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="color-scheme" content="dark light"><title>Discordinator · ${prompt === 'login' ? 'Sign in' : 'Allow access'}</title><style>${style}</style></head><body><main><div class="mark"><div class="logo">D</div><div class="name">DISCORDINATOR</div></div><form method="post"><input type="hidden" name="csrf" value="${csrf}">${body}</form></main></body></html>`,
     );

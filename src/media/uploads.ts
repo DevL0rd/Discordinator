@@ -18,7 +18,11 @@ export const uploadSchema = z
             .int()
             .positive()
             .max(8 * 1024 * 1024),
-        sha256: z.string().regex(/^[a-f0-9]{64}$/),
+        sha256: z
+            .string()
+            .regex(/^[a-f0-9]{64}$/)
+            .optional()
+            .describe('Optional. When given, the sealed bytes must match it.'),
         idempotencyKey: z.string().min(8).max(128),
     })
     .strict();
@@ -32,7 +36,7 @@ interface Upload {
     expires: number;
     bytes: Buffer;
     length: number;
-    sealed: boolean;
+    sha256?: string;
 }
 
 export class Uploads {
@@ -67,13 +71,17 @@ export class Uploads {
             expires: Math.min(event.expiresAt, this.now() + 10 * 60_000),
             bytes: Buffer.alloc(input.size),
             length: 0,
-            sealed: false,
         };
         this.items.set(item.id, item);
         return this.describe(item);
     }
     private describe(item: Upload) {
-        return { uploadId: item.id, offset: item.length, sealed: item.sealed, expiresAt: new Date(item.expires).toISOString() };
+        return {
+            uploadId: item.id,
+            offset: item.length,
+            sealed: item.sha256 !== undefined,
+            expiresAt: new Date(item.expires).toISOString(),
+        };
     }
     get(eventId: string, id: string): Upload {
         this.access.event(eventId, true);
@@ -92,7 +100,7 @@ export class Uploads {
                 throw new Error('Changed retry chunk');
             return this.describe(item);
         }
-        if (item.sealed || input.offset !== item.length || item.length + bytes.length > item.input.size)
+        if (item.sha256 !== undefined || input.offset !== item.length || item.length + bytes.length > item.input.size)
             throw new Error('Chunks must be contiguous and within declared size');
         bytes.copy(item.bytes, item.length);
         item.length += bytes.length;
@@ -100,22 +108,23 @@ export class Uploads {
     }
     async seal(eventId: string, id: string) {
         const item = this.get(eventId, id);
-        if (item.length !== item.input.size || createHash('sha256').update(item.bytes).digest('hex') !== item.input.sha256)
-            throw new Error('Incomplete upload or hash mismatch');
+        if (item.length !== item.input.size) throw new Error('Incomplete upload');
+        const sha256 = createHash('sha256').update(item.bytes).digest('hex');
+        if (item.input.sha256 !== undefined && sha256 !== item.input.sha256) throw new Error('Upload hash mismatch');
         await inspectFile(item.bytes, item.input.fileName, item.input.mimeType);
         this.get(eventId, id);
-        item.sealed = true;
-        return this.describe(item);
+        item.sha256 = sha256;
+        return { ...this.describe(item), sha256 };
     }
     ready(eventId: string, ids: string[]) {
         return ids.map((id) => {
             const item = this.get(eventId, id);
-            if (!item.sealed) throw new Error('Upload must be sealed first');
+            if (item.sha256 === undefined) throw new Error('Upload must be sealed first');
             return {
                 data: Buffer.from(item.bytes),
                 name: item.input.fileName,
                 contentType: item.input.mimeType,
-                sha256: item.input.sha256,
+                sha256: item.sha256,
             };
         });
     }

@@ -4,7 +4,12 @@ import type { Bridge } from '../core/bridge.js';
 import type { Principal } from '../events/security.js';
 import { snowflake } from '../core/config.js';
 import { chunkSchema, uploadSchema } from '../media/uploads.js';
-import { guarded, mutation } from './tools.js';
+import { guarded, mutation, notifyUserId } from './tools.js';
+
+const beginSchema = uploadSchema.omit({ eventId: true }).extend({
+    channelId: snowflake,
+    scopeId: z.uuid().optional().describe('Optional. scopeId from an earlier begin to add another file to the same send.'),
+});
 
 export function requireOwner(principal?: Principal): void {
     if (!principal) throw new Error('Authenticated owner required for proactive messages/media');
@@ -22,8 +27,8 @@ export function registerProactiveMedia(server: McpServer, bridge: Bridge, princi
         {
             title: 'Begin approved-channel media upload',
             description:
-                'Authenticated owner only. Stage bounded safe media for an approved anytime destination; no trigger required. Returns scopeId, not a triggering event. Buffer expiry only frees upload memory; completion permission does not expire.',
-            inputSchema: uploadSchema.omit({ eventId: true }).extend({ channelId: snowflake }),
+                'Authenticated owner only. Stage bounded safe media for an approved anytime destination; no trigger required. Returns scopeId, not a triggering event. Pass that scopeId to later begins to stage up to three files for one discord_proactive_media_send. Buffer expiry only frees upload memory; completion permission does not expire.',
+            inputSchema: beginSchema,
             annotations,
             _meta: meta,
         },
@@ -50,7 +55,7 @@ export function registerProactiveMedia(server: McpServer, bridge: Bridge, princi
         {
             title: 'Send media to approved anytime channel',
             description:
-                'Authenticated owner only. Send up to three sealed safe files to their approved destination. No recent trigger; whitelist-only optional notification. No arbitrary files, paths, URLs, roles or everyone mentions.',
+                'Authenticated owner only. Send up to three sealed safe files to their approved destination. No recent trigger. notifyUserId only permits a ping of that approved person; include their <@USER_ID> mention in content to actually ping them. No arbitrary files, paths, URLs, roles or everyone mentions.',
             inputSchema: z
                 .object({
                     channelId: snowflake,
@@ -58,7 +63,7 @@ export function registerProactiveMedia(server: McpServer, bridge: Bridge, princi
                     uploadIds: z.array(z.uuid()).min(1).max(3),
                     content: z.string().max(2000).default(''),
                     idempotencyKey: mutation.idempotencyKey,
-                    notifyUserId: snowflake.optional(),
+                    notifyUserId,
                 })
                 .strict(),
             annotations,
@@ -72,7 +77,8 @@ function registerSeal(server: McpServer, bridge: Bridge, principal: Principal | 
         'media_proactive_upload_seal',
         {
             title: 'Seal approved-channel media',
-            description: 'Authenticated owner only. Verify declared bytes, SHA-256, MIME/extension and dimensions before sending.',
+            description:
+                'Authenticated owner only. Verify declared bytes, declared SHA-256 if any, MIME/extension and dimensions before sending.',
             inputSchema: z.object({ scopeId: z.uuid(), uploadId: z.uuid() }).strict(),
             annotations: { readOnlyHint: false, destructiveHint: false, openWorldHint: false },
             _meta: oauth ? { securitySchemes: [{ type: 'oauth2', scopes: ['discordinator:control'] }] } : undefined,

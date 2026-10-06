@@ -14,6 +14,7 @@ const exists = (path: string) =>
         () => false,
     );
 export const pendingOwnerFile = (directory: string) => join(directory, 'owner-password.json');
+export const ownerPending = (directory: string) => exists(pendingOwnerFile(directory));
 
 export async function ensureKeys(directory: string): Promise<void> {
     if (await exists(join(directory, 'keys.json'))) return;
@@ -36,7 +37,7 @@ export async function requestOwnerPassword(directory: string, password: string):
 }
 
 export async function applyPendingOwner(directory: string): Promise<Owner | undefined> {
-    if (!(await exists(pendingOwnerFile(directory)))) return undefined;
+    if (!(await ownerPending(directory))) return undefined;
     const { passwordHash } = await readPrivate<{ passwordHash: string }>(pendingOwnerFile(directory));
     if (!passwordHash.startsWith('$argon2id$')) throw new Error('Pending owner password is not an Argon2id hash');
     const file = join(directory, 'owner.json');
@@ -48,5 +49,5 @@ export async function applyPendingOwner(directory: string): Promise<Owner | unde
 }
 
 export async function ownerReady(directory: string): Promise<boolean> {
-    return (await exists(join(directory, 'owner.json'))) || exists(pendingOwnerFile(directory));
+    return (await exists(join(directory, 'owner.json'))) || ownerPending(directory);
 }

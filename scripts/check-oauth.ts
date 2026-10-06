@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { registrationSchema } from '../src/oauth/registration.js';
-import { createHash, randomBytes } from 'node:crypto';
+import { randomBytes } from 'node:crypto';
 import { readFile, stat } from 'node:fs/promises';
 import type { IncomingMessage } from 'node:http';
 import { jwtVerify, importJWK, SignJWT } from 'jose';
@@ -8,15 +8,8 @@ import { PROTOCOL_VERSION_META_KEY, CLIENT_CAPABILITIES_META_KEY, CLIENT_INFO_ME
 import { applyPendingOwner, requestOwnerPassword, type KeyMaterial } from '../src/oauth/provision.js';
 import { readPrivate } from '../src/oauth/storage.js';
 import { Authenticator } from '../src/mcp/auth.js';
-import { OAuthFixture, form, redirect } from './oauth-fixture.js';
-
-const callback = 'https://chatgpt.com/connector_platform_oauth_redirect';
-const verifier = randomBytes(32).toString('base64url');
-const challenge = createHash('sha256').update(verifier).digest('base64url');
-
-function authorization(f: OAuthFixture, client: string, extra = {}): string {
-    return `/oauth/auth?${new URLSearchParams({ client_id: client, redirect_uri: callback, response_type: 'code', scope: 'openid discordinator:control', resource: f.config.DISCORDINATOR_RESOURCE_URL, state: 'offline-state', nonce: 'offline-nonce', code_challenge: challenge, code_challenge_method: 'S256', ...extra })}`;
-}
+import { OAuthFixture, authorization, callback, form, redirect, verifier } from './oauth-fixture.js';
+import { checkClientExpiry, checkConsentPage, checkLoginLimits, checkOAuthFiles, checkPasswordReset } from './check-oauth-limits.js';
 
 async function registration(f: OAuthFixture): Promise<string> {
     const dcr = (value: unknown) =>
@@ -299,21 +292,6 @@ async function authenticatedMcp(f: OAuthFixture, token: string): Promise<void> {
     assert.equal(f.f.api.calls.length, 0, 'No Discord actions');
 }
 
-async function rateLimit(f: OAuthFixture, client: string): Promise<void> {
-    const response = await f.fetch(authorization(f, client, { prompt: 'login' }));
-    const path = response.headers.get('location')!;
-    for (let attempt = 0; attempt < 3; attempt++) {
-        const csrf = await form(f, path);
-        assert.equal((await f.post(path, { csrf, action: 'login', password: 'wrong' })).status, 403);
-    }
-    const csrf = await form(f, path);
-    assert.equal((await f.post(path, { csrf, action: 'login', password: 'wrong' })).status, 429);
-    await f.stop();
-    await f.start();
-    const next = await form(f, path);
-    assert.equal((await f.post(path, { csrf: next, action: 'login', password: 'wrong' })).status, 429, 'Rate limit persists');
-}
-
 async function deniedConsent(f: OAuthFixture, client: string): Promise<void> {
     const response = await f.fetch(authorization(f, client));
     const path = response.headers.get('location')!;
@@ -359,6 +337,7 @@ function checkClaudeRegistration(): void {
 
 export async function checkOAuth(directory: string): Promise<void> {
     checkClaudeRegistration();
+    await checkOAuthFiles(directory);
     const f = new OAuthFixture(directory);
     const password = `offline-fixture-${randomBytes(16).toString('hex')}`;
     await assert.rejects(() => f.start(), 'Missing setup fails closed');
@@ -378,10 +357,13 @@ export async function checkOAuth(directory: string): Promise<void> {
         await f.start();
         await tokenChecks(f, client, code);
         await refreshChecks(f, client);
+        await checkConsentPage(f, client);
         await deniedConsent(f, client);
-        await rateLimit(f, client);
+        await checkLoginLimits(f, client, password);
+        await checkPasswordReset(f, client, password);
+        await checkClientExpiry(f, client);
         console.log(
-            'Bundled OAuth passed: DCR, S256, owner login/consent, CSRF, JWT claims, MCP init, persistence and login rate limit. In-process, no network.',
+            'Bundled OAuth passed: DCR, client expiry, S256, owner login/consent, CSRF, JWT claims, MCP init, persistence, failed-login limits and password-reset revocation. In-process, no network.',
         );
     } finally {
         await f.stop();

@@ -9,6 +9,12 @@ export interface LocalEndpoint {
     key: string;
 }
 
+export class LocalHttpError extends Error {
+    constructor(readonly status: number) {
+        super(`Discordinator returned HTTP ${status}`);
+    }
+}
+
 export async function localEndpoint(home = process.cwd()): Promise<LocalEndpoint> {
     const environment = await readFile(join(home, '.env'), 'utf8').then(parseEnv, (): Record<string, string> => ({}));
     const port = process.env.DISCORDINATOR_PORT ?? environment.DISCORDINATOR_PORT ?? '8787';
@@ -47,7 +53,7 @@ export async function localCall(endpoint: LocalEndpoint, method: string, params:
             },
         }),
     });
-    if (!response.ok) throw new Error(`Discordinator returned HTTP ${response.status}`);
+    if (!response.ok) throw new LocalHttpError(response.status);
     const message = rpcMessage(await response.text());
     if (message.error) throw new Error(message.error.message ?? 'Discordinator request failed');
     return message.result as Record<string, unknown>;

@@ -4,11 +4,14 @@ import { mkdir } from 'node:fs/promises';
 import { checkPolicy } from './check-policy.js';
 import { checkBridge } from './check-bridge.js';
 import { checkHttp } from './check-http.js';
+import { checkHttpBudgets } from './check-http-budgets.js';
 import { operations } from '../src/discord/catalog.js';
 import { checkContext, checkHistory } from './check-context.js';
 import { checkEvents, checkCancellation } from './check-events.js';
+import { checkEventsPump } from './check-events-pump.js';
 import { checkAuth } from './check-auth.js';
 import { checkMedia } from './check-media.js';
+import { checkMediaLimits } from './check-media-limits.js';
 import { checkControls } from './check-controls.js';
 import { checkConnection } from './check-connection.js';
 import { checkOAuth } from './check-oauth.js';
@@ -41,6 +44,7 @@ try {
     if (process.argv.includes('--oauth')) process.exitCode = 0;
     else {
         await checkHttp(directory);
+        await checkHttpBudgets(directory);
         await checkAuth();
         await checkConnection(directory);
         if (process.argv.includes('--connection')) {
@@ -54,7 +58,9 @@ try {
             await checkHistory(directory);
             await checkEvents(directory);
             await checkCancellation(directory);
+            await checkEventsPump(directory);
             await checkMedia(directory);
+            await checkMediaLimits(directory);
             await checkControls(directory);
             await checkOperator();
             await checkReplyOrigins(directory);

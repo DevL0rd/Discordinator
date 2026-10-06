@@ -1,6 +1,6 @@
 import { stdin, stdout, stderr } from 'node:process';
 import { createInterface } from 'node:readline';
-import { localCall, localEndpoint, type LocalEndpoint } from '../mcp/local-client.js';
+import { LocalHttpError, localCall, localEndpoint, type LocalEndpoint } from '../mcp/local-client.js';
 
 type Message = { jsonrpc: '2.0'; id?: number | string; method?: string; params?: Record<string, unknown> };
 const supported = ['2025-11-25', '2025-06-18', '2025-03-26'];
@@ -13,16 +13,39 @@ const instructions = [
 const send = (message: Record<string, unknown>) => stdout.write(`${JSON.stringify({ jsonrpc: '2.0', ...message })}\n`);
 const log = (text: string) => stderr.write(`discordinator: ${text}\n`);
 
-async function handle(endpoint: LocalEndpoint, message: Message): Promise<void> {
-    if (message.id === undefined) return;
+class MethodNotFound extends Error {}
+
+let endpoint: Promise<LocalEndpoint> | undefined;
+
+function currentEndpoint(): Promise<LocalEndpoint> {
+    endpoint ??= localEndpoint(process.env.DISCORDINATOR_HOME).catch((error: unknown) => {
+        endpoint = undefined;
+        throw error;
+    });
+    return endpoint;
+}
+
+async function call(method: string, params: Record<string, unknown> = {}): Promise<Record<string, unknown>> {
     try {
-        send({ id: message.id, result: await answer(endpoint, message) });
+        return await localCall(await currentEndpoint(), method, params);
     } catch (error) {
-        send({ id: message.id, error: { code: -32603, message: error instanceof Error ? error.message : 'Discordinator request failed' } });
+        if (!(error instanceof LocalHttpError) || error.status !== 401) throw error;
+        endpoint = undefined;
+        return localCall(await currentEndpoint(), method, params);
     }
 }
 
-async function answer(endpoint: LocalEndpoint, message: Message): Promise<unknown> {
+async function handle(message: Message): Promise<void> {
+    if (message.id === undefined) return;
+    try {
+        send({ id: message.id, result: await answer(message) });
+    } catch (error) {
+        const code = error instanceof MethodNotFound ? -32601 : -32603;
+        send({ id: message.id, error: { code, message: error instanceof Error ? error.message : 'Discordinator request failed' } });
+    }
+}
+
+async function answer(message: Message): Promise<unknown> {
     if (message.method === 'initialize') {
         const requested = typeof message.params?.protocolVersion === 'string' ? message.params.protocolVersion : '';
         return {
@@ -33,16 +56,15 @@ async function answer(endpoint: LocalEndpoint, message: Message): Promise<unknow
         };
     }
     if (message.method === 'ping') return {};
-    if (message.method === 'tools/list') return { tools: (await localCall(endpoint, 'tools/list')).tools ?? [] };
-    if (message.method === 'tools/call') return localCall(endpoint, 'tools/call', message.params ?? {});
-    throw new Error(`Unsupported method ${message.method}`);
+    if (message.method === 'tools/list') return { tools: (await call('tools/list')).tools ?? [] };
+    if (message.method === 'tools/call') return call('tools/call', message.params ?? {});
+    throw new MethodNotFound(`Unsupported method ${message.method}`);
 }
 
-const endpoint = await localEndpoint(process.env.DISCORDINATOR_HOME);
 createInterface({ input: stdin }).on('line', (line) => {
     if (!line.trim()) return;
     try {
-        void handle(endpoint, JSON.parse(line) as Message);
+        void handle(JSON.parse(line) as Message);
     } catch {
         log('ignored a malformed message');
     }

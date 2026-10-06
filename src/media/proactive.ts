@@ -3,7 +3,7 @@ import type { Policy } from '../core/policy.js';
 import { Uploads, uploadSchema } from './uploads.js';
 import type { z } from 'zod';
 
-type Input = Omit<z.infer<typeof uploadSchema>, 'eventId'> & { channelId: string };
+type Input = Omit<z.infer<typeof uploadSchema>, 'eventId'> & { channelId: string; scopeId?: string };
 interface Session {
     id: string;
     channelId: string;
@@ -31,15 +31,23 @@ export class ProactiveUploads {
         this.policy.assertProactive(input.channelId);
         this.policy.assertScope('media.write');
         for (const [id, session] of this.sessions) if (session.expires <= this.now()) this.sessions.delete(id);
-        let session = [...this.sessions.values()].find((item) => item.key === input.idempotencyKey);
-        if (session && session.channelId !== input.channelId) throw new Error('Upload destination cannot change');
-        if (!session) {
-            if (this.sessions.size >= 16) throw new Error('Upload session limit reached');
-            session = { id: randomUUID(), channelId: input.channelId, key: input.idempotencyKey, expires: this.now() + 10 * 60_000 };
-            this.sessions.set(session.id, session);
-        }
-        const { channelId: _channel, ...upload } = input;
+        const session = input.scopeId ? this.joined(input.scopeId) : this.opened(input.idempotencyKey, input.channelId);
+        if (session.channelId !== input.channelId) throw new Error('Upload destination cannot change');
+        const { channelId: _channel, scopeId: _scope, ...upload } = input;
         return { scopeId: session.id, ...this.uploads.begin({ ...upload, eventId: session.id }) };
+    }
+    private joined(scopeId: string): Session {
+        const session = this.sessions.get(scopeId);
+        if (!session) throw new Error('Upload buffer session unavailable; begin a new upload');
+        return session;
+    }
+    private opened(key: string, channelId: string): Session {
+        const existing = [...this.sessions.values()].find((item) => item.key === key);
+        if (existing) return existing;
+        if (this.sessions.size >= 16) throw new Error('Upload session limit reached');
+        const session = { id: randomUUID(), channelId, key, expires: this.now() + 10 * 60_000 };
+        this.sessions.set(session.id, session);
+        return session;
     }
     ready(channelId: string, scopeId: string, ids: string[]) {
         this.authorize(scopeId);

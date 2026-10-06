@@ -10,10 +10,10 @@ import { inspectFile } from '../src/media/formats.js';
 import { Uploads } from '../src/media/uploads.js';
 import { AttachmentIndex, searchSchema } from '../src/media/index.js';
 
-const png = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+j5WQAAAAASUVORK5CYII=', 'base64');
+export const png = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+j5WQAAAAASUVORK5CYII=', 'base64');
 const gif = Buffer.from('R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7', 'base64');
 const attachmentId = '888888888888888888';
-function message(bytes = png, filename = 'image.png', mime = 'image/png') {
+export function message(bytes = png, filename = 'image.png', mime = 'image/png') {
     return {
         id: ids.message,
         channel_id: ids.channel,
@@ -37,7 +37,7 @@ class MediaApi extends FakeApi {
         return Promise.resolve(route.endsWith('/messages') ? [this.record] : this.record);
     }
 }
-function mediaFixture(file: string) {
+export function mediaFixture(file: string) {
     const f = fixture(file);
     f.policy.config.scopes.push('media.read', 'media.write', 'messages.read');
     f.policy.config.media.enabled = true;

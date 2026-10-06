@@ -16,7 +16,7 @@ import {
     type SubscribeInput,
     type UnsubscribeInput,
 } from './schema.js';
-import { SubscriptionStore, type Subscription, type Job } from './store.js';
+import { SubscriptionStore, type Subscription, type Job, type State } from './store.js';
 
 function identity(owner: string, input: UnsubscribeInput): string {
     return `sub_${hash([owner, input.delivery.url, input.name, input.arguments])}`;
@@ -26,9 +26,9 @@ export class EventsService {
     readonly access: EventAccess;
     private readonly verifier: Verifier;
     private inFlight = new Map<string, AbortController>();
-    private timer?: ReturnType<typeof setInterval>;
-    private pumping = false;
-    private pumpTask?: Promise<void>;
+    private lanes = new Set<Promise<void>>();
+    private timer?: ReturnType<typeof setTimeout>;
+    private running = false;
     private closed = false;
     private verifications = new Map<string, Set<AbortController>>();
     private pendingEmits = 0;
@@ -103,6 +103,7 @@ export class EventsService {
                 return { id, refreshBefore: new Date(expires).toISOString(), cursor: null, truncated: false };
             });
         } finally {
+            this.schedule();
             const controllers = this.verifications.get(id);
             controllers?.delete(controller);
             if (!controllers?.size) this.verifications.delete(id);
@@ -138,6 +139,7 @@ export class EventsService {
             state.subscriptions = state.subscriptions.filter((item) => item.id !== id);
             state.jobs = state.jobs.filter((item) => item.subscriptionId !== id);
         });
+        this.schedule();
         return {};
     }
 
@@ -179,45 +181,60 @@ export class EventsService {
                 });
             }
         });
+        this.schedule();
     }
 
     start(): void {
         this.closed = false;
-        this.timer = setInterval(() => {
-            void this.pump().catch(() => {
-                console.error('Webhook state unavailable; delivery paused');
-            });
-        }, 1000);
-        this.timer.unref();
+        this.running = true;
+        this.schedule();
     }
     async stop(): Promise<void> {
         this.closed = true;
-        clearInterval(this.timer);
+        this.running = false;
+        clearTimeout(this.timer);
         for (const controller of this.inFlight.values()) controller.abort();
         for (const controllers of this.verifications.values()) for (const controller of controllers) controller.abort();
-        await this.pumpTask;
+        await Promise.allSettled([...this.lanes]);
         // Already transmitted packets cannot be recalled.
         await this.store.change(() => {});
     }
 
     async pump(): Promise<void> {
-        if (this.pumping || this.closed) return;
-        this.pumping = true;
-        this.pumpTask = this.runPump();
-        try {
-            await this.pumpTask;
-        } finally {
-            this.pumping = false;
-            this.pumpTask = undefined;
-        }
+        if (this.closed) return;
+        await this.prune();
+        const lanes = this.launch();
+        this.schedule();
+        await Promise.all(lanes);
     }
 
-    private async runPump(): Promise<void> {
-        await this.prune();
-        const due = this.store.state.jobs.filter((job) => job.nextAt <= this.now()).slice(0, 4);
-        for (const job of due) {
-            if (!this.closed) await this.deliver(job);
+    private launch(): Promise<void>[] {
+        const lanes: Promise<void>[] = [];
+        for (const job of this.store.state.jobs) {
+            if (this.closed || job.nextAt > this.now() || this.inFlight.has(job.subscriptionId)) continue;
+            const lane = this.deliver(job)
+                .then(
+                    () => this.schedule(),
+                    () => paused(),
+                )
+                .finally(() => this.lanes.delete(lane));
+            this.lanes.add(lane);
+            lanes.push(lane);
         }
+        return lanes;
+    }
+
+    private schedule(): void {
+        clearTimeout(this.timer);
+        const wake = this.running ? nextWake(this.store.state, this.inFlight) : undefined;
+        if (wake === undefined) return;
+        this.timer = setTimeout(
+            () => {
+                void this.pump().catch(paused);
+            },
+            Math.min(Math.max(0, wake - this.now()), 24 * 60 * 60_000),
+        );
+        this.timer.unref();
     }
 
     private async prune(): Promise<void> {
@@ -283,6 +300,18 @@ export class EventsService {
             droppedIngress: this.droppedIngress,
         };
     }
+}
+
+function paused(): void {
+    console.error('Webhook state unavailable; delivery paused');
+}
+
+function nextWake(state: State, inFlight: Map<string, AbortController>): number | undefined {
+    const times = [
+        ...state.jobs.filter((job) => !inFlight.has(job.subscriptionId)).map((job) => job.nextAt),
+        ...state.subscriptions.flatMap((item) => [item.expires, ...(item.previous ? [item.previous.until] : [])]),
+    ];
+    return times.length ? Math.min(...times) : undefined;
 }
 
 function deliveryFailure(error: unknown): number {

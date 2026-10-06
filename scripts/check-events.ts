@@ -13,7 +13,7 @@ import { observed } from './check-context.js';
 const secret = `whsec_${Buffer.alloc(32, 7).toString('base64')}`;
 const replacement = `whsec_${Buffer.alloc(32, 8).toString('base64')}`;
 const owner = { id: 'mock-owner' };
-const request = (delivery: 'addressed' | 'all' = 'addressed') =>
+export const request = (delivery: 'addressed' | 'all' = 'addressed') =>
     subscribeSchema.parse({
         name: 'discord.message.created',
         arguments: { delivery, channel_id: ids.channel },

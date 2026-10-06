@@ -5,6 +5,27 @@ import { EventQueue } from '../src/core/queue.js';
 import { promptSchema } from '../src/interactions/schema.js';
 import { fixture, ids } from './fixtures.js';
 import { operations } from '../src/discord/catalog.js';
+import { OwnerContexts } from '../src/core/authorization.js';
+
+async function checkContextReuse(f: ReturnType<typeof fixture>): Promise<void> {
+    const contexts = new OwnerContexts(f.policy, f.api);
+    const requesters = Array.from({ length: 1002 }, (_, index) => String(200_000_000_000_000_000n + BigInt(index)));
+    f.policy.config.allowedUserIds.push(...requesters);
+    await contexts.run(true, async () => {
+        const first = await contexts.create(ids.channel, requesters[0]!);
+        assert.equal((await contexts.create(ids.channel, requesters[0]!)).contextId, first.contextId, 'The same pair reuses its context');
+        const second = await contexts.create(ids.channel, requesters[1]!);
+        const third = await contexts.create(ids.channel, requesters[2]!);
+        for (const requester of requesters.slice(3, 1000)) await contexts.create(ids.channel, requester);
+        assert.ok(contexts.get(first.contextId), 'Recently used contexts stay');
+        await contexts.create(ids.channel, requesters[1000]!);
+        await contexts.create(ids.channel, requesters[1001]!);
+        assert.equal(contexts.has(second.contextId), false, 'The least recently used context is evicted');
+        assert.equal(contexts.has(third.contextId), false);
+        assert.ok(contexts.has(first.contextId));
+    });
+    f.policy.config.allowedUserIds = f.policy.config.allowedUserIds.filter((id) => !requesters.includes(id));
+}
 
 export async function checkOwnerContext(directory: string): Promise<void> {
     const f = fixture(join(directory, 'owner-context.json'));
@@ -15,6 +36,7 @@ export async function checkOwnerContext(directory: string): Promise<void> {
     const queue = new EventQueue();
     const bridge = new Bridge(f.policy, queue, f.journal, f.approvals, f.api);
     await assert.rejects(bridge.authorizeContext(ids.channel, ids.user), /Authenticated owner/);
+    await checkContextReuse(f);
     const context = await bridge.withOwner(() => bridge.authorizeContext(ids.channel, ids.user));
     assert.equal(queue.snapshot(0, 25).events.length, 0, 'Authorization does not fabricate a Discord event');
     assert.throws(() => queue.context(context.contextId), /unknown/);
