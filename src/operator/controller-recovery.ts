@@ -20,7 +20,10 @@ export async function recoverController(
         ...state.tasks.filter((item) => item.state === 'recovering').map((item) => ({ ...item, role: 'worker' as const })),
     ];
     for (const record of records) {
-        if (!record.sessionId) continue;
+        if (!record.sessionId || !record.turnId) {
+            await unstarted(store, generation, record);
+            continue;
+        }
         const resumed = await adapter.openSession({
             role: record.role,
             conversationKey: record.conversationKey,
@@ -54,6 +57,17 @@ async function applyProof(store: ControllerStore, generation: number, proof: Pro
         const conversation = current.conversations.find((item) => item.sessionId === proof.sessionId);
         if (worker && state !== 'idle') worker.state = state === 'approval' ? 'approval' : 'running';
         if (conversation) conversation.state = state;
+    }, generation);
+}
+async function unstarted(store: ControllerStore, generation: number, record: { role: string; id?: string; key?: string }): Promise<void> {
+    await store.update((current) => {
+        const conversation = current.conversations.find((item) => record.role === 'controller' && item.key === record.key);
+        const worker = current.tasks.find((item) => record.role === 'worker' && item.id === record.id);
+        if (conversation) Object.assign(conversation, { state: 'idle' });
+        if (worker) {
+            worker.state = 'queued';
+            delete worker.sessionId;
+        }
     }, generation);
 }
 async function release(store: ControllerStore, generation: number, sessionId: string, originEventId: string): Promise<void> {

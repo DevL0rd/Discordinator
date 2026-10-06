@@ -17,15 +17,21 @@ interface Pending {
 }
 export class DiscordApprovalDispatcher {
     private pending = new Map<string, Pending>();
+    private retired: string[] = [];
     constructor(
         readonly bridge: Bridge,
         readonly resolve: (key: string, decision: ApprovalDecision, originEventId: string) => Promise<void>,
     ) {}
     invalidate(key: string): void {
-        this.pending.delete(key);
+        const pending = this.pending.get(key);
+        if (pending) this.retire(pending);
     }
     invalidateAll(): void {
-        this.pending.clear();
+        for (const pending of [...this.pending.values()]) this.retire(pending);
+    }
+    private retire(pending: Pending): void {
+        this.pending.delete(pending.request.key);
+        this.retired = [...this.retired.filter((nonce) => nonce !== pending.nonce), pending.nonce].slice(-256);
     }
     async request(request: ProviderApproval, originEventId: string): Promise<void> {
         const origin = this.bridge.flows.authorize(originEventId).event;
@@ -41,18 +47,23 @@ export class DiscordApprovalDispatcher {
         }
         const detail = requestDetail(request);
         this.pending.set(request.key, pending);
-        await this.bridge.prompt({
-            ...pendingPrompt(pending, detail),
-            eventId: originEventId,
-            idempotencyKey: `provider-approval-${hash}`,
-        });
+        try {
+            await this.bridge.prompt({
+                ...pendingPrompt(pending, detail),
+                eventId: originEventId,
+                idempotencyKey: `provider-approval-${hash}`,
+            });
+        } catch (error) {
+            this.pending.delete(request.key);
+            throw error;
+        }
     }
     async accept(event: BotEvent): Promise<boolean> {
         const answer = controlAnswer(event);
         if (!answer) return false;
         const { identifier, choice, fields } = answer;
         const pending = [...this.pending.values()].find((item) => identifier.startsWith(`${item.nonce}_`));
-        if (!pending) return false;
+        if (!pending) return this.stale(event, identifier);
         try {
             assertPendingOrigin(pending, event);
             this.bridge.policy.assertOrigin(event);
@@ -72,13 +83,25 @@ export class DiscordApprovalDispatcher {
         }
         return true;
     }
+    private async stale(event: BotEvent, identifier: string): Promise<boolean> {
+        if (!this.retired.some((nonce) => identifier.startsWith(`${nonce}_`))) return false;
+        await this.bridge
+            .respond({
+                eventId: event.id,
+                content: 'This request is no longer active.',
+                idempotencyKey: `provider-approval-stale-${event.id}`,
+            })
+            .catch(() => undefined);
+        return true;
+    }
     private async settle(pending: Pending, decision: ApprovalDecision): Promise<void> {
         pending.consumed = true;
-        this.pending.delete(pending.request.key);
+        this.retire(pending);
         try {
             await this.resolve(pending.request.key, decision, pending.origin.id);
         } catch (error) {
             pending.consumed = false;
+            this.retired = this.retired.filter((nonce) => nonce !== pending.nonce);
             this.pending.set(pending.request.key, pending);
             throw error;
         }

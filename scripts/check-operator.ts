@@ -5,6 +5,8 @@ import { tmpdir, homedir } from 'node:os';
 import { defaultOperatorConfig, readOperatorConfig, writeOperatorConfig } from '../src/operator/config.js';
 import { activationBlock, endpointError, publicEndpoint, timeoutError } from '../src/operator/setup-model.js';
 import { parseServiceStatus, startBlocked } from '../src/operator/service-status.js';
+import { OperatorService } from '../src/operator/service.js';
+import { fixture } from './fixtures.js';
 
 function checkReadiness(): void {
     const absent = parseServiceStatus('LoadState=not-found\nActiveState=inactive\n');
@@ -20,7 +22,27 @@ function checkReadiness(): void {
     assert.equal(startBlocked(stopped, false, false), false);
 }
 
+async function checkUnavailable(): Promise<void> {
+    const directory = await mkdtemp(join(tmpdir(), 'discordinator-service-'));
+    const previous = process.cwd();
+    process.chdir(directory);
+    try {
+        await writeOperatorConfig({ ...defaultOperatorConfig(), mode: 'codex-local', enabled: true, exclusiveLocal: false });
+        const f = fixture(join(directory, 'journal.json'));
+        const service = new OperatorService(f.queue, f.bridge);
+        service.start();
+        const notified = () => f.api.calls.some((call) => JSON.stringify(call.body ?? '').includes('Assistant unavailable'));
+        for (let index = 0; index < 100 && !notified(); index++) await new Promise((resolve) => setTimeout(resolve, 20));
+        assert.ok(notified(), 'a message that arrived before start is answered with why the assistant is unavailable');
+        await service.stop();
+    } finally {
+        process.chdir(previous);
+        await rm(directory, { recursive: true, force: true });
+    }
+}
+
 export async function checkOperator(): Promise<void> {
+    await checkUnavailable();
     assert.equal(defaultOperatorConfig().workspace, homedir());
     checkReadiness();
     assert.equal(publicEndpoint('bot.example.com'), 'https://bot.example.com/mcp');

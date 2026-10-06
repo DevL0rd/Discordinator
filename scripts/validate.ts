@@ -21,6 +21,7 @@ import { checkController } from './check-controller.js';
 import { checkProviderApproval } from './check-provider-approval.js';
 import { checkCodexAdapter } from './check-codex-adapter.js';
 import { checkClaudeAdapter } from './check-claude-adapter.js';
+import { checkClaudeController } from './check-claude-controller.js';
 import { checkInteractionEvents } from './check-interaction-events.js';
 import { checkOwnerContext } from './check-owner-context.js';
 import { checkEnvironmentRename, checkOnboarding } from './check-onboarding.js';
@@ -75,6 +76,7 @@ try {
             await checkProviderApproval(directory);
             await checkCodexAdapter();
             await checkClaudeAdapter();
+            await checkClaudeController(directory);
             await checkInteractionEvents(directory);
             await checkOwnerContext(directory);
             console.log(

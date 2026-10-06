@@ -141,6 +141,14 @@ export async function checkHistory(directory: string): Promise<void> {
     assert.match(update.text, /^New messages[\s\S]*later/, 'later deliveries carry only what is new, from anyone in the channel');
     assert.doesNotMatch(update.text, /first|second/);
     assert.equal(fetched.length, 1, 'Discord history is fetched once per channel per run');
+    const offline = Object.create(f.api) as typeof f.api;
+    offline.get = () => Promise.reject(new Error('offline'));
+    const flaky = channelHistory(f.bridge.context, f.policy, offline);
+    await flaky(f.event, {});
+    offline.get = (route) => f.api.get(route);
+    await flaky(f.event, {});
+    assert.equal(fetched.length, 2, 'a failed history fetch is retried on the next message');
+    fetched.pop();
     f.policy.config.context.reach = 'server';
     const server = await history(f.event, {});
     assert.equal(server.key, `guild:${ids.guild}`);

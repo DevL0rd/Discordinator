@@ -25,11 +25,20 @@ function format(records: ContextRecord[], since: string | undefined, names?: Map
 }
 
 export function channelHistory(context: ContextIndex, policy: Policy, api: Api): History {
-    const loaded = new Set<string>();
+    const loaded = new Map<string, Promise<void>>();
     const names = new Map<string, string>();
-    const load = async (channel: Channel, guildId: string | null): Promise<void> => {
-        if (loaded.has(channel.id)) return;
-        loaded.add(channel.id);
+    const once = (key: string, work: () => Promise<void>): Promise<void> => {
+        const existing = loaded.get(key);
+        if (existing) return existing;
+        const running = work().catch((error: unknown) => {
+            loaded.delete(key);
+            throw error;
+        });
+        loaded.set(key, running);
+        return running;
+    };
+    const load = (channel: Channel, guildId: string | null): Promise<void> => once(channel.id, () => fetchChannel(channel, guildId));
+    const fetchChannel = async (channel: Channel, guildId: string | null): Promise<void> => {
         if (channel.name) names.set(channel.id, channel.name);
         const parentId = threads.has(channel.type ?? -1) ? (channel.parent_id ?? null) : null;
         const page = (await api.get(`/channels/${channel.id}/messages?limit=${policy.config.context.perChannel}`)) as RawMessage[];
@@ -41,9 +50,8 @@ export function channelHistory(context: ContextIndex, policy: Policy, api: Api):
             }
         }
     };
-    const loadServer = async (guildId: string): Promise<void> => {
-        if (loaded.has(`guild:${guildId}`)) return;
-        loaded.add(`guild:${guildId}`);
+    const loadServer = (guildId: string): Promise<void> => once(`guild:${guildId}`, () => fetchServer(guildId));
+    const fetchServer = async (guildId: string): Promise<void> => {
         const channels = (await api.get(`/guilds/${guildId}/channels`)) as Channel[];
         for (const channel of channels) if (channel.name) names.set(channel.id, channel.name);
         for (const channel of channels.filter((item) => readable.has(item.type ?? -1) && policy.channelAllowed(item.id)))

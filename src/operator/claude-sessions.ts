@@ -87,11 +87,7 @@ export async function conversationExists(sessionId: string): Promise<boolean> {
 
 export const desktopInstalled = (): Promise<boolean> => handlesScheme('claude');
 
-export function waitForSession(
-    sessionId: string,
-    ready: (session: LiveSession) => boolean,
-    waitMs: number,
-): Promise<LiveSession | undefined> {
+function waitForSession(sessionId: string, ready: (session: LiveSession) => boolean, waitMs: number): Promise<LiveSession | undefined> {
     return new Promise((resolve) => {
         const finish = (found?: LiveSession) => {
             clearTimeout(timer);
@@ -105,8 +101,6 @@ export function waitForSession(
     });
 }
 
-const idle = (session: LiveSession) => session.status === 'idle';
-
 export async function showInDesktop(sessionId: string): Promise<void> {
     await openUrl(`claude://resume?session=${sessionId}`);
 }
@@ -115,10 +109,10 @@ export async function openInDesktop(sessionId: string, waitMs = 90_000): Promise
     const existing = await liveSession(sessionId);
     if (existing) return existing;
     await showInDesktop(sessionId);
-    const first = await waitForSession(sessionId, idle, 15_000);
+    const first = await waitForSession(sessionId, () => true, 15_000);
     if (first) return first;
     await showInDesktop(sessionId);
-    const opened = await waitForSession(sessionId, idle, waitMs);
+    const opened = await waitForSession(sessionId, () => true, waitMs);
     if (!opened) throw new Error('Claude Desktop did not open the Discordinator conversation');
     return opened;
 }

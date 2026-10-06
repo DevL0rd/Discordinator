@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import { contextWindow, MessageQueue, progressText, promptTokens } from './claude-stream.js';
+import { contextWindow, mainUsage, MessageQueue, progressText } from './claude-stream.js';
 import { approvalKind, errorText, type PendingApproval, type Resolution, type SessionState, type TurnState } from './claude-session.js';
 import type { OperatorConfig } from './config.js';
 import type { ApprovalDecision, ProviderAdapter, ProviderHooks, ProviderReconciliation, ProviderRole } from './provider-adapter.js';
@@ -156,18 +156,11 @@ export class ClaudeAdapter implements ProviderAdapter {
         const session = this.sessions.get(pending.sessionId);
         const turn = session && this.findTurn(session, pending.turnId);
         if (turn) turn.state = 'running';
-        if (decision.action === 'allow-once') {
-            const original = pending.input;
-            const questions = Array.isArray(original.questions) ? original.questions : [];
-            const updatedInput = decision.answers ? { ...original, questions, answers: decision.answers } : original;
-            pending.resolve({ behavior: 'allow', updatedInput });
-        } else {
-            pending.resolve({
-                behavior: 'deny',
-                message: decision.action === 'cancel' ? 'User canceled this request' : 'User denied this request',
-            });
-        }
+        pending.resolve(permissionResult(pending.input, decision));
         await this.emit({ type: 'approval.resolved', key, epoch: this.epoch });
+        if (decision.action !== 'cancel' || !session || !turn) return;
+        await session.query.interrupt();
+        turn.state = 'interrupted';
     }
 
     reconcile(sessionId: string, turnId?: string): Promise<ProviderReconciliation> {
@@ -293,13 +286,13 @@ export class ClaudeAdapter implements ProviderAdapter {
         this.retire(session);
     }
 
-    async closeSession(sessionId: string): Promise<void> {
+    closeSession(sessionId: string): Promise<void> {
         const session = this.sessions.get(sessionId);
-        if (!session) return;
+        if (!session) return Promise.resolve();
         this.retire(session);
         session.queue.close();
         session.query.close();
-        await session.stream;
+        return Promise.resolve();
     }
 
     private retire(session: SessionState): void {
@@ -329,10 +322,10 @@ export class ClaudeAdapter implements ProviderAdapter {
     }
 
     private async trackContext(session: SessionState, message: ClaudeMessage): Promise<void> {
-        session.promptTokens = promptTokens(message) ?? session.promptTokens;
-        const window = message.type === 'result' ? contextWindow(message) : undefined;
-        if (window && session.promptTokens)
-            await this.emit({ type: 'context', sessionId: session.id, percent: Math.round((session.promptTokens / window) * 100) });
+        session.usage = mainUsage(message) ?? session.usage;
+        const window = message.type === 'result' ? contextWindow(message, session.usage?.model) : undefined;
+        if (window && session.usage)
+            await this.emit({ type: 'context', sessionId: session.id, percent: Math.round((session.usage.tokens / window) * 100) });
     }
 
     private async finishTurn(session: SessionState, turn: TurnState, message: ClaudeMessage): Promise<void> {
@@ -377,4 +370,11 @@ export class ClaudeAdapter implements ProviderAdapter {
     private async emit(event: Parameters<ProviderHooks['onEvent']>[0]): Promise<void> {
         await this.hooks?.onEvent(event);
     }
+}
+
+function permissionResult(input: Record<string, unknown>, decision: ApprovalDecision): ClaudePermissionResult {
+    if (decision.action !== 'allow-once')
+        return { behavior: 'deny', message: decision.action === 'cancel' ? 'User canceled this request' : 'User denied this request' };
+    const questions = Array.isArray(input.questions) ? input.questions : [];
+    return { behavior: 'allow', updatedInput: decision.answers ? { ...input, questions, answers: decision.answers } : input };
 }

@@ -1,61 +1,117 @@
 import { open, stat } from 'node:fs/promises';
-import { promptTokens, toolActivity } from './claude-stream.js';
+import { toolActivity } from './claude-stream.js';
 import { watchFile } from './file-watch.js';
 
 type Post = (eventId: string, text: string, key: string) => Promise<unknown>;
+type Entry = { type?: string; message?: { content?: unknown } };
+type Block = Record<string, unknown>;
+export type ActivityHooks = { pickedUp?(eventId: string): void; replied?(eventId: string): void };
 const quiet = /discord|ToolSearch|TodoWrite/i;
+const quoted = /discord_respond with eventId "([^"]+)"/g;
 
-export function transcriptSteps(line: string): string[] {
-    let entry: { type?: string; message?: { content?: unknown } };
+function parse(line: string): Entry | undefined {
     try {
-        entry = JSON.parse(line) as typeof entry;
-    } catch {
-        return [];
-    }
-    if (entry.type !== 'assistant' || !Array.isArray(entry.message?.content)) return [];
-    return entry.message.content.flatMap((block: unknown) => {
-        const item = block && typeof block === 'object' ? (block as Record<string, unknown>) : {};
-        if (item.type !== 'tool_use' || typeof item.name !== 'string' || quiet.test(item.name)) return [];
-        return [toolActivity(item.name, item.input)];
-    });
-}
-
-function transcriptTokens(line: string): number | undefined {
-    try {
-        return promptTokens(JSON.parse(line) as { type?: string; message?: unknown });
+        const entry: unknown = JSON.parse(line);
+        return entry && typeof entry === 'object' ? entry : undefined;
     } catch {
         return undefined;
     }
 }
 
+function blocks(entry: Entry): Block[] {
+    const content = entry.message?.content;
+    if (!Array.isArray(content)) return [];
+    return content.map((block: unknown) => (block && typeof block === 'object' ? (block as Block) : {}));
+}
+
+function toolUses(entry: Entry): Block[] {
+    if (entry.type !== 'assistant') return [];
+    return blocks(entry).filter((block) => block.type === 'tool_use' && typeof block.name === 'string');
+}
+
+function steps(entry: Entry): string[] {
+    return toolUses(entry)
+        .filter((block) => !quiet.test(block.name as string))
+        .map((block) => toolActivity(block.name as string, block.input));
+}
+
+function replies(entry: Entry): string[] {
+    return toolUses(entry).flatMap((block) => {
+        const input = block.input && typeof block.input === 'object' ? (block.input as Block) : {};
+        return /discord_respond$/.test(block.name as string) && typeof input.eventId === 'string' ? [input.eventId] : [];
+    });
+}
+
+function userText(entry: Entry): string {
+    if (entry.type !== 'user') return '';
+    const content = entry.message?.content;
+    if (typeof content === 'string') return content;
+    return blocks(entry)
+        .map((block) => (block.type === 'text' && typeof block.text === 'string' ? block.text : ''))
+        .join('\n');
+}
+
+export function transcriptSteps(line: string): string[] {
+    const entry = parse(line);
+    return entry ? steps(entry) : [];
+}
+
 export class SessionActivity {
+    private path?: string;
     private offset = 0;
     private partial = '';
-    private eventId?: string;
+    private current?: string;
+    private sequence = 0;
+    private expected = new Set<string>();
+    private seen: string[] = [];
+    private readonly waiters = new Map<string, (seen: boolean) => void>();
     private reading: Promise<void> = Promise.resolve();
     private unwatch?: () => void;
 
     constructor(
         readonly post: Post,
         readonly enabled: () => boolean,
-        readonly context: (percent: number, eventId?: string) => void = () => undefined,
+        readonly hooks: ActivityHooks = {},
     ) {}
 
     async follow(path: string, eventId: string): Promise<void> {
-        this.eventId = eventId;
-        if (this.unwatch) return;
-        this.offset = (await stat(path)).size;
-        this.unwatch = watchFile(path, () => {
-            this.reading = this.reading.then(() => this.read(path)).catch(() => undefined);
+        if (this.path !== path) {
+            this.stop();
+            this.offset = (await stat(path)).size;
+            this.path = path;
+            this.unwatch = watchFile(path, () => {
+                this.reading = this.reading.then(() => this.read(path)).catch(() => undefined);
+            });
+        }
+        this.expected.add(eventId);
+    }
+
+    pickedUp(eventId: string, waitMs: number): Promise<boolean> {
+        if (this.seen.includes(eventId)) return Promise.resolve(true);
+        if (!this.expected.has(eventId)) return Promise.resolve(false);
+        return new Promise((resolve) => {
+            const timer = setTimeout(() => finish(false), waitMs);
+            const finish = (seen: boolean) => {
+                clearTimeout(timer);
+                this.waiters.delete(eventId);
+                resolve(seen);
+            };
+            this.waiters.set(eventId, finish);
         });
     }
 
     stop(): void {
         this.unwatch?.();
         this.unwatch = undefined;
+        this.path = undefined;
+        this.partial = '';
+        this.current = undefined;
+        this.expected = new Set();
+        for (const finish of [...this.waiters.values()]) finish(false);
     }
 
     private async read(path: string): Promise<void> {
+        if (path !== this.path) return;
         const size = (await stat(path)).size;
         if (size <= this.offset) return;
         const handle = await open(path, 'r');
@@ -65,19 +121,30 @@ export class SessionActivity {
             this.offset = size;
             const lines = (this.partial + buffer.toString('utf8')).split('\n');
             this.partial = lines.pop() ?? '';
-            for (const [index, step] of lines.flatMap(transcriptSteps).entries()) await this.publish(step, index);
-            const tokens = lines
-                .map(transcriptTokens)
-                .filter((value) => value !== undefined)
-                .at(-1);
-            if (tokens) this.context(Math.round((tokens / (tokens > 200_000 ? 1_000_000 : 200_000)) * 100), this.eventId);
+            for (const entry of lines.map(parse)) if (entry) await this.handle(entry);
         } finally {
             await handle.close();
         }
     }
 
-    private async publish(step: string, index: number): Promise<void> {
-        if (!this.eventId || !this.enabled()) return;
-        await this.post(this.eventId, step, `session-activity-${this.eventId}-${this.offset}-${index}`).catch(() => undefined);
+    private async handle(entry: Entry): Promise<void> {
+        const delivered = [...userText(entry).matchAll(quoted)].map((match) => match[1]!).filter((id) => this.expected.has(id));
+        const eventId = delivered.at(-1);
+        if (eventId) this.deliveredEntry(eventId);
+        for (const id of replies(entry)) this.hooks.replied?.(id);
+        for (const step of steps(entry)) await this.publish(step);
+    }
+
+    private deliveredEntry(eventId: string): void {
+        this.current = eventId;
+        this.expected.delete(eventId);
+        this.seen = [...this.seen, eventId].slice(-100);
+        this.waiters.get(eventId)?.(true);
+        this.hooks.pickedUp?.(eventId);
+    }
+
+    private async publish(step: string): Promise<void> {
+        if (!this.current || !this.enabled()) return;
+        await this.post(this.current, step, `session-activity-${this.current}-${this.offset}-${++this.sequence}`).catch(() => undefined);
     }
 }

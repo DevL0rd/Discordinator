@@ -168,7 +168,12 @@ export function requestRPC(
 ): Promise<unknown> {
     const id = `${connection.epoch}:${randomUUID()}`;
     return new Promise((resolve, reject) => {
-        const timer = setTimeout(() => disconnect(`Codex RPC acknowledgement timed out: ${method}`), timeout);
+        const timer = setTimeout(() => {
+            const reason = `Codex RPC acknowledgement timed out: ${method}`;
+            if (method === 'initialize') return disconnect(reason);
+            connection.pending.delete(id);
+            reject(new Error(reason));
+        }, timeout);
         connection.pending.set(id, { resolve, reject, timer });
         try {
             hooks.send({ id, method, params });

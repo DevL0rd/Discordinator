@@ -53,22 +53,24 @@ export function progressText(message: ClaudeMessage): Array<{ text: string; acti
     });
 }
 
-type Usage = { input_tokens?: number; cache_read_input_tokens?: number; cache_creation_input_tokens?: number; output_tokens?: number };
+type Usage = { input_tokens?: number; cache_read_input_tokens?: number; cache_creation_input_tokens?: number };
+export type ContextUsage = { tokens: number; model?: string };
 
-export function promptTokens(entry: { type?: string; message?: unknown }): number | undefined {
-    if (entry.type !== 'assistant') return undefined;
-    const usage = (entry.message as { usage?: Usage } | undefined)?.usage;
+export function mainUsage(entry: { type?: string; message?: unknown; parent_tool_use_id?: unknown }): ContextUsage | undefined {
+    if (entry.type !== 'assistant' || entry.parent_tool_use_id) return undefined;
+    const message = entry.message as { usage?: Usage; model?: unknown } | undefined;
+    const usage = message?.usage;
     if (!usage) return undefined;
-    return (
-        (usage.input_tokens ?? 0) +
-        (usage.cache_read_input_tokens ?? 0) +
-        (usage.cache_creation_input_tokens ?? 0) +
-        (usage.output_tokens ?? 0)
-    );
+    const tokens = (usage.input_tokens ?? 0) + (usage.cache_read_input_tokens ?? 0) + (usage.cache_creation_input_tokens ?? 0);
+    return { tokens, ...(typeof message.model === 'string' ? { model: message.model } : {}) };
 }
 
-export function contextWindow(result: Record<string, unknown>): number | undefined {
-    const models = Object.values((result.modelUsage ?? {}) as Record<string, { contextWindow?: number }>);
-    const windows = models.map((model) => model.contextWindow ?? 0).filter((value) => value > 0);
-    return windows.length ? Math.max(...windows) : undefined;
+export function contextWindow(result: Record<string, unknown>, model?: string): number | undefined {
+    if (!model) return undefined;
+    const models = Object.entries((result.modelUsage ?? {}) as Record<string, { contextWindow?: number; canonicalModel?: string }>);
+    const match = models.find(
+        ([key, usage]) => key === model || key.replace(/\[[^\]]*\]$/, '') === model || usage.canonicalModel === model,
+    );
+    const window = match?.[1].contextWindow;
+    return window && window > 0 ? window : undefined;
 }

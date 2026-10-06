@@ -6,6 +6,7 @@ import { CommandService } from '../src/operator/commands.js';
 import type { OperatorService } from '../src/operator/service.js';
 import { verifyLines } from '../src/operator/onboarding-verify.js';
 import { serverState, withServerAllowed, withServerChannels } from '../src/operator/servers.js';
+import { splitMessage } from '../src/operator/message-split.js';
 import { inviteCopy, inviteLink, inviteReady, ownerFrom, ownerMatches } from '../src/operator/onboarding-invite.js';
 
 function checkMeter(): void {
@@ -29,7 +30,15 @@ function checkMeter(): void {
 }
 
 function checkCodexParsing(): void {
-    assert.equal(contextPercent({ modelContextWindow: 200_000, last: { totalTokens: 50_000 } }), 25);
+    assert.equal(contextPercent({ modelContextWindow: 200_000, last: { totalTokens: 50_000 } }), 20, 'matches the Codex baseline');
+    assert.equal(contextPercent({ modelContextWindow: 200_000, last: { totalTokens: 5_000 } }), 0, 'usage under the baseline is empty');
+    assert.equal(contextPercent({ modelContextWindow: 272_000, last: { totalTokens: 200_000 } }), 72);
+    assert.equal(contextPercent({ modelContextWindow: 200_000, last: { totalTokens: 400_000 } }), 100);
+    assert.equal(
+        contextPercent({ modelContextWindow: 12_000, last: { totalTokens: 1_000 } }),
+        undefined,
+        'windows within the baseline are unknown',
+    );
     assert.equal(contextPercent({}), undefined);
     const windows = codexUsage({
         rateLimits: {
@@ -57,6 +66,51 @@ async function checkCommands(): Promise<void> {
     await assert.rejects(service.run('compact', {}), /Claude Desktop/, 'Desktop conversations explain where to compact');
     await assert.rejects(service.run('stop', {}), /Claude Desktop/);
     await assert.rejects(service.run('nope', {}), /Unknown command/);
+    const working = new CommandService({
+        responder: () => ({ mode: 'claude-session', router: { status: () => ({ busy: true }), live: {} }, sessionId: 'x' }),
+    } as unknown as OperatorService);
+    const status = await working.run('status', {});
+    assert.match(status.lines[0]!, /working · live/, 'router status follows the live session');
+    assert.match(status.lines.at(-1)!, /Claude Desktop/);
+    const background = new CommandService({
+        responder: () => ({ mode: 'claude-session', controller: { adapter: {}, stopAll: () => Promise.resolve(0) }, sessionId: 's' }),
+    } as unknown as OperatorService);
+    await assert.rejects(background.run('compact', {}), /not supported/, 'background Claude explains compaction is unsupported');
+    assert.equal((await background.run('stop', {})).title, 'Nothing to stop');
+}
+
+function checkSplit(): void {
+    assert.deepEqual(splitMessage(''), []);
+    assert.deepEqual(splitMessage('short'), ['short']);
+    const paragraphs = Array.from({ length: 30 }, (_, index) => `Paragraph ${index} ${'lorem '.repeat(20)}`.trim()).join('\n\n');
+    const chunks = splitMessage(paragraphs, 500);
+    assert.ok(chunks.length > 1 && chunks.every((chunk) => chunk.length <= 500 && chunk.startsWith('Paragraph')));
+    assert.equal(chunks.join('\n\n'), paragraphs, 'paragraph splits drop only the separator');
+    const words = 'alpha beta gamma delta '.repeat(40).trim();
+    const wordChunks = splitMessage(words, 100);
+    assert.ok(
+        wordChunks.every((chunk) => chunk.length <= 100 && /^(alpha|beta|gamma|delta)\b[\s\S]*\b(alpha|beta|gamma|delta)$/.test(chunk)),
+        'never splits mid-word when a space is available',
+    );
+    assert.equal(wordChunks.join(' '), words);
+    const code = ['Intro', '```ts', ...Array.from({ length: 40 }, (_, index) => `const value${index} = ${index};`), '```', 'Outro'].join(
+        '\n',
+    );
+    const fenced = splitMessage(code, 300);
+    for (const chunk of fenced) {
+        assert.ok(chunk.length <= 300);
+        assert.equal((chunk.match(/```/g) ?? []).length % 2, 0, 'every chunk closes the code fences it opens');
+    }
+    assert.ok(fenced.length > 2 && fenced.slice(1).every((chunk) => chunk.startsWith('```ts\n')), 'code reopens with its language tag');
+    assert.match(fenced.at(-1)!, /```\nOutro$/);
+    assert.deepEqual(
+        splitMessage('x'.repeat(250), 100).map((chunk) => chunk.length),
+        [100, 100, 50],
+    );
+    assert.ok(
+        splitMessage('😀'.repeat(60), 51).every((chunk) => !/^[\udc00-\udfff]/.test(chunk)),
+        'surrogate pairs stay whole',
+    );
 }
 
 function checkInvite(): void {
@@ -129,5 +183,6 @@ export async function checkSlashCommands(): Promise<void> {
     checkServers();
     checkMeter();
     checkCodexParsing();
+    checkSplit();
     await checkCommands();
 }

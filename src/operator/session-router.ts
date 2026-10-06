@@ -13,12 +13,12 @@ import {
     showInDesktop,
     transcriptPath,
     sessionsDir,
-    waitForSession,
     type LiveSession,
 } from './claude-sessions.js';
 import { watchDirectory } from './file-watch.js';
 import { claudeProgram } from './executables.js';
 import { SessionActivity } from './session-activity.js';
+import { ProcessingIndicator } from './processing-indicator.js';
 import type { History } from './history.js';
 
 const exec = promisify(execFile);
@@ -36,6 +36,7 @@ function liveMessage(event: BotEvent): string {
     ].join('\n');
 }
 
+const nudge = 'Please handle the pending Discord message above.';
 const greeting =
     'This is the Discordinator conversation. Discordinator will deliver Discord messages here for you to answer with the discord_respond tool. Reply with: Ready.';
 
@@ -62,24 +63,21 @@ export class SessionRouter {
     private unwatch?: () => void;
     private sessionId?: string;
     private seen: Record<string, string> = {};
+    private delivered: string[] = [];
+    private readonly picked = new Set<string>();
     private readonly activity: SessionActivity;
+    private readonly typing: ProcessingIndicator;
 
     constructor(
         readonly bridge: Bridge,
         readonly workspace: string,
-        readonly changed: () => void,
-        readonly launch: {
-            model?: string;
-            effort?: string;
-            activity?: boolean;
-            history?: History;
-            context?: (sessionId: string, percent: number, eventId?: string) => void;
-        } = {},
+        readonly launch: { model?: string; effort?: string; activity?: boolean; history?: History } = {},
     ) {
+        this.typing = new ProcessingIndicator((eventId) => this.bridge.typing(eventId));
         this.activity = new SessionActivity(
             (eventId, content, idempotencyKey) => this.bridge.respond({ eventId, content, idempotencyKey, status: true }),
             () => this.launch.activity === true,
-            (percent, eventId) => this.launch.context?.(this.sessionId!, percent, eventId),
+            { pickedUp: (eventId) => this.picked.add(eventId), replied: (eventId) => this.settle(eventId) },
         );
     }
 
@@ -94,6 +92,8 @@ export class SessionRouter {
     stop(): void {
         this.unwatch?.();
         this.activity.stop();
+        this.typing.stop();
+        this.picked.clear();
     }
 
     async reset(): Promise<void> {
@@ -101,6 +101,9 @@ export class SessionRouter {
         this.sessionId = undefined;
         this.seen = {};
         this.live = undefined;
+        this.activity.stop();
+        this.typing.stop();
+        this.picked.clear();
     }
 
     get conversationId(): string | undefined {
@@ -108,18 +111,42 @@ export class SessionRouter {
     }
 
     status() {
-        return { live: Boolean(this.live), entrypoint: this.live?.entrypoint ?? null, sessionId: this.sessionId ?? null };
+        return {
+            live: Boolean(this.live),
+            busy: this.live?.status === 'busy',
+            entrypoint: this.live?.entrypoint ?? null,
+            sessionId: this.sessionId ?? null,
+        };
     }
 
     async route(event: BotEvent): Promise<void> {
-        const sessionId = await this.conversation();
-        this.live = (await liveSession(sessionId)) ?? (await openInDesktop(sessionId));
-        const transcript = await transcriptPath(sessionId);
-        if (transcript) await this.activity.follow(transcript, event.id);
-        await deliver(this.live, await this.withHistory(event, liveMessage(event)));
-        if (!(await waitForSession(sessionId, (session) => session.status !== 'idle', 8000)))
-            await deliver(this.live, 'Please handle the pending Discord message above.');
-        void this.bridge.typing(event.id).catch(() => undefined);
+        if (this.delivered.includes(event.id)) return;
+        this.typing.set(event.id, event.id, true);
+        let live: LiveSession;
+        try {
+            const sessionId = await this.conversation();
+            live = (await liveSession(sessionId)) ?? (await openInDesktop(sessionId));
+            this.live = live;
+            const transcript = await transcriptPath(sessionId);
+            if (transcript) await this.activity.follow(transcript, event.id);
+            await deliver(live, await this.withHistory(event, liveMessage(event)));
+        } catch (error) {
+            this.settle(event.id);
+            throw error;
+        }
+        this.delivered = [...this.delivered, event.id].slice(-500);
+        void this.confirm(live, event.id);
+    }
+
+    private async confirm(live: LiveSession, eventId: string): Promise<void> {
+        if (await this.activity.pickedUp(eventId, 8000)) return;
+        if ((await liveSession(live.sessionId))?.status !== 'idle') return;
+        await deliver(live, nudge).catch(() => undefined);
+    }
+
+    private settle(eventId: string): void {
+        this.picked.delete(eventId);
+        this.typing.set(eventId, eventId, false);
     }
 
     private async conversation(): Promise<string> {
@@ -153,8 +180,8 @@ export class SessionRouter {
 
     private async refresh(): Promise<void> {
         const live = this.sessionId ? await liveSession(this.sessionId) : undefined;
-        if (live?.pid === this.live?.pid) return;
         this.live = live;
-        this.changed();
+        if (live && live.status !== 'idle') return;
+        for (const eventId of [...this.picked]) this.settle(eventId);
     }
 }

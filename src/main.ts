@@ -138,6 +138,7 @@ function shutdownOnce(runtime: Awaited<ReturnType<typeof createRuntime>>, releas
     return () => (stopping ??= shutdown(runtime.gateway, runtime.http, runtime.events, runtime.operator, release, runtime.people));
 }
 function registerSignals(stop: () => Promise<void>): void {
+    process.on('unhandledRejection', (error) => failure('Discordinator unhandled rejection', 'runtime', error));
     process.once('SIGINT', () => {
         void stop().catch(() => {
             process.exitCode = 1;

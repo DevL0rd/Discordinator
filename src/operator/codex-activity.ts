@@ -32,10 +32,15 @@ export function codexActivity(item: Item): string | undefined {
     return described === undefined || described.startsWith('-# ') ? described : activityLine(described);
 }
 
+const baselineTokens = 12_000;
+
 export function contextPercent(usage: Item): number | undefined {
     const window = Number(usage.modelContextWindow);
     const used = Number((usage.last as Item | undefined)?.totalTokens);
-    return window > 0 && Number.isFinite(used) ? Math.round((used / window) * 100) : undefined;
+    if (!Number.isFinite(window) || window <= baselineTokens || !Number.isFinite(used)) return undefined;
+    const effective = window - baselineTokens;
+    const remaining = ((effective - Math.max(0, used - baselineTokens)) / effective) * 100;
+    return 100 - Math.round(Math.min(100, Math.max(0, remaining)));
 }
 
 const windowLabel = (minutes: number) =>
