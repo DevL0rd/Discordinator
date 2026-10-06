@@ -8,16 +8,35 @@ import type { OAuthStore } from './storage.js';
 
 const digest = (value: string) => createHash('sha256').update(value).digest();
 
-export async function budget(store: OAuthStore, name: string, limit: number, duration: number): Promise<boolean> {
+type Records = Parameters<Parameters<OAuthStore['mutate']>[0]>[0];
+const loginWindow = 15 * 60_000;
+
+function recent(records: Records, name: string, duration: number, now: number): number[] {
+    return ((records[`Budget:${name}`]?.payload.extra?.times as number[] | undefined) ?? []).filter((time) => time > now - duration);
+}
+
+export async function budget(store: OAuthStore, limits: Record<string, number>, duration: number): Promise<number | undefined> {
+    const now = Date.now();
     let allowed = false;
     await store.mutate((records) => {
-        const key = `Budget:${name}`;
-        const times = ((records[key]?.payload.extra?.times as number[] | undefined) ?? []).filter((time) => time > Date.now() - duration);
-        allowed = times.length < limit;
-        if (allowed) times.push(Date.now());
-        records[key] = { payload: { extra: { times } }, expires: Date.now() + duration };
+        const spent = Object.entries(limits).map(([name, limit]) => ({ name, limit, times: recent(records, name, duration, now) }));
+        allowed = spent.every((entry) => entry.times.length < entry.limit);
+        for (const entry of spent) {
+            if (allowed) entry.times.push(now);
+            records[`Budget:${entry.name}`] = { payload: { extra: { times: entry.times } }, expires: now + duration };
+        }
     });
-    return allowed;
+    return allowed ? now : undefined;
+}
+
+function refund(store: OAuthStore, names: string[], time: number): Promise<void> {
+    return store.mutate((records) => {
+        for (const name of names) {
+            const times = records[`Budget:${name}`]?.payload.extra?.times as number[] | undefined;
+            const index = times?.indexOf(time) ?? -1;
+            if (index >= 0) times!.splice(index, 1);
+        }
+    });
 }
 
 async function formToken(store: OAuthStore, uid: string, prompt: string): Promise<string> {
@@ -59,13 +78,9 @@ export class OwnerInteractions {
         }
         if (request.method === 'GET') {
             const csrf = await formToken(this.store, uid, details.prompt.name);
-            return interactionPage(
-                response,
-                details.prompt.name,
-                csrf,
-                String(details.params.client_id),
-                String(details.params.redirect_uri),
-            );
+            const client = await this.provider.Client.find(String(details.params.client_id));
+            if (!client) return oauthJson(response, 400, { error: 'Unknown client' });
+            return interactionPage(response, details.prompt.name, csrf, client.clientName, String(details.params.redirect_uri));
         }
         return this.submit(request, response, details);
     }
@@ -93,7 +108,7 @@ export class OwnerInteractions {
                 { mergeWithLastSubmission: false },
             );
         }
-        if (details.prompt.name === 'login') return this.login(request, response, form);
+        if (details.prompt.name === 'login') return this.login(request, response, form, details.uid);
         await this.consent(request, response, details, form);
     }
 
@@ -119,17 +134,18 @@ export class OwnerInteractions {
         );
     }
 
-    private async login(request: IncomingMessage, response: ServerResponse, form: URLSearchParams): Promise<void> {
-        if (!(await budget(this.store, 'login', 5, 15 * 60_000))) {
-            response.setHeader('Retry-After', '900');
-            return oauthJson(response, 429, { error: 'Login temporarily limited' });
-        }
+    private async login(request: IncomingMessage, response: ServerResponse, form: URLSearchParams, uid: string): Promise<void> {
         const password = form.get('password') ?? '';
         if (Buffer.byteLength(password) > 1024) return oauthJson(response, 400, { error: 'Invalid credentials' });
-        const matches = await argon2.verify(this.owner.passwordHash, password);
-        if (form.get('action') !== 'login' || !matches) {
-            return oauthJson(response, 403, { error: 'Invalid credentials' });
+        if (form.get('action') !== 'login') return oauthJson(response, 403, { error: 'Invalid credentials' });
+        const failures = { [`login:${uid}`]: 5, login: 100 };
+        const attempt = await budget(this.store, failures, loginWindow);
+        if (attempt === undefined) {
+            response.setHeader('Retry-After', String(loginWindow / 1000));
+            return oauthJson(response, 429, { error: 'Login temporarily limited' });
         }
+        if (!(await argon2.verify(this.owner.passwordHash, password))) return oauthJson(response, 403, { error: 'Invalid credentials' });
+        await refund(this.store, Object.keys(failures), attempt);
         await this.provider.interactionFinished(
             request,
             response,

@@ -136,7 +136,7 @@ function registerMessaging(server: McpServer, bridge: Bridge, oauth: boolean, pr
 export function createMcp(
     bridge: Bridge,
     status: () => unknown,
-    events?: { service?: EventsService; principal: Principal },
+    events: { service?: EventsService; principal: Principal },
     oauth = false,
 ): McpServer {
     const server = new McpServer(
@@ -147,9 +147,9 @@ export function createMcp(
         },
     );
     registerStatusAndPolling(server, bridge, status, oauth);
-    if (events?.service) registerEvents(server, events.service, events.principal);
+    if (events.service) registerEvents(server, events.service, events.principal);
     registerContext(server, bridge, oauth);
-    registerMessaging(server, bridge, oauth, events?.principal);
+    registerMessaging(server, bridge, oauth, events.principal);
     server.registerTool(
         'discordinator_authorize_context',
         {
@@ -163,8 +163,8 @@ export function createMcp(
         (args) => guarded(() => bridge.authorizeContext(args.channelId, args.requesterId)),
     );
     registerMedia(server, bridge, oauth);
-    registerProactiveMedia(server, bridge, events?.principal, oauth);
-    registerSettings(server, events?.principal, toolMeta(oauth));
+    registerProactiveMedia(server, bridge, events.principal, oauth);
+    registerSettings(server, events.principal, toolMeta(oauth));
     server.registerTool(
         'discord_prompt',
         {

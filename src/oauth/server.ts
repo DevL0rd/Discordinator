@@ -4,7 +4,7 @@ import Provider from 'oidc-provider';
 import { createLocalJWKSet } from 'jose';
 import { csv, type Config } from '../core/config.js';
 import { readPrivate, lockDirectory, OAuthStore } from './storage.js';
-import { applyPendingOwner, ensureKeys, pendingOwnerFile, type KeyMaterial, type Owner } from './provision.js';
+import { applyPendingOwner, ensureKeys, ownerPending, pendingOwnerFile, type KeyMaterial, type Owner } from './provision.js';
 import { watchFile } from '../operator/file-watch.js';
 import { providerConfiguration } from './provider.js';
 import { budget, OwnerInteractions } from './interactions.js';
@@ -44,8 +44,12 @@ export class BundledOAuth {
     }
 
     private async refreshOwner(): Promise<void> {
-        const next = await applyPendingOwner(this.config.DISCORDINATOR_OAUTH_DATA_DIR).catch(() => undefined);
-        if (next) this.interactions.owner = next;
+        try {
+            const next = await applyOwner(this.config.DISCORDINATOR_OAUTH_DATA_DIR, this.store);
+            if (next) this.interactions.owner = next;
+        } catch (error) {
+            console.error(`OAuth owner password update failed: ${error instanceof Error ? error.message : 'unknown error'}`);
+        }
     }
 
     static async open(config: Config): Promise<BundledOAuth> {
@@ -54,17 +58,16 @@ export class BundledOAuth {
         try {
             await ensureKeys(directory);
             const keys = await readPrivate<KeyMaterial>(join(directory, 'keys.json'));
+            const store = new OAuthStore(directory);
+            await store.load();
             const owner =
-                (await applyPendingOwner(directory)) ??
+                (await applyOwner(directory, store)) ??
                 (await readPrivate<Owner>(join(directory, 'owner.json')).catch(() => {
                     throw new Error('Set a sign-in password in the setup app (Apps → Sign-in password)');
                 }));
             if (!owner.subject || !owner.passwordHash.startsWith('$argon2id$')) throw new Error('Owner enrollment required');
             if (!keys.cookies.length || !keys.jwks.keys.length) throw new Error('OAuth key setup required');
-            const store = new OAuthStore(directory);
-            await store.load();
-            const migrated = await store.migrateChatgptClients();
-            if (migrated) console.log(`Migrated ${migrated} approved ChatGPT OAuth client${migrated === 1 ? '' : 's'}`);
+            await migrateClients(store);
             return new BundledOAuth(config, owner, keys, store, release);
         } catch (error) {
             await release();
@@ -140,7 +143,10 @@ export class BundledOAuth {
                 oauthJson(response, 405, { error: 'Method denied' });
                 return false;
             }
-            if ((await this.store.clientCount()) >= 200 || !(await budget(this.store, 'registration', 10, 60_000))) {
+            if (
+                (await this.store.consentedClientCount()) >= 200 ||
+                (await budget(this.store, { registration: 10 }, 60_000)) === undefined
+            ) {
                 oauthJson(response, 429, { error: 'Registration limited' });
                 return false;
             }
@@ -157,6 +163,19 @@ export class BundledOAuth {
         oauthJson(response, 400, { error: 'Exact control scope and resource required' });
         return false;
     }
+}
+
+async function applyOwner(directory: string, store: OAuthStore): Promise<Owner | undefined> {
+    if (!(await ownerPending(directory))) return undefined;
+    await store.revokeSignIns();
+    return applyPendingOwner(directory);
+}
+
+async function migrateClients(store: OAuthStore): Promise<void> {
+    const migrated = await store.migrateChatgptClients();
+    if (migrated) console.log(`Migrated ${migrated} approved ChatGPT OAuth client${migrated === 1 ? '' : 's'}`);
+    const expiring = await store.expireUnconsentedClients();
+    if (expiring) console.log(`${expiring} OAuth client${expiring === 1 ? '' : 's'} without consent will expire in 24 hours`);
 }
 
 function oauthPath(path: string): boolean {

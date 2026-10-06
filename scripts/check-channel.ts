@@ -8,7 +8,7 @@ import { HttpServer } from '../src/mcp/http.js';
 import { localCall } from '../src/mcp/local-client.js';
 import { fakeConfig, fixture } from './fixtures.js';
 
-const key = 'k'.repeat(43);
+export const key = 'k'.repeat(43);
 
 function statusFor(base: string, headers: Record<string, string>): Promise<number> {
     return new Promise((resolve, reject) => {
@@ -21,14 +21,14 @@ function statusFor(base: string, headers: Record<string, string>): Promise<numbe
     });
 }
 
-async function localServer(file: string) {
+export async function localServer(file: string) {
     const f = fixture(file);
     const config = fakeConfig();
     const http = new HttpServer(config, f.bridge, () => ({ gateway: 'mock' }));
     http.attachLocal(key);
     await new Promise<void>((resolve) => http.server.listen(0, '127.0.0.1', resolve));
     config.DISCORDINATOR_PORT = (http.server.address() as AddressInfo).port;
-    return { config, http, base: `http://127.0.0.1:${config.DISCORDINATOR_PORT}` };
+    return { f, config, http, base: `http://127.0.0.1:${config.DISCORDINATOR_PORT}` };
 }
 
 export async function checkChannel(directory: string): Promise<void> {

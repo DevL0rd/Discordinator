@@ -13,6 +13,8 @@ import type { BundledOAuth } from '../oauth/server.js';
 import { httpsOrigin } from '../core/canonical.js';
 import { diagnose } from './diagnostics.js';
 import { descriptorResponse } from './descriptors.js';
+import { RequestBudget } from './budget.js';
+import { localPrincipalId } from './local-key.js';
 
 function json(response: ServerResponse, status: number, value: unknown): void {
     response.writeHead(status, { 'Content-Type': 'application/json', 'Cache-Control': 'no-store', 'X-Content-Type-Options': 'nosniff' });
@@ -22,9 +24,12 @@ function json(response: ServerResponse, status: number, value: unknown): void {
 export class HttpServer {
     readonly server;
     onRemote?: () => void;
-    private active = 0;
     private requests = new Set<Promise<void>>();
-    private requestTimes: number[] = [];
+    private readonly budgets = {
+        public: new RequestBudget(120, 'Public request budget exhausted'),
+        remote: new RequestBudget(120, 'Authenticated request budget exhausted'),
+        local: new RequestBudget(600, 'Local request budget exhausted'),
+    };
     private readonly auth: Authenticator;
     constructor(
         readonly config: Config,
@@ -79,14 +84,6 @@ export class HttpServer {
         return !origin || allowedOrigins.includes(httpsOrigin(origin));
     }
 
-    private limited(): boolean {
-        const now = Date.now();
-        this.requestTimes = this.requestTimes.filter((time) => time > now - 60_000);
-        if (this.active >= 16 || this.requestTimes.length >= 120) return true;
-        this.requestTimes.push(now);
-        return false;
-    }
-
     private async handle(request: IncomingMessage, response: ServerResponse): Promise<void> {
         if (!this.validHeaders(request)) {
             console.error(
@@ -101,24 +98,33 @@ export class HttpServer {
             );
             return json(response, 403, { error: 'Host or Origin denied' });
         }
-        if (await this.preRoute(request, response)) return;
+        if (request.url === '/mcp') return this.mcp(request, response);
+        if (!this.budgets.public.spend()) json(response, 429, { error: this.budgets.public.message });
+        else if (await this.oauth?.handle(request, response)) return;
+        else if (this.isMetadata(request)) json(response, 200, this.auth.metadata());
+        else json(response, 404, { error: 'Unknown endpoint' });
+    }
+
+    private async mcp(request: IncomingMessage, response: ServerResponse): Promise<void> {
         logResponse(request, response);
         const principal = await this.auth.authenticate(request);
+        const budget = principal ? this.budgetFor(principal) : this.budgets.public;
+        if (!budget.spend()) return json(response, 429, { error: budget.message });
         if (!principal) {
             response.setHeader('WWW-Authenticate', this.auth.challenge());
             return json(response, 401, { error: 'Authentication required' });
         }
-        if (!principal.id.startsWith('local:')) this.onRemote?.();
-        await this.bridge.withOwner(() => this.authenticated(request, response, principal));
+        if (principal.id !== localPrincipalId) this.onRemote?.();
+        budget.active++;
+        try {
+            await this.bridge.withOwner(() => this.authenticated(request, response, principal));
+        } finally {
+            budget.active--;
+        }
     }
 
-    private async preRoute(request: IncomingMessage, response: ServerResponse): Promise<boolean> {
-        if (this.limited()) json(response, 429, { error: 'Local request budget exhausted' });
-        else if (await this.oauth?.handle(request, response)) return true;
-        else if (this.isMetadata(request)) json(response, 200, this.auth.metadata());
-        else if (request.url !== '/mcp') json(response, 404, { error: 'Unknown endpoint' });
-        else return false;
-        return true;
+    private budgetFor(principal: Principal): RequestBudget {
+        return principal.id === localPrincipalId ? this.budgets.local : this.budgets.remote;
     }
 
     private async authenticated(request: IncomingMessage, response: ServerResponse, principal: Principal): Promise<void> {
@@ -136,13 +142,12 @@ export class HttpServer {
     }
 
     private async dispatch(request: IncomingMessage, response: ServerResponse, principal: Principal): Promise<void> {
-        this.active++;
         const handler = createMcpHandler(
             (ctx) =>
                 createMcp(
                     this.bridge,
                     this.status,
-                    ctx.era === 'modern' ? { service: this.events, principal } : undefined,
+                    { service: ctx.era === 'modern' ? this.events : undefined, principal },
                     this.config.DISCORDINATOR_AUTH_MODE === 'oauth',
                 ),
             { maxRequestBodySize: 512_000 },
@@ -166,7 +171,6 @@ export class HttpServer {
             )(request, response);
         } finally {
             await handler.close();
-            this.active--;
         }
     }
 

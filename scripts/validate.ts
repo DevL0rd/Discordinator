@@ -4,6 +4,7 @@ import { mkdir } from 'node:fs/promises';
 import { checkPolicy } from './check-policy.js';
 import { checkBridge } from './check-bridge.js';
 import { checkHttp } from './check-http.js';
+import { checkHttpBudgets } from './check-http-budgets.js';
 import { operations } from '../src/discord/catalog.js';
 import { checkContext, checkHistory } from './check-context.js';
 import { checkEvents, checkCancellation } from './check-events.js';
@@ -39,6 +40,7 @@ try {
     if (process.argv.includes('--oauth')) process.exitCode = 0;
     else {
         await checkHttp(directory);
+        await checkHttpBudgets(directory);
         await checkAuth();
         await checkConnection(directory);
         if (process.argv.includes('--connection')) {

@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { createHash, randomBytes } from 'node:crypto';
 import { HttpServer } from '../src/mcp/http.js';
 import { BundledOAuth } from '../src/oauth/server.js';
 import { fakeConfig, fixture } from './fixtures.js';
@@ -78,4 +79,12 @@ export async function form(f: OAuthFixture, path: string): Promise<string> {
 export async function redirect(f: OAuthFixture, response: Response): Promise<Response> {
     assert.equal(response.status, 303, 'Interaction redirect');
     return f.fetch(response.headers.get('location')!);
+}
+
+export const callback = 'https://chatgpt.com/connector_platform_oauth_redirect';
+export const verifier = randomBytes(32).toString('base64url');
+const challenge = createHash('sha256').update(verifier).digest('base64url');
+
+export function authorization(f: OAuthFixture, client: string, extra = {}): string {
+    return `/oauth/auth?${new URLSearchParams({ client_id: client, redirect_uri: callback, response_type: 'code', scope: 'openid discordinator:control', resource: f.config.DISCORDINATOR_RESOURCE_URL, state: 'offline-state', nonce: 'offline-nonce', code_challenge: challenge, code_challenge_method: 'S256', ...extra })}`;
 }
