@@ -79,9 +79,11 @@ export async function checkHttp(directory: string): Promise<void> {
     }
 }
 
+export const toolCount = () => operations.length + 25;
+
 async function checkToolDescriptors(client: Client): Promise<void> {
     const listed = await client.listTools();
-    assert.equal(listed.tools.length, operations.length + 24);
+    assert.equal(listed.tools.length, toolCount());
     assert.ok(JSON.stringify(listed).length < 512_000, 'Tool discovery response stays within the response budget');
     assert.equal(new Set(listed.tools.map((entry) => entry.name)).size, listed.tools.length, 'Tool names are unique');
     for (const tool of listed.tools) checkDescriptor(tool);
@@ -169,7 +171,7 @@ async function checkModern(url: string, token: string, client: Client): Promise<
     assert.equal(client.getProtocolEra(), 'modern');
     assert.equal(client.getNegotiatedProtocolVersion(), '2026-07-28');
     assert.ok(client.getDiscoverResult()?.capabilities.tools);
-    assert.equal((await client.listTools()).tools.length, operations.length + 24);
+    assert.equal((await client.listTools()).tools.length, toolCount());
 }
 
 interface EventResponse {

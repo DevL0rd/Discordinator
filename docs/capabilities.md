@@ -12,6 +12,7 @@ The server exposes 87 tools: six bridge/discovery tools, three context tools, se
 | `discord_respond` | Original channel/thread/DM reply or ephemeral interaction response; needs live eventId, content and idempotencyKey |
 | `discord_dm` | DM only the captured event author; same controls, no recipient field |
 | `discord_proactive_send` | Text to an individually granted guild channel; channelId, content, idempotencyKey; requires `messages.write` and a `message.send` destination grant |
+| `discord_proactive_dm` | Owner only: a DM to an approved person at any time, for updates or results; userId, content, idempotencyKey; requires `messages.write` |
 
 All tools must pass the configured MCP access boundary: bearer/OAuth credentials. See [security](security.md). Discord REST reads require their configured scope/resource grants but do not require a Discord trigger. Context reads additionally require a live allowed trigger ID. Writes require a live whitelisted triggering event (except the separately granted proactive send). Every listed mutation additionally requires `eventId` and `idempotencyKey`. Tools marked **Confirm** return a preview when `approvalId` is absent; only a fresh same-user Discord confirmation permits execution. `approvalId` is not a credential or a way to set confirmation from MCP.
 

@@ -2,7 +2,7 @@
 
 All these tools require the configured [MCP access boundary](security.md#mcp-access-boundary). Request-bound media and controls use a captured `eventId` from an allowed Discord requester. An attachment, source handle, message link, button label or modal value never creates authority. Replies stay in the original channel/thread/DM or ephemeral interaction. Administrator does not remove these controls.
 
-Standalone messages are separate from replies: an authenticated owner can use `discord_proactive_send` or `discord_proactive_media_send` at any time in an explicitly approved proactive destination. They need neither a recent incoming message nor a reply reference, and the request queue lifetime does not impose a sending deadline. Existing channel, capability and approved-person notification checks still apply.
+Standalone messages are separate from replies: an authenticated owner can use `discord_proactive_send` or `discord_proactive_media_send` at any time in an explicitly approved proactive destination, and `discord_proactive_dm` to DM an approved person. They need neither a recent incoming message nor a reply reference, and the request queue lifetime does not impose a sending deadline. Existing channel, capability and approved-person notification checks still apply.
 
 ## Enable only the capabilities you want
 

@@ -3,9 +3,8 @@ import { join } from 'node:path';
 import { mkdir } from 'node:fs/promises';
 import { checkPolicy } from './check-policy.js';
 import { checkBridge } from './check-bridge.js';
-import { checkHttp } from './check-http.js';
+import { checkHttp, toolCount } from './check-http.js';
 import { checkHttpBudgets } from './check-http-budgets.js';
-import { operations } from '../src/discord/catalog.js';
 import { checkContext, checkHistory } from './check-context.js';
 import { checkEvents, checkCancellation } from './check-events.js';
 import { checkEventsPump } from './check-events-pump.js';
@@ -118,7 +117,7 @@ try {
             await checkInteractionEvents(directory);
             await checkOwnerContext(directory);
             console.log(
-                `Local validation passed: policy/triggers, Gateway mocks, approvals, idempotency, queue and bearer/OAuth MCP (${operations.length + 22} tools), context, MCP Events, safe media/retrieval and correlated controls. No Discord connection.`,
+                `Local validation passed: policy/triggers, Gateway mocks, approvals, idempotency, queue and bearer/OAuth MCP (${toolCount()} tools), context, MCP Events, safe media/retrieval and correlated controls. No Discord connection.`,
             );
         }
     }

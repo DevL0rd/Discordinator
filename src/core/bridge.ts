@@ -245,6 +245,16 @@ export class Bridge {
         });
     }
 
+    async proactiveDm(input: Rich & { userId: string; idempotencyKey: string }): Promise<unknown> {
+        this.policy.assertUser(input.userId);
+        this.policy.assertScope('messages.write');
+        return this.replyJournal.execute(input.idempotencyKey, { operation: 'proactive_dm', ...input }, async () => {
+            this.policy.assertUser(input.userId);
+            const dm = (await this.api.post('/users/@me/channels', { recipient_id: input.userId })) as { id: string };
+            return this.send(dm.id, input, input.idempotencyKey);
+        });
+    }
+
     async proactive(input: Rich & { channelId: string; idempotencyKey: string; notifyUserId?: string }): Promise<unknown> {
         this.policy.assertProactive(input.channelId);
         if (input.notifyUserId) this.policy.assertUser(input.notifyUserId);

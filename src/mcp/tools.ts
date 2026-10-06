@@ -137,6 +137,25 @@ function registerMessaging(server: McpServer, bridge: Bridge, oauth: boolean, pr
     );
 }
 
+function registerProactiveDm(server: McpServer, bridge: Bridge, oauth: boolean, principal?: Principal): void {
+    server.registerTool(
+        'discord_proactive_dm',
+        {
+            title: 'Send a Discord DM',
+            description:
+                'Authenticated owner only: DM an approved person at any time, for updates, progress or results. No captured message or reply is needed. Only approved people can be messaged.',
+            inputSchema: z.object({ userId: snowflake, ...rich, idempotencyKey: mutation.idempotencyKey }).strict(),
+            annotations: { readOnlyHint: false, destructiveHint: false, openWorldHint: false },
+            _meta: toolMeta(oauth),
+        },
+        (args) =>
+            guarded(() => {
+                requireOwner(principal);
+                return bridge.proactiveDm(args);
+            }),
+    );
+}
+
 export function createMcp(
     bridge: Bridge,
     status: () => unknown,
@@ -154,6 +173,7 @@ export function createMcp(
     if (events.service) registerEvents(server, events.service, events.principal);
     registerContext(server, bridge, oauth);
     registerMessaging(server, bridge, oauth, events.principal);
+    registerProactiveDm(server, bridge, oauth, events.principal);
     server.registerTool(
         'discordinator_authorize_context',
         {

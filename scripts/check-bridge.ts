@@ -121,6 +121,19 @@ async function checkLongReply(file: string): Promise<void> {
     assert.equal(new Set(bodies.map((body) => body.nonce)).size, 3, 'every part has its own nonce');
 }
 
+async function checkProactiveDm(file: string): Promise<void> {
+    const f = fixture(file);
+    await f.bridge.proactiveDm({ userId: ids.user, content: 'Update: tests are green', idempotencyKey: 'proactive-dm' });
+    assert.deepEqual(f.api.calls[0]!.body, { recipient_id: ids.user }, 'the DM channel is opened for the approved person');
+    assert.equal((f.api.calls[1]!.body as { content: string }).content, 'Update: tests are green');
+    await assert.rejects(
+        f.bridge.proactiveDm({ userId: ids.denied, content: 'no', idempotencyKey: 'proactive-dm-denied' }),
+        /not whitelisted/,
+        'only approved people can be messaged',
+    );
+    assert.equal(f.api.calls.length, 2);
+}
+
 export async function checkBridge(directory: string): Promise<void> {
     assert.equal(new Set(operations.map((item) => item.name)).size, operations.length);
     for (const operation of operations) {
@@ -132,6 +145,7 @@ export async function checkBridge(directory: string): Promise<void> {
     await checkMutations(`${directory}/mutations.json`);
     await checkResponses(`${directory}/responses.json`);
     await checkLongReply(`${directory}/long-reply.json`);
+    await checkProactiveDm(`${directory}/proactive-dm.json`);
     await checkJournal(`${directory}/journal.json`);
     checkQueue();
 }
