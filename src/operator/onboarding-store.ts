@@ -18,6 +18,11 @@ import type { Responder } from './ui/status.js';
 import { probeConnection } from './onboarding-connection.js';
 
 const exec = promisify(execFile);
+type Run = (
+    command: string,
+    args: string[],
+    options: { env: NodeJS.ProcessEnv; timeout: number; maxBuffer: number },
+) => Promise<{ stdout: string; stderr: string }>;
 export interface DiscordDraft {
     token: string;
     ownerId: string;
@@ -143,10 +148,10 @@ export async function saveDiscord(draft: DiscordDraft, identity: DiscordIdentity
 export async function writePhase(phase: Exclude<OnboardingPhase, 'discord'>, marker = '.data/onboarding.json'): Promise<void> {
     await atomicWrite(marker, `${JSON.stringify({ phase })}\n`);
 }
-async function cliAuthenticated(command: 'claude' | 'codex', args: string[]): Promise<void> {
+async function cliAuthenticated(command: 'claude' | 'codex', args: string[], run: Run): Promise<void> {
     try {
         const cli = command === 'codex' ? await codexCommand() : { ...(await claudeProgram()), env: process.env };
-        const { stdout, stderr } = await exec(cli.command, [...cli.args, ...args], { env: cli.env, timeout: 8_000, maxBuffer: 128 * 1024 });
+        const { stdout, stderr } = await run(cli.command, [...cli.args, ...args], { env: cli.env, timeout: 8_000, maxBuffer: 128 * 1024 });
         if (command === 'codex') {
             if (!/Logged in using (ChatGPT|an API key)/.test(`${stdout}\n${stderr}`)) throw new Error('not authenticated');
         } else {
@@ -157,13 +162,13 @@ async function cliAuthenticated(command: 'claude' | 'codex', args: string[]): Pr
         throw new Error(`${command} is unavailable or not authenticated. Sign in with the provider CLI, then retry.`);
     }
 }
-export async function validateAi(choice: AiChoice, domain = '', files: OnboardingFiles = {}): Promise<string> {
+export async function validateAi(choice: AiChoice, domain = '', files: OnboardingFiles = {}, run: Run = exec): Promise<string> {
     const validators: Record<AiChoice, () => Promise<string>> = {
         'codex-local': async () => {
-            await cliAuthenticated('codex', ['login', 'status']);
+            await cliAuthenticated('codex', ['login', 'status'], run);
             return 'Codex CLI reported authenticated.';
         },
-        'claude-session': () => claudeReady(),
+        'claude-session': () => claudeReady(run),
         'chatgpt-events': () => cloudValidation(domain),
         'manual-mcp': async () => mcpAddresses(await environmentOf(files)).join(' '),
     };
@@ -177,8 +182,8 @@ export async function needsPassword(choice: AiChoice, files: OnboardingFiles = {
     if (choice !== 'chatgpt-events' && !environment.DISCORDINATOR_RESOURCE_URL) return false;
     return !(await ownerReady(oauthDirectory.parse(environment.DISCORDINATOR_OAUTH_DATA_DIR)));
 }
-async function claudeReady(): Promise<string> {
-    await cliAuthenticated('claude', ['auth', 'status', '--json']);
+async function claudeReady(run: Run): Promise<string> {
+    await cliAuthenticated('claude', ['auth', 'status', '--json'], run);
     return 'Claude Code is installed and signed in.';
 }
 async function cloudValidation(domain: string): Promise<string> {
