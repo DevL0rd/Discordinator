@@ -1,14 +1,18 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { savedPublicUrl, useVerify, verifyChecks, verifyLines, type Check } from './onboarding-verify.js';
-import { inviteCopy, inviteLink, inviteReady, ownerFrom, ownerMatches } from './onboarding-invite.js';
+import { savedPublicUrl, useVerify, verifyChecks, type Check } from './onboarding-verify.js';
+import { inviteLink, inviteReady, ownerFrom } from './onboarding-invite.js';
 import { markWebAdded } from './web-connectors.js';
 import { openUrl } from './open-url.js';
 import { passwordError } from '../oauth/provision.js';
 import { useApp, useInput, useStdout } from 'ink';
 import { installService } from './install.js';
 import { appNames, connectApp, responderApps } from './connections.js';
+import { readOperatorConfig, type OperatingMode } from './config.js';
+import { domainError } from './connection-domain.js';
+import { readPanel, startSaved } from './panel-store.js';
 import {
     discoverDiscord,
+    needsPassword,
     savePassword,
     onboardingPhase,
     saveAi,
@@ -16,185 +20,30 @@ import {
     validateAi,
     verifyDiscord,
     writePhase,
+    type OnboardingPhase,
 } from './onboarding-store.js';
-import type { AiChoice, DiscordDiscovery, DiscordDraft, DiscordIdentity } from './onboarding-store.js';
-import { wizardFrame, type StepView } from './onboarding-view.js';
+import { buttonsFor, choices, count, startable, stepView, textSteps, type State, type Step } from './onboarding-copy.js';
+import { wizardFrame } from './onboarding-view.js';
 import { hits, targetAt, type Hit } from './ui/canvas.js';
 import { h, Frame } from './ui/render.js';
-import { assistants } from './ui/status.js';
+import { responderMode } from './ui/status.js';
 import { useSgrMouse } from './ui/use-mouse.js';
 import { typed, type Key } from './ui/keys.js';
 
 type Setter = React.Dispatch<React.SetStateAction<State>>;
-type Step =
-    | 'loading'
-    | 'welcome'
-    | 'token'
-    | 'invite'
-    | 'owner'
-    | 'channel'
-    | 'discord-review'
-    | 'ai'
-    | 'endpoint'
-    | 'password'
-    | 'password-confirm'
-    | 'ai-review'
-    | 'connect'
-    | 'service'
-    | 'verify';
-interface State {
-    step: Step;
-    input: string;
-    selected: number;
-    draft: DiscordDraft;
-    identity?: DiscordIdentity;
-    discovery?: DiscordDiscovery;
-    choice?: AiChoice;
-    endpoint?: string;
-    password?: string;
-    checks?: Check[];
-    evidence?: string;
-    busy?: string;
-    error?: string;
-    notice?: string;
-}
-const choices: AiChoice[] = ['claude-session', 'codex-local', 'chatgpt-events', 'manual-mcp'];
-const local = (choice?: AiChoice) => choice === 'codex-local' || choice === 'claude-session';
-const stageOf: Record<Step, number> = {
-    loading: 0,
-    welcome: 0,
-    token: 0,
-    invite: 0,
-    owner: 0,
-    channel: 0,
-    'discord-review': 0,
-    ai: 1,
-    endpoint: 1,
-    password: 0,
-    'password-confirm': 0,
-    'ai-review': 1,
-    connect: 2,
-    service: 3,
-    verify: 3,
-};
-const textSteps: Step[] = ['token', 'owner', 'channel', 'endpoint', 'password', 'password-confirm'];
-const maskedSteps: Step[] = ['token', 'password', 'password-confirm'];
-
-function buttonsFor(state: State): string[] {
-    const sets: Partial<Record<Step, string[]>> = {
-        welcome: ['Begin'],
-        invite: inviteReady(state.discovery) ? ['Continue'] : ['Open invite', 'Check again'],
-        'discord-review': state.identity ? ['Save', 'Back'] : ['Verify'],
-        'ai-review': ['Save', 'Back'],
-        connect: state.error ? ['Retry', 'Skip'] : ['Continue'],
-        service: ['Skip', 'Install service', 'Back'],
-        verify: state.checks?.every((check) => check.ok) ? ['Finish'] : ['Check again'],
-    };
-    return sets[state.step] ?? [];
-}
-
-function optionsFor(state: State): string[] | undefined {
-    if (state.step === 'ai') return choices.map((choice) => assistants[choice].name);
-    if (state.step === 'owner' && state.discovery?.members.length)
-        return ownerMatches(state.discovery, state.input).map((member) => member.name);
-    if (state.step === 'channel' && !state.input)
-        return state.discovery?.channels.slice(0, 12).map((channel) => `${channel.guild} / #${channel.name}`);
-}
-
-function endpointCopy(choice?: AiChoice): { title: string; body: string[] } {
-    if (!choice?.startsWith('chatgpt-'))
-        return { title: 'MCP endpoint URL', body: ['The full URL your app uses, including https:// and the path.'] };
-    return {
-        title: 'Your public domain',
-        body: [
-            'Just the domain ChatGPT reaches Discordinator on, like bot.example.com. No https:// and no path.',
-            `Point it (Cloudflare Tunnel or a reverse proxy) at http://127.0.0.1:${process.env.DISCORDINATOR_PORT ?? '8787'}, the port Discordinator listens on.`,
-        ],
-    };
-}
-
-const passwordCopy = {
-    password: {
-        title: 'Choose a sign-in password',
-        body: [
-            'Apps that reach Discordinator through a public domain, like ChatGPT and Claude on the web, sign in with this password. There is no username.',
-            'At least 12 characters. You can change it later on the Apps page.',
-        ],
-    },
-    confirm: { title: 'Confirm the password', body: ['Type the same password once more.'] },
-};
-
-function copy(state: State): { title: string; body: string[] } {
-    const copies: Record<Step, () => { title: string; body: string[] }> = {
-        loading: () => ({ title: 'Welcome', body: ['Reading your setup progress…'] }),
-        welcome: () => ({
-            title: 'Welcome to Discordinator',
-            body: [
-                'Discordinator lets an AI answer your Discord. First we connect your bot, then pick who answers.',
-                'Nothing is written until you review it.',
-            ],
-        }),
-        token: () => ({
-            title: 'Your bot token',
-            body: ['Paste the token from the Discord Developer Portal (Bot → Reset Token). It stays hidden.'],
-        }),
-        owner: () => ({
-            title: 'Who is the owner?',
-            body: ['Pick yourself from your server’s members. Type to search, or paste your Discord user ID.'],
-        }),
-        channel: () => ({ title: 'First channel', body: ['Pick where Discordinator starts answering, or type a channel ID.'] }),
-        'discord-review': () => ({
-            title: 'Check Discord',
-            body: [
-                `Bot: ${state.identity?.bot ?? state.discovery?.bot ?? 'not checked yet'}`,
-                `Owner: ${state.identity?.owner ?? state.draft.ownerId}`,
-                `Channel: ${state.identity?.channel ?? state.draft.channelId}`,
-            ],
-        }),
-        ai: () => ({ title: 'Who answers Discord?', body: [assistants[choices[state.selected] ?? 'claude-session'].blurb] }),
-        endpoint: () => endpointCopy(state.choice),
-        invite: () => inviteCopy(state.discovery),
-        password: () => passwordCopy.password,
-        'password-confirm': () => passwordCopy.confirm,
-        verify: () => ({ title: 'Make sure it works', body: verifyLines(state.checks) }),
-        'ai-review': () => ({
-            title: 'Ready to save',
-            body: [`${assistants[state.choice!].name}`, state.evidence ?? '', 'It is saved paused. You start it from the dashboard.'],
-        }),
-        connect: () => ({
-            title: `Connect ${appNames[responderApps[state.choice!] ?? 'claude-code']}`,
-            body: ['Discordinator connects it on this computer so it gets the Discord tools. Nothing to sign in to.'],
-        }),
-        service: () => ({
-            title: 'Keep Discordinator running',
-            body: [
-                'Optionally install Discordinator as a background service that starts when you log in.',
-                'A Discordinator you started by hand is never stopped.',
-            ],
-        }),
-    };
-    return copies[state.step]();
-}
-
-function stepView(state: State, tick: number): StepView {
-    const options = optionsFor(state);
-    const view: StepView = { stage: stageOf[state.step], ...copy(state), selected: state.selected, tick, buttons: buttonsFor(state) };
-    if (options) view.options = options;
-    if (textSteps.includes(state.step)) view.input = { value: state.input, masked: maskedSteps.includes(state.step) };
-    for (const key of ['notice', 'error', 'busy'] as const) if (state[key]) view[key] = state[key];
-    return view;
-}
 
 function back(state: State): State {
+    const domainOrAi: Step = state.choice === 'chatgpt-events' ? 'domain' : 'ai';
     const previous: Partial<Record<Step, Step>> = {
         token: 'welcome',
         invite: 'token',
         owner: 'invite',
         channel: 'owner',
         'discord-review': 'channel',
-        endpoint: 'ai',
+        domain: 'ai',
+        password: domainOrAi,
         'password-confirm': 'password',
-        'ai-review': local(state.choice) ? 'ai' : 'endpoint',
+        'ai-review': domainOrAi,
         service: 'ai-review',
         verify: 'service',
     };
@@ -209,12 +58,12 @@ async function discordReview(state: State, button: string | undefined): Promise<
         return { ...state, identity: await verifyDiscord(state.draft), selected: 0, notice: 'Everything checks out. Save to continue.' };
     if (button === 'Back') return back(state);
     await saveDiscord(state.draft, state.identity);
-    return { ...fresh(state), step: 'password', notice: 'Discord saved.' };
+    return { ...fresh(state), step: 'ai', notice: 'Discord saved.' };
 }
 
 async function aiReview(state: State, button: string | undefined): Promise<State> {
     if (button === 'Back') return back(state);
-    await saveAi(state.choice!, state.endpoint);
+    await saveAi(state.choice!, state.domain);
     return { ...fresh(state), step: responderApps[state.choice!] ? 'connect' : 'service' };
 }
 
@@ -222,6 +71,21 @@ function channel(state: State): State {
     const channelId = state.input.trim() || state.discovery?.channels[state.selected]?.id;
     if (!channelId) throw new Error('Pick a channel or type its ID.');
     return { ...fresh(state), step: 'discord-review', draft: { ...state.draft, channelId } };
+}
+
+async function review(state: State): Promise<State> {
+    return { ...state, step: 'ai-review', evidence: await validateAi(state.choice!, state.domain) };
+}
+
+async function signIn(state: State): Promise<State> {
+    return (await needsPassword(state.choice!)) ? { ...state, step: 'password' } : review(state);
+}
+
+function domain(state: State): Promise<State> {
+    const value = state.input.trim();
+    const error = domainError(value);
+    if (error) throw new Error(error);
+    return signIn({ ...fresh(state), domain: value });
 }
 
 const steps: Partial<Record<Step, Advance>> = {
@@ -254,9 +118,9 @@ const steps: Partial<Record<Step, Advance>> = {
     'discord-review': discordReview,
     ai: (state) => {
         const choice = choices[state.selected]!;
-        return local(choice) ? review({ ...fresh(state), choice }) : { ...fresh(state), step: 'endpoint', choice };
+        return choice === 'chatgpt-events' ? { ...fresh(state), step: 'domain', choice } : signIn({ ...fresh(state), choice });
     },
-    endpoint: (state) => review({ ...fresh(state), choice: state.choice! }, state.input.trim()),
+    domain,
     password: (state) => {
         const error = passwordError(state.input);
         if (error) throw new Error(error);
@@ -265,21 +129,23 @@ const steps: Partial<Record<Step, Advance>> = {
     'password-confirm': async (state) => {
         if (state.input !== state.password) throw new Error('The passwords do not match. Type it again.');
         await savePassword(state.input);
-        return { ...fresh(state), step: 'ai', password: undefined, notice: 'Password saved.' };
+        return review({ ...fresh(state), password: undefined, notice: 'Password saved.' });
     },
     'ai-review': aiReview,
-    connect: (state, button) => (button === 'Skip' || !state.error ? { ...fresh(state), step: 'service' } : state),
+    connect: (state, button) => (button === 'Skip' || !state.error ? { ...fresh(state), step: 'service' } : fresh(state)),
     service: (state, button) => finish(state, button),
     verify: (state, _button, onComplete) => verify(state, onComplete),
 };
 
-function advance(state: State, onComplete: () => void): Promise<State> {
-    const handler = steps[state.step];
-    return Promise.resolve(handler ? handler(state, buttonsFor(state)[state.selected], onComplete) : state);
+export function resumed(phase: OnboardingPhase, mode: OperatingMode): Pick<State, 'step' | 'choice'> {
+    const steps: Partial<Record<OnboardingPhase, Step>> = { ai: 'ai', service: 'service', verify: 'verify' };
+    const step = steps[phase] ?? 'welcome';
+    return step === 'service' || step === 'verify' ? { step, choice: responderMode(mode) } : { step };
 }
 
-async function review(state: State, endpoint = ''): Promise<State> {
-    return { ...state, step: 'ai-review', endpoint, evidence: await validateAi(state.choice!, endpoint) };
+export async function advance(state: State, onComplete: () => void): Promise<State> {
+    const handler = steps[state.step];
+    return handler ? handler(state, buttonsFor(state)[state.selected], onComplete) : state;
 }
 
 async function finish(state: State, button: string | undefined): Promise<State> {
@@ -290,17 +156,17 @@ async function finish(state: State, button: string | undefined): Promise<State> 
 }
 
 async function verify(state: State, onComplete: () => void): Promise<State> {
-    const checks = await verifyChecks(state.choice);
+    let checks = await verifyChecks(state.choice);
+    if (startable(checks) && checks.some((check) => !check.ok)) {
+        await startSaved(await readPanel(), true);
+        checks = await verifyChecks(state.choice);
+    }
     if (!checks.every((check) => check.ok))
         return { ...state, checks, error: 'Not everything is connected yet. Follow the next step shown above.' };
-    if (state.choice?.startsWith('chatgpt-')) await markWebAdded('chatgpt', await savedPublicUrl());
+    if (state.choice === 'chatgpt-events') await markWebAdded('chatgpt', await savedPublicUrl());
     await writePhase('complete');
     onComplete();
     return { ...state, checks };
-}
-
-function count(state: State): number {
-    return optionsFor(state)?.length ?? buttonsFor(state).length;
 }
 
 const initial: State = { step: 'loading', input: '', selected: 0, draft: { token: '', ownerId: '', channelId: '' }, busy: 'Loading…' };
@@ -308,11 +174,9 @@ const message = (error: unknown, fallback: string) => (error instanceof Error ? 
 
 function usePhase(setState: Setter): void {
     useEffect(() => {
-        void onboardingPhase(process.env).then((phase) => {
-            const steps: Partial<Record<string, Step>> = { ai: 'ai', service: 'service', verify: 'verify' };
-            const step: Step = steps[phase] ?? 'welcome';
-            setState((current) => ({ ...current, busy: undefined, step }));
-        });
+        void Promise.all([onboardingPhase(process.env), readOperatorConfig()]).then(([phase, config]) =>
+            setState((current) => ({ ...current, ...resumed(phase, config.mode), busy: undefined })),
+        );
     }, [setState]);
 }
 

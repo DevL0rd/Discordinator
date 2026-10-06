@@ -4,9 +4,12 @@ import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { appState, connectApp, disconnectApp, type CodexDeps } from '../src/operator/connections.js';
 import { withoutServers } from '../src/operator/codex-config.js';
-import { connectorStatus } from '../src/operator/web-connectors.js';
+import { connectorStatus, markWebAdded, webConnectors } from '../src/operator/web-connectors.js';
+import { planReconnect } from '../src/operator/reconnect.js';
+import type { SettingChange } from '../src/operator/settings-registry.js';
 
 const endpoint = { base: 'http://127.0.0.1:8788', key: 'k'.repeat(43) };
+const change = (id: string): SettingChange => ({ id: `environment.${id}`, label: id, before: 'a', after: 'b', apply: 'restart' });
 
 function servers(toml: string): { name: string; transport: { url: string } }[] {
     return [...toml.matchAll(/^\[mcp_servers\.([\w-]+)\]\nurl = "([^"]+)"/gm)].map((match) => ({
@@ -47,9 +50,31 @@ async function checkCodex(directory: string): Promise<void> {
         const missing: CodexDeps = { ...deps, codex: () => Promise.reject(new Error('ENOENT')) };
         assert.equal((await appState('codex', missing)).cli, false);
         await assert.rejects(connectApp('codex', missing), /ENOENT/);
+        await checkReconnect(deps);
     } finally {
         process.chdir(previous);
     }
+}
+
+async function checkReconnect(deps: CodexDeps): Promise<void> {
+    let base = endpoint.base;
+    const ported: CodexDeps = { ...deps, endpoint: () => Promise.resolve({ ...endpoint, base }) };
+    await connectApp('codex', ported);
+    const finish = await planReconnect([change('DISCORDINATOR_PORT')], {}, ported);
+    base = 'http://127.0.0.1:8799';
+    assert.match(await finish(), /Codex now uses the new port/);
+    assert.equal((await appState('codex', ported)).connected, true, 'Codex follows the new port instead of being disconnected');
+    await disconnectApp('codex', ported);
+    assert.equal(await (await planReconnect([change('DISCORDINATOR_PORT')], {}, ported))(), '', 'a disconnected Codex is left alone');
+    await markWebAdded('chatgpt', 'https://old.example/mcp');
+    const address = await planReconnect([change('DISCORDINATOR_RESOURCE_URL')], { DISCORDINATOR_RESOURCE_URL: 'https://new.example/mcp' });
+    assert.match(await address(), /new address/);
+    assert.equal(connectorStatus((await webConnectors()).chatgpt, 'https://new.example/mcp').text, 'Address changed', 'marks are kept');
+    assert.match(await (await planReconnect([change('DISCORDINATOR_RESOURCE_URL')], {}))(), /stop working/);
+    await (
+        await planReconnect([change('DISCORDINATOR_AUTH_MODE')], {})
+    )();
+    assert.deepEqual(await webConnectors(), {}, 'a sign-in change forgets the web connectors');
 }
 
 function checkTables(): void {

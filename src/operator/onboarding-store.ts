@@ -1,6 +1,6 @@
 import { randomBytes } from 'node:crypto';
 import { listServers, uniqueMembers } from './servers.js';
-import { requestOwnerPassword } from '../oauth/provision.js';
+import { ownerReady, requestOwnerPassword } from '../oauth/provision.js';
 import { oauthDirectory } from '../oauth/registration.js';
 import { codexCommand } from './codex-config.js';
 import { claudeProgram } from './executables.js';
@@ -12,8 +12,9 @@ import { parseEnv } from 'node:util';
 import { policySchema, snowflake, type PolicyConfig } from '../core/config.js';
 import { DiscordApi } from '../discord/api.js';
 import { Policy, admit } from '../core/policy.js';
-import { readOperatorConfig, writeOperatorConfig, type OperatingMode } from './config.js';
-import { domainEndpoint, editPublicDomain } from './connection-domain.js';
+import { readOperatorConfig, writeOperatorConfig } from './config.js';
+import { domainEndpoint, editPublicDomain, mcpAddresses } from './connection-domain.js';
+import type { Responder } from './ui/status.js';
 import { probeConnection } from './onboarding-connection.js';
 
 const exec = promisify(execFile);
@@ -28,7 +29,7 @@ export interface DiscordIdentity {
     channel: string;
     guildId: string;
 }
-export type AiChoice = OperatingMode;
+export type AiChoice = Responder;
 export interface OnboardingFiles {
     environment?: string;
     policy?: string;
@@ -156,18 +157,25 @@ async function cliAuthenticated(command: 'claude' | 'codex', args: string[]): Pr
         throw new Error(`${command} is unavailable or not authenticated. Sign in with the provider CLI, then retry.`);
     }
 }
-export async function validateAi(choice: AiChoice, endpoint = ''): Promise<string> {
+export async function validateAi(choice: AiChoice, domain = '', files: OnboardingFiles = {}): Promise<string> {
     const validators: Record<AiChoice, () => Promise<string>> = {
         'codex-local': async () => {
             await cliAuthenticated('codex', ['login', 'status']);
             return 'Codex CLI reported authenticated.';
         },
         'claude-session': () => claudeReady(),
-        'chatgpt-events': () => cloudValidation(endpoint),
-        'chatgpt-poll': () => cloudValidation(endpoint),
-        'manual-mcp': async () => validateManual(endpoint),
+        'chatgpt-events': () => cloudValidation(domain),
+        'manual-mcp': async () => mcpAddresses(await environmentOf(files)).join(' '),
     };
     return validators[choice]();
+}
+async function environmentOf(files: OnboardingFiles): Promise<Record<string, string | undefined>> {
+    return { ...process.env, ...parseEnv(await read(files.environment ?? '.env')) };
+}
+export async function needsPassword(choice: AiChoice, files: OnboardingFiles = {}): Promise<boolean> {
+    const environment = await environmentOf(files);
+    if (choice !== 'chatgpt-events' && !environment.DISCORDINATOR_RESOURCE_URL) return false;
+    return !(await ownerReady(oauthDirectory.parse(environment.DISCORDINATOR_OAUTH_DATA_DIR)));
 }
 async function claudeReady(): Promise<string> {
     await cliAuthenticated('claude', ['auth', 'status', '--json']);
@@ -175,19 +183,7 @@ async function claudeReady(): Promise<string> {
 }
 async function cloudValidation(domain: string): Promise<string> {
     const url = domainEndpoint(domain);
-    return `Domain format valid. ${await probeConnection(url)} Finish the handoff in ChatGPT; Save keeps it paused.`;
-}
-async function validateManual(endpoint: string): Promise<string> {
-    if (!/^https?:\/\//i.test(endpoint.trim())) throw new Error('Enter the full endpoint URL, including https:// and the path.');
-    const url = new URL(endpoint.trim());
-    if (url.username || url.password || url.search || url.hash)
-        throw new Error('Manual endpoint must not contain credentials, query, or fragment.');
-    if (url.protocol !== 'https:' && !(url.protocol === 'http:' && url.hostname === '127.0.0.1'))
-        throw new Error('Manual endpoint must use public HTTPS or loopback HTTP.');
-    return `Format valid. ${await probeConnection(url.href)} Save keeps it paused.`;
-}
-function connectionDomain(value: string): { resourceUrl: string } {
-    return { resourceUrl: domainEndpoint(value) };
+    return `Domain format valid. ${await probeConnection(url)} After saving, connect ChatGPT and turn on wake-ups.`;
 }
 async function saveDomain(endpoint: string, files: OnboardingFiles): Promise<void> {
     const environmentPath = files.environment ?? '.env';
@@ -201,15 +197,19 @@ async function saveDomain(endpoint: string, files: OnboardingFiles): Promise<voi
     );
     await atomicWrite(environmentPath, envText(original, updates));
 }
-function endpointFor(choice: AiChoice, endpoint: string): string | undefined {
-    if (choice.startsWith('chatgpt-')) return connectionDomain(endpoint).resourceUrl;
-    if (choice === 'manual-mcp' && endpoint.startsWith('https://')) return endpoint.trim();
+async function allowEvents(files: OnboardingFiles): Promise<void> {
+    const path = files.policy ?? (await environmentOf(files)).DISCORDINATOR_POLICY_FILE ?? 'policy.json';
+    const original = await read(path);
+    const policy = policySchema.parse(original ? JSON.parse(original) : {});
+    await atomicWrite(path, `${JSON.stringify({ ...policy, mcpEvents: { ...policy.mcpEvents, enabled: true } }, null, 2)}\n`);
 }
-export async function saveAi(choice: AiChoice, endpoint = '', files: OnboardingFiles = {}): Promise<void> {
+export async function saveAi(choice: AiChoice, domain = '', files: OnboardingFiles = {}): Promise<void> {
     const current = await readOperatorConfig();
-    const publicUrl = endpointFor(choice, endpoint) ?? current.publicEndpoint;
-    if (choice.startsWith('chatgpt-')) await saveDomain(endpoint, files);
-    await writeOperatorConfig({ ...current, mode: choice, enabled: false, ...(publicUrl ? { publicEndpoint: publicUrl } : {}) });
+    if (choice === 'chatgpt-events') {
+        await saveDomain(domain, files);
+        await allowEvents(files);
+    }
+    await writeOperatorConfig({ ...current, mode: choice, enabled: false });
     await atomicWrite('.data/operator-settings.json', `${JSON.stringify(await readOperatorConfig(), null, 2)}\n`);
     await writePhase('service', files.marker);
 }

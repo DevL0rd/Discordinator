@@ -6,7 +6,8 @@ import { hits, lineWidth } from '../src/operator/ui/canvas.js';
 import { frame } from '../src/operator/ui/frame.js';
 import { pages, type Observations } from '../src/operator/ui/model.js';
 import { pageItems } from '../src/operator/ui/pages/index.js';
-import { sheetLines } from '../src/operator/ui/sheets.js';
+import { searchResults, sheetLines } from '../src/operator/ui/sheets.js';
+import { savedDiffers } from '../src/operator/ui/status.js';
 import { handleKey, type Key } from '../src/operator/ui/keys.js';
 import { handleMouse } from '../src/operator/ui/mouse.js';
 import { initialState, selectedIndex, viewOf, type UiState } from '../src/operator/ui/state.js';
@@ -31,6 +32,7 @@ const models = { source: 'fixture', observedAt: '', note: '', defaultModel: { id
 const observed: Observations = {
     live: { gateway: 'ready', events: { subscriptions: 0 }, operator: { mode: 'codex-local', appliedConfigAt: null } },
     runtime: true,
+    active: { ...defaultOperatorConfig(), mode: 'codex-local', enabled: true },
     codex: models,
     claude: models,
     service: { available: true, installed: false, active: false },
@@ -121,6 +123,49 @@ function checkKeyboard(): void {
     type('new.example.com');
     assert.equal(editor(), undefined);
     assert.equal(ui.state.drafts.environment.DISCORDINATOR_RESOURCE_URL, 'https://new.example.com/mcp');
+    handleKey(ui, '/', key());
+    const search = () => (ui.state.sheet?.kind === 'search' ? ui.state.sheet : undefined);
+    assert.equal(search()?.reachable.includes('environment.DISCORDINATOR_AUTH_MODE'), false);
+    for (const character of 'mcp authentication') handleKey(ui, character, key());
+    assert.equal(searchResults(search()!).length, 0, 'search only offers settings on a page');
+    handleKey(ui, '', key({ escape: true }));
+}
+
+const text = (state: UiState) =>
+    render(state, 120, 200)
+        .map((value) => value.spans.map((item) => item.text).join(''))
+        .join('\n');
+
+function checkResponderPage(): void {
+    const ui = store();
+    const drafted = (operator: Record<string, unknown>): UiState => ({
+        ...ui.state,
+        page: 'assistant',
+        drafts: { ...ui.state.drafts, operator: { ...ui.state.drafts.operator, ...operator } },
+    });
+    const chatgpt = text(drafted({ mode: 'chatgpt-events' }));
+    for (const row of [
+        'Public domain set',
+        'Sign-in password set',
+        'ChatGPT (web) connector added',
+        'Wake-up events allowed',
+        'ChatGPT connector guide',
+    ])
+        assert.ok(chatgpt.includes(row), `ChatGPT - Dot shows ${row}`);
+    const manual = text(drafted({ mode: 'manual-mcp' }));
+    assert.ok(
+        manual.includes('http://127.0.0.1:8787/mcp') && manual.includes('https://bot.example.com/mcp'),
+        'Another MCP app shows its addresses',
+    );
+    assert.ok(text(drafted({ mode: 'claude-session' })).includes('Opens in Claude Desktop when needed'));
+    assert.ok(
+        !text(drafted({ mode: 'claude-session', backgroundOnly: true })).includes('Claude Desktop when needed'),
+        'hidden in the background',
+    );
+    const live = (appliedConfigAt: string | null) =>
+        viewOf({ ...ui.state, observed: { ...observed, live: { ...observed.live!, operator: { mode: 'codex-local', appliedConfigAt } } } });
+    assert.equal(savedDiffers(live(null)), true, 'a saved responder that is not applied yet is flagged');
+    assert.equal(savedDiffers(live(observed.active.updatedAt)), false);
 }
 
 function checkMouse(): void {
@@ -146,4 +191,5 @@ export function checkUi(): void {
     checkFrames();
     checkKeyboard();
     checkMouse();
+    checkResponderPage();
 }

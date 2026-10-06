@@ -48,7 +48,7 @@ bearer_token_env_var = "DISCORDINATOR_MCP_TOKEN"
 tool_timeout_sec = 60
 ```
 
-The client needs that secret in its own protected environment. Configuring this bearer path is manual; the setup app's **Apps** page registers Claude Code and Codex for you instead (see [Operator](operator.md#connected-apps)). This path is for clients with custom-header support; ChatGPT cannot present a customer-supplied static API key to a normal public MCP connection. See [OpenAI authentication](https://developers.openai.com/plugins/build/auth).
+The client needs that secret in its own protected environment. Configuring this bearer path is manual; choosing Claude Code or Codex on the setup app's **Responder** page connects them for you instead (see [Operator](operator.md#local-responders)). This path is for clients with custom-header support; ChatGPT cannot present a customer-supplied static API key to a normal public MCP connection. See [OpenAI authentication](https://developers.openai.com/plugins/build/auth).
 
 ## Optional deployment example for this laptop
 

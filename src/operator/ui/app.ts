@@ -1,14 +1,16 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useApp, useInput, useStdout } from 'ink';
-import { readPanel, type PanelSnapshot } from '../panel-store.js';
+import type { PanelSnapshot } from '../panel-store.js';
 import { operatorPath } from '../config.js';
+import { presenceFile } from '../presence.js';
+import { runtimeLockFile } from '../status.js';
 import { watchFile } from '../file-watch.js';
 import { blank, hits, line, span, type Hit, type Line } from './canvas.js';
 import { color } from './theme.js';
 import { frame } from './frame.js';
 import { h, Frame } from './render.js';
 import { sheetLines } from './sheets.js';
-import { refresh, refreshLive, type Store } from './effects.js';
+import { refresh, refreshLive, refreshStatus, reloadPanel, type Store } from './effects.js';
 import { handleKey } from './keys.js';
 import { handleMouse } from './mouse.js';
 import { useSgrMouse } from './use-mouse.js';
@@ -49,15 +51,14 @@ function useSize(): { width: number; height: number } {
 function useLive(store: Store): void {
     useEffect(() => {
         void refresh(store, true);
-        const reload = () =>
-            void readPanel().then((snapshot) =>
-                store.set((state) =>
-                    viewOf(state).changes.length ? state : { ...state, snapshot, drafts: structuredClone(snapshot.documents) },
-                ),
-            );
-        const paths = ['.data/operator-settings.json', process.env.DISCORDINATOR_POLICY_FILE ?? 'policy.json', '.env'];
-        const stops = [...paths.map((path) => watchFile(path, reload)), watchFile(operatorPath, () => void refresh(store))];
-        const heartbeat = setInterval(() => void refreshLive(store), 5000);
+        const settingsFiles = ['.data/operator-settings.json', process.env.DISCORDINATOR_POLICY_FILE ?? 'policy.json', '.env'];
+        const stops = [
+            ...settingsFiles.map((path) => watchFile(path, () => void reloadPanel(store))),
+            ...[operatorPath, presenceFile, runtimeLockFile].map((path) => watchFile(path, () => void refreshLive(store))),
+        ];
+        const heartbeat = setInterval(() => {
+            if (store.get().observed.runtime) void refreshStatus(store);
+        }, 5000);
         return () => {
             clearInterval(heartbeat);
             for (const stop of stops) stop();

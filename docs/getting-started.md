@@ -10,7 +10,7 @@ This guide takes you from a fresh checkout to your AI answering its first Discor
 
 ## 1. Prepare the Discord bot
 
-In the [Discord Developer Portal](https://discord.com/developers/applications), create or select your application. On **Bot**, copy its token and turn on **Message Content Intent** (needed for name triggers and readable message text). Complete Discord's approval if it asks. Leave the Server Members and Presence intents off unless you need member features.
+In the [Discord Developer Portal](https://discord.com/developers/applications), create or select your application. On **Bot**, copy its token and turn on **Message Content Intent** (needed for name triggers and readable message text) and **Server Members Intent** (lets you pick people and roles, and Discordinator requests it by default). Complete Discord's approval if it asks. Leave the Presence intent off.
 
 Install the bot in your server through **Installation → Guild Install** with the `bot` and `applications.commands` scopes. For a first conversation, View Channel, Send Messages and Read Message History are enough; add Send Messages in Threads if you use threads. [Setup and permissions](setup.md#administrator-installation-guidance) covers Administrator, role hierarchy and extra features.
 
@@ -29,10 +29,14 @@ npm run setup
 
 | Step | What happens |
 | :-- | :-- |
-| Discord | Paste the bot token (hidden as you type), enter your owner user ID, and pick a first channel from the channels the bot can see. Everything is checked read-only before anything is written. |
+| Discord | Paste the bot token (hidden as you type). |
+| Add the bot | Checks that both intents are on and the bot is in a server, and opens the invite link if it is not. |
+| Owner and channel | Pick yourself from the server's members and a first channel. Everything is checked read-only before anything is written. |
 | Who answers | Choose the responder that answers new Discord messages. See [Operator](operator.md#responders). |
-| Connect | Connect your AI. For **Claude Code** or **Codex**, Discordinator connects it on this computer with nothing to sign in to. |
+| Domain and password | Only for **ChatGPT - Dot**, or when a public domain is already set: enter your public domain and choose the sign-in password that cloud apps use. |
+| Connect | For **Claude Code** or **Codex**, Discordinator connects it on this computer with nothing to sign in to. |
 | Background service | Optionally install the background user service so Discordinator starts when you log in. |
+| Check | Shows what is still missing. **Finish** starts the responder once everything else is ready. |
 
 If you quit part-way, setup resumes where you left off. After the wizard you land on the dashboard; [Operator](operator.md) explains every page.
 
@@ -47,7 +51,7 @@ npm start
 
 or install the background service from the setup app's **System** page. On Linux this is a systemd user service named `discordinator.service`. On Windows it starts hidden when you sign in, through your account's startup entries, with no admin rights needed, and logs to `.data/service.log`. Installing it never stops a Discordinator you started by hand.
 
-The responder you pick starts when you save it. Press **p** on the setup app's **Home** page (or use Pause and Start) to pause and resume it.
+The responder you pick in the wizard starts when you choose **Finish**. Later, saving a different responder on the **Responder** page starts it. Press **p** on the setup app's **Home** page (or use Pause and Start) to pause and resume it.
 
 ## 4. Try one request
 

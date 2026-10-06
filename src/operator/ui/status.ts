@@ -2,6 +2,11 @@ import type { OperatingMode } from '../config.js';
 import type { Tone } from './theme.js';
 import type { View } from './model.js';
 
+const chatgptDot = {
+    name: 'ChatGPT - Dot',
+    provider: 'ChatGPT',
+    blurb: 'New messages wake your Discordinator app in ChatGPT through your public domain.',
+};
 export const assistants: Record<OperatingMode, { name: string; provider: string; blurb: string }> = {
     'claude-session': {
         name: 'Claude Code',
@@ -13,22 +18,16 @@ export const assistants: Record<OperatingMode, { name: string; provider: string;
         provider: 'Codex',
         blurb: 'Discord messages go to one ongoing Codex conversation in the shared Codex service on this computer, so any Codex app attached to it can follow along. Uses your Codex login.',
     },
-    'chatgpt-events': {
-        name: 'ChatGPT - Dot',
-        provider: 'ChatGPT',
-        blurb: 'New messages wake your Discordinator app in ChatGPT through your public domain.',
-    },
-    'chatgpt-poll': {
-        name: 'ChatGPT · scheduled checks',
-        provider: 'ChatGPT',
-        blurb: 'A scheduled ChatGPT task checks Discordinator for new messages.',
-    },
+    'chatgpt-events': chatgptDot,
+    'chatgpt-poll': chatgptDot,
     'manual-mcp': {
         name: 'Another MCP app',
         provider: 'Your app',
         blurb: 'Any MCP-capable app connects to Discordinator and answers messages itself.',
     },
 };
+export type Responder = Exclude<OperatingMode, 'chatgpt-poll'>;
+export const responderMode = (mode: OperatingMode): Responder => (mode === 'chatgpt-poll' ? 'chatgpt-events' : mode);
 export const assistantName = (mode: unknown): string => assistants[mode as OperatingMode]?.name ?? 'Paused';
 
 export interface Signal {
@@ -93,9 +92,9 @@ function controllerSignal(controller?: Controller | null): Signal {
 }
 
 export function savedDiffers(view: View): boolean {
-    const active = operator(view).mode;
-    const saved = view.snapshot.documents.operator;
-    return Boolean(view.observed.live) && saved.enabled !== false && active !== saved.mode && active !== undefined;
+    const live = view.observed.live?.operator;
+    const active = view.observed.active;
+    return Boolean(live) && active.enabled && live?.appliedConfigAt !== active.updatedAt;
 }
 
 export const chatgptHowTo =

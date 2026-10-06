@@ -14,10 +14,8 @@ export type AppId = 'claude-code' | 'codex';
 export const statusHint: Record<string, string> = {
     Connected: 'Everything is set up.',
     'Not connected': 'Press Connect to set it up.',
-    'Address changed': 'Press Connect to update it to your current public address.',
-    'Needs reconnect': 'Press Repair to connect it on this computer again.',
+    'Needs reconnect': 'It points at an old address. Press Connect to fix it.',
     'Not installed': 'Install the app on this computer first.',
-    'Needs a public domain': 'Set your public domain below first.',
 };
 export const appNames: Record<AppId, string> = { 'claude-code': 'Claude Code', codex: 'Codex' };
 export const responderApps: Partial<Record<string, AppId>> = { 'claude-session': 'claude-code', 'codex-local': 'codex' };

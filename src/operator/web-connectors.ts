@@ -26,6 +26,13 @@ export async function forgetWebConnectors(): Promise<void> {
     await saveWebConnectors({});
 }
 
+export const webHint: Record<string, string> = {
+    Connected: 'Added. Open it to see the steps again.',
+    'Not connected': 'Open it for the steps to add it.',
+    'Address changed': 'Your public address changed. Open it and add the new address.',
+    'Needs a public domain': 'Set your public domain below first.',
+};
+
 export const claudeConnectorLink = (url: string): string =>
     `https://claude.ai/customize/connectors?${new URLSearchParams({ modal: 'add-custom-connector', connectorName: 'Discordinator', connectorUrl: url })}`;
 

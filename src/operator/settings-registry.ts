@@ -61,6 +61,9 @@ export function editSetting(document: Record<string, unknown>, definition: Setti
     const error = fieldError(definition, value);
     if (error) throw new Error(error);
     if (definition.id === 'environment.DISCORDINATOR_RESOURCE_URL') return editPublicDomain(document, String(value));
+    return assignSetting(document, definition, value);
+}
+export function assignSetting(document: Record<string, unknown>, definition: SettingDefinition, value: unknown): Record<string, unknown> {
     const parts = pathParts(definition.path);
     const result = structuredClone(document);
     let target = result;

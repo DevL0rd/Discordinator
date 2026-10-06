@@ -27,9 +27,13 @@ export function domainEndpoint(value: string): string {
     return publicEndpoint(value.trim());
 }
 export function editPublicDomain(document: Record<string, unknown>, value: string): Record<string, unknown> {
+    const external = document.DISCORDINATOR_AUTH_MODE === 'oauth' && document.DISCORDINATOR_OAUTH_SERVER === 'external';
+    if (!value.trim()) {
+        const cleared = { ...structuredClone(document), DISCORDINATOR_RESOURCE_URL: '' };
+        return external ? cleared : { ...cleared, DISCORDINATOR_AUTH_MODE: 'bearer' };
+    }
     const next = new URL(domainEndpoint(value));
     const result = { ...structuredClone(document), DISCORDINATOR_RESOURCE_URL: `${next.origin}/mcp` };
-    const external = document.DISCORDINATOR_AUTH_MODE === 'oauth' && document.DISCORDINATOR_OAUTH_SERVER === 'external';
     return external ? result : { ...result, ...bundledSignIn(document) };
 }
 
@@ -44,4 +48,14 @@ function bundledSignIn(document: Record<string, unknown>): Record<string, unknow
 export function publicDomainBlock(mode: string, environment: Record<string, unknown>): string | undefined {
     if (!mode.startsWith('chatgpt-') || scalar(environment.DISCORDINATOR_RESOURCE_URL)) return undefined;
     return 'ChatGPT runs in the cloud, so it needs a public domain to reach Discordinator. Set one on the Apps page first.';
+}
+
+export function mcpAddresses(environment: Record<string, unknown>): string[] {
+    const domain = publicDomain(environment.DISCORDINATOR_RESOURCE_URL);
+    return [
+        `On this computer: http://127.0.0.1:${scalar(environment.DISCORDINATOR_PORT) || '8787'}/mcp, sending "Authorization: Bearer" with the key in .data/local.key.`,
+        domain
+            ? `From the web: https://${domain}/mcp, signing in with your Discordinator password.`
+            : 'From the web: set a public domain on the Apps page first.',
+    ];
 }

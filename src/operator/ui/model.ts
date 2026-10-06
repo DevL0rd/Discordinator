@@ -1,4 +1,4 @@
-import type { OperatingMode } from '../config.js';
+import type { OperatingMode, OperatorConfig } from '../config.js';
 import type { Documents, PanelSnapshot } from '../panel-store.js';
 import type { SettingChange } from '../settings-registry.js';
 import type { LiveSetupStatus } from '../setup-model.js';
@@ -29,6 +29,7 @@ export type ActionId =
     | 'app-codex'
     | 'web-claude'
     | 'web-chatgpt'
+    | 'chatgpt-guide'
     | 'sign-in-password'
     | 'install-service'
     | 'restart-service';
@@ -47,6 +48,7 @@ export type Intent =
 export interface Observations {
     live: LiveSetupStatus | null;
     runtime: boolean;
+    active: OperatorConfig;
     codex: ProviderModels;
     claude: ProviderModels;
     service: ManagedServiceStatus;
@@ -55,6 +57,7 @@ export interface Observations {
 export interface Extras {
     apps: Partial<Record<AppId, AppState>>;
     web?: WebConnectors;
+    password?: boolean;
     servers?: BotServers;
 }
 export interface Activity {

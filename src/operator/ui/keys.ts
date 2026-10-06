@@ -5,6 +5,7 @@ import { dispatch, jumpTo } from './intents.js';
 import { searchResults, type Sheet } from './sheets.js';
 import { goPage, itemsOf, logged, moveCursor, selectedIndex, stepPage, viewOf, type UiState } from './state.js';
 import { pages } from './model.js';
+import { pageItems } from './pages/index.js';
 import { operator } from './status.js';
 
 export interface Key {
@@ -32,6 +33,7 @@ const vertical = (input: string, key: Key): number => {
 };
 const arrows = (key: Key): number => vertical('', key);
 const closeSheet = (state: UiState): UiState => ({ ...state, sheet: undefined });
+const reachable = (state: UiState): string[] => pages.flatMap((page) => pageItems(page.id, viewOf(state)).map((item) => item.id));
 
 export function activateSelected(store: Store): void {
     const state = store.get();
@@ -47,8 +49,8 @@ function shortcut(store: Store, input: string, key: Key): boolean {
     const actions: Record<string, () => void> = {
         q: () => quit(store),
         '?': () => store.set((state) => ({ ...state, sheet: { kind: 'help' } })),
-        '/': () => store.set((state) => ({ ...state, sheet: { kind: 'search', input: '', index: 0 } })),
-        r: () => void refresh(store, true).then(() => store.set((state) => logged(state, 'Status refreshed.', 'idle'))),
+        '/': () => store.set((state) => ({ ...state, sheet: { kind: 'search', input: '', index: 0, reachable: reachable(state) } })),
+        r: () => void refresh(store, true).then(() => store.set((state) => logged(state, 'Settings and status reloaded.', 'idle'))),
         s: () => review(store),
         p: toggleActive,
     };
@@ -151,7 +153,7 @@ function confirmKey(store: Store, sheet: Extract<Sheet, { kind: 'confirm' }>, in
 }
 
 function searchKey(store: Store, sheet: Extract<Sheet, { kind: 'search' }>, input: string, key: Key): void {
-    const results = searchResults(sheet.input);
+    const results = searchResults(sheet);
     if (key.return) {
         const chosen = results[sheet.index];
         if (chosen) jumpTo(store, chosen.id);

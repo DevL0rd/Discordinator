@@ -14,7 +14,7 @@ export function inviteCopy(discovery?: DiscordDiscovery): { title: string; body:
         body: [
             'Discordinator needs two things on the Developer Portal Bot page, and the bot in your server with Administrator.',
             `${mark(discovery.intents.messageContent)} Message Content Intent is on (Bot → Privileged Gateway Intents)`,
-            `${mark(discovery.intents.members)} Server Members Intent is on (same section)`,
+            `${mark(discovery.intents.members)} Server Members Intent is on (same section; lets you pick people and roles)`,
             `${mark(discovery.servers.length > 0)} The bot is in a server${discovery.servers.length ? `: ${discovery.servers.join(', ')}` : ''}`,
             `Invite link (Administrator, slash commands): ${inviteLink(discovery.botId)}`,
             'Administrator lets it manage channels, roles and messages when you ask. It still only answers the people and channels you approve.',

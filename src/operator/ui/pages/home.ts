@@ -2,7 +2,16 @@ import { blank, box, hstack, line, span, truncate, width, type Line } from '../c
 import { color, glyph, tone } from '../theme.js';
 import { actionItem, dotFor, heading, note } from '../items.js';
 import type { Item, View } from '../model.js';
-import { assistants, assistantSignal, discordSignal, operator, runtimeSignal, savedDiffers, type Signal } from '../status.js';
+import {
+    assistantName,
+    assistants,
+    assistantSignal,
+    discordSignal,
+    operator,
+    runtimeSignal,
+    savedDiffers,
+    type Signal,
+} from '../status.js';
 import type { OperatingMode } from '../../config.js';
 import { wordmark } from '../wordmark.js';
 
@@ -75,22 +84,21 @@ const block = (id: string, render: (size: number, view: View) => Line[]): Item =
 
 function primary(view: View): Item {
     const mode = operator(view).mode;
-    const saved = assistants[view.snapshot.documents.operator.mode as OperatingMode]?.name ?? 'assistant';
+    const saved = assistantName(view.snapshot.documents.operator.mode);
     if (mode && mode !== 'disabled' && !savedDiffers(view))
         return actionItem('pause', `${glyph.off} Pause`, { type: 'run', action: 'pause' }, 'Stop answering Discord');
     return actionItem(
         'start',
         `▶ Start ${saved}`,
         { type: 'run', action: 'start' },
-        savedDiffers(view) ? 'Switch to your saved choice' : 'Begin answering Discord',
+        savedDiffers(view) ? 'Waiting for Discordinator to switch' : 'Begin answering Discord',
         'good',
     );
 }
 
 function attention(view: View): Item[] {
     const notes: string[] = [];
-    if (savedDiffers(view))
-        notes.push(`You saved ${assistants[view.snapshot.documents.operator.mode as OperatingMode]?.name}, but it is not active yet.`);
+    if (savedDiffers(view)) notes.push(`You saved ${assistantName(view.observed.active.mode)}, but it is not active yet.`);
     if (!view.observed.live && view.observed.runtime)
         notes.push('Discordinator is running an older build. Restart it to load this version.');
     if (view.changes.length) notes.push(`${view.changes.length} unsaved change${view.changes.length === 1 ? '' : 's'}. Press S to review.`);
