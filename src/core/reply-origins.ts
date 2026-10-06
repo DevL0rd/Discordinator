@@ -1,4 +1,5 @@
-import { mkdir, readFile, rename, stat, writeFile } from 'node:fs/promises';
+import { mkdir, readFile, stat, writeFile } from 'node:fs/promises';
+import { replaceFile } from './replace-file.js';
 import { dirname } from 'node:path';
 import { z } from 'zod';
 import type { BotEvent } from './queue.js';
@@ -104,7 +105,7 @@ export class ReplyOrigins {
             await mkdir(dirname(this.file), { recursive: true, mode: 0o700 });
             const temporary = `${this.file}.tmp`;
             await writeFile(temporary, body, { mode: 0o600, flush: true });
-            await rename(temporary, this.file);
+            await replaceFile(temporary, this.file);
             this.records = candidate;
         });
         this.tail = next.catch(() => {});

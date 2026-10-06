@@ -1,4 +1,5 @@
-import { mkdir, readFile, rename, writeFile } from 'node:fs/promises';
+import { mkdir, readFile, writeFile } from 'node:fs/promises';
+import { replaceFile } from '../core/replace-file.js';
 import { z } from 'zod';
 
 export const presenceFile = '.data/presence.json';
@@ -32,7 +33,7 @@ export class PresenceWriter {
             .then(async () => {
                 await mkdir('.data', { recursive: true, mode: 0o700 });
                 await writeFile(`${presenceFile}.tmp`, JSON.stringify(this.value), { mode: 0o600 });
-                await rename(`${presenceFile}.tmp`, presenceFile);
+                await replaceFile(`${presenceFile}.tmp`, presenceFile);
             })
             .catch(() => undefined);
     }

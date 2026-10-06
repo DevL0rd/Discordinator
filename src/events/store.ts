@@ -1,4 +1,5 @@
-import { mkdir, readFile, rename, stat, writeFile } from 'node:fs/promises';
+import { mkdir, readFile, stat, writeFile } from 'node:fs/promises';
+import { replaceFile } from '../core/replace-file.js';
 import { dirname } from 'node:path';
 import { z } from 'zod';
 import { eventNames, filtersSchema, secretSchema } from './schema.js';
@@ -86,6 +87,6 @@ export class SubscriptionStore {
         await mkdir(dirname(this.file), { recursive: true, mode: 0o700 });
         const temporary = `${this.file}.tmp`;
         await writeFile(temporary, body, { mode: 0o600, flush: true });
-        await rename(temporary, this.file);
+        await replaceFile(temporary, this.file);
     }
 }

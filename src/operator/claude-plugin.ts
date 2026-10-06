@@ -1,5 +1,6 @@
 import { claudeProgram } from './executables.js';
-import { access, mkdir, readFile, rename, writeFile } from 'node:fs/promises';
+import { access, mkdir, readFile, writeFile } from 'node:fs/promises';
+import { replaceFile } from '../core/replace-file.js';
 import { dirname, join, resolve } from 'node:path';
 import { buildDiscordinator } from './install.js';
 import { runFile, type Runner } from './run.js';
@@ -48,7 +49,7 @@ async function writeIfChanged(path: string, value: unknown): Promise<boolean> {
     if ((await readFile(path, 'utf8').catch(() => '')) === text) return false;
     await mkdir(dirname(path), { recursive: true, mode: 0o700 });
     await writeFile(`${path}.tmp`, text, { mode: 0o600 });
-    await rename(`${path}.tmp`, path);
+    await replaceFile(`${path}.tmp`, path);
     return true;
 }
 

@@ -1,5 +1,6 @@
 import { constants } from 'node:fs';
-import { lstat, mkdir, open, readFile, rename, rm, unlink, type FileHandle } from 'node:fs/promises';
+import { lstat, mkdir, open, readFile, rm, unlink, type FileHandle } from 'node:fs/promises';
+import { replaceFile } from '../core/replace-file.js';
 import { join } from 'node:path';
 import type { Adapter, AdapterPayload } from 'oidc-provider';
 import { validAppRedirect } from './registration.js';
@@ -53,7 +54,7 @@ export async function writePrivate(file: string, value: unknown, exclusive = fal
     } finally {
         await handle.close();
     }
-    if (!exclusive) await rename(target, file);
+    if (!exclusive) await replaceFile(target, file);
     await syncDirectory(join(file, '..'));
 }
 

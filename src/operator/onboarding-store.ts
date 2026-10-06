@@ -5,7 +5,8 @@ import { oauthDirectory } from '../oauth/registration.js';
 import { codexCommand } from './codex-config.js';
 import { claudeProgram } from './executables.js';
 import { execFile } from 'node:child_process';
-import { mkdir, readFile, rename, writeFile } from 'node:fs/promises';
+import { mkdir, readFile, writeFile } from 'node:fs/promises';
+import { replaceFile } from '../core/replace-file.js';
 import { dirname } from 'node:path';
 import { promisify } from 'node:util';
 import { parseEnv } from 'node:util';
@@ -124,7 +125,7 @@ async function atomicWrite(path: string, text: string): Promise<void> {
     await mkdir(dirname(path), { recursive: true, mode: 0o700 });
     const temporary = `${path}.${process.pid}.onboarding.tmp`;
     await writeFile(temporary, text, { mode: 0o600, flush: true });
-    await rename(temporary, path);
+    await replaceFile(temporary, path);
 }
 export async function saveDiscord(draft: DiscordDraft, identity: DiscordIdentity, files: OnboardingFiles = {}): Promise<void> {
     const environmentPath = files.environment ?? '.env';

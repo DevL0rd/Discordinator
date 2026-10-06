@@ -1,4 +1,5 @@
-import { mkdir, readFile, rename, writeFile } from 'node:fs/promises';
+import { mkdir, readFile, writeFile } from 'node:fs/promises';
+import { replaceFile } from './replace-file.js';
 import { parseEnv } from 'node:util';
 
 const legacy = /^DOTBOT_([A-Z0-9_]+)=/gm;
@@ -16,7 +17,7 @@ export async function migrateEnvironment(path = '.env', target: NodeJS.ProcessEn
     await mkdir('.data/setup-backups', { recursive: true, mode: 0o700 });
     await writeFile(`.data/setup-backups/${Date.now()}-environment-rename.json`, JSON.stringify({ path, original }), { mode: 0o600 });
     await writeFile(`${path}.rename.tmp`, migrated, { mode: 0o600, flush: true });
-    await rename(`${path}.rename.tmp`, path);
+    await replaceFile(`${path}.rename.tmp`, path);
     for (const [key, value] of Object.entries(parseEnv(migrated))) if (key.startsWith('DISCORDINATOR_')) target[key] ??= value;
     return count;
 }

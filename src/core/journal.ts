@@ -1,5 +1,6 @@
 import { createHash, randomUUID } from 'node:crypto';
-import { mkdir, readFile, rename, writeFile, unlink } from 'node:fs/promises';
+import { mkdir, readFile, writeFile, unlink } from 'node:fs/promises';
+import { replaceFile } from './replace-file.js';
 import { dirname } from 'node:path';
 import { z } from 'zod';
 import { canonical } from './canonical.js';
@@ -49,7 +50,7 @@ export class Journal {
         const temporary = `${this.file}.${randomUUID()}.tmp`;
         try {
             await writeFile(temporary, JSON.stringify(this.records), { mode: 0o600, flag: 'wx', flush: true });
-            await rename(temporary, this.file);
+            await replaceFile(temporary, this.file);
         } finally {
             await unlink(temporary).catch(() => {});
         }

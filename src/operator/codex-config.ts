@@ -1,4 +1,5 @@
-import { mkdir, readFile, rename, writeFile } from 'node:fs/promises';
+import { mkdir, readFile, writeFile } from 'node:fs/promises';
+import { replaceFile } from '../core/replace-file.js';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
 import { codexProgram } from './executables.js';
@@ -43,5 +44,5 @@ export async function writeCodexConfig(home: string, update: (toml: string) => s
     await writeFile(`.data/setup-backups/${Date.now()}-codex-config.json`, JSON.stringify({ path, original }), { mode: 0o600 });
     await mkdir(home, { recursive: true, mode: 0o700 });
     await writeFile(`${path}.discordinator.tmp`, update(original), { mode: 0o600, flush: true });
-    await rename(`${path}.discordinator.tmp`, path);
+    await replaceFile(`${path}.discordinator.tmp`, path);
 }

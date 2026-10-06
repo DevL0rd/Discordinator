@@ -1,4 +1,5 @@
-import { mkdir, readFile, rename, writeFile } from 'node:fs/promises';
+import { mkdir, readFile, writeFile } from 'node:fs/promises';
+import { replaceFile } from '../core/replace-file.js';
 import { z } from 'zod';
 
 const stateFile = '.data/web-connectors.json';
@@ -14,7 +15,7 @@ export async function webConnectors(): Promise<WebConnectors> {
 async function saveWebConnectors(next: WebConnectors): Promise<void> {
     await mkdir('.data', { recursive: true, mode: 0o700 });
     await writeFile(`${stateFile}.tmp`, JSON.stringify(next), { mode: 0o600 });
-    await rename(`${stateFile}.tmp`, stateFile);
+    await replaceFile(`${stateFile}.tmp`, stateFile);
 }
 
 export async function markWebAdded(id: WebId, url: string): Promise<string> {

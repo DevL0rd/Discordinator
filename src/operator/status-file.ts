@@ -1,4 +1,5 @@
-import { mkdir, readFile, rename, writeFile } from 'node:fs/promises';
+import { mkdir, readFile, writeFile } from 'node:fs/promises';
+import { replaceFile } from '../core/replace-file.js';
 
 export const statusFile = '.data/status.json';
 
@@ -33,5 +34,5 @@ export class StatusWriter {
 async function write(text: string): Promise<void> {
     await mkdir('.data', { recursive: true, mode: 0o700 });
     await writeFile(`${statusFile}.tmp`, text, { mode: 0o600 });
-    await rename(`${statusFile}.tmp`, statusFile);
+    await replaceFile(`${statusFile}.tmp`, statusFile);
 }

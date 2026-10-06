@@ -1,6 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import { execFile } from 'node:child_process';
-import { mkdir, readFile, rename, rm, writeFile } from 'node:fs/promises';
+import { mkdir, readFile, rm, writeFile } from 'node:fs/promises';
+import { replaceFile } from '../core/replace-file.js';
 import { promisify } from 'node:util';
 import { z } from 'zod';
 import type { Bridge } from '../core/bridge.js';
@@ -48,7 +49,7 @@ async function savedState(workspace: string): Promise<SessionState | undefined> 
 async function saveState(state: SessionState): Promise<void> {
     await mkdir('.data', { recursive: true, mode: 0o700 });
     await writeFile(`${stateFile}.tmp`, JSON.stringify(state), { mode: 0o600 });
-    await rename(`${stateFile}.tmp`, stateFile);
+    await replaceFile(`${stateFile}.tmp`, stateFile);
 }
 
 export async function openConversation(workspace: string): Promise<string> {

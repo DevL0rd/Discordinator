@@ -1,4 +1,5 @@
-import { mkdir, readFile, rename, writeFile } from 'node:fs/promises';
+import { mkdir, readFile, writeFile } from 'node:fs/promises';
+import { replaceFile } from '../core/replace-file.js';
 import { dirname } from 'node:path';
 import { homedir } from 'node:os';
 import { z } from 'zod';
@@ -61,5 +62,5 @@ export async function writeOperatorConfig(config: OperatorConfig, path = operato
     await mkdir(dirname(path), { recursive: true, mode: 0o700 });
     const temporary = `${path}.${process.pid}.tmp`;
     await writeFile(temporary, `${JSON.stringify(parsed, null, 2)}\n`, { mode: 0o600 });
-    await rename(temporary, path);
+    await replaceFile(temporary, path);
 }

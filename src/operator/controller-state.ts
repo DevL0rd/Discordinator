@@ -1,5 +1,6 @@
 import { randomUUID } from 'node:crypto';
-import { mkdir, readFile, rename, unlink, writeFile } from 'node:fs/promises';
+import { mkdir, readFile, unlink, writeFile } from 'node:fs/promises';
+import { replaceFile } from '../core/replace-file.js';
 import { dirname } from 'node:path';
 import { z } from 'zod';
 import type { BotEvent } from '../core/queue.js';
@@ -116,7 +117,7 @@ export class ControllerStore {
         const temporary = `${this.file}.${randomUUID()}.tmp`;
         try {
             await writeFile(temporary, JSON.stringify(state), { flag: 'wx', mode: 0o600, flush: true });
-            await rename(temporary, this.file);
+            await replaceFile(temporary, this.file);
         } finally {
             await unlink(temporary).catch(() => undefined);
         }

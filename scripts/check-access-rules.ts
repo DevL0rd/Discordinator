@@ -3,6 +3,7 @@ import { mkdir, writeFile } from 'node:fs/promises';
 import { policySchema } from '../src/core/config.js';
 import { Policy } from '../src/core/policy.js';
 import { acquireRuntime } from '../src/core/runtime.js';
+import { replaceFile } from '../src/core/replace-file.js';
 import { rich } from '../src/discord/operations.js';
 import { ids } from './fixtures.js';
 
@@ -54,7 +55,26 @@ async function checkRuntimeLock(directory: string): Promise<void> {
     }
 }
 
+async function checkReplaceFile(): Promise<void> {
+    const busy = (failures: number, code = 'EPERM') => {
+        let calls = 0;
+        const move = () => {
+            calls++;
+            if (calls > failures) return Promise.resolve();
+            return Promise.reject(Object.assign(new Error('locked'), { code }));
+        };
+        return { move, calls: () => calls };
+    };
+    const windows = busy(3);
+    await replaceFile('a', 'b', 'win32', windows.move);
+    assert.equal(windows.calls(), 4, 'Windows sharing errors are retried until the file is free');
+    await assert.rejects(replaceFile('a', 'b', 'linux', busy(1).move), /locked/, 'other systems do not retry');
+    await assert.rejects(replaceFile('a', 'b', 'win32', busy(1, 'ENOENT').move), /locked/, 'other errors are not retried');
+    await assert.rejects(replaceFile('a', 'b', 'win32', busy(5).move, 3), /locked/, 'retries stop after the limit');
+}
+
 export async function checkAccessRules(directory: string): Promise<void> {
+    await checkReplaceFile();
     checkThreads();
     checkEmbedTotal();
     await checkRuntimeLock(directory);

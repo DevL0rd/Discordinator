@@ -1,4 +1,5 @@
-import { mkdir, readFile, rename, stat, writeFile } from 'node:fs/promises';
+import { mkdir, readFile, stat, writeFile } from 'node:fs/promises';
+import { replaceFile } from '../core/replace-file.js';
 import { planReconnect } from './reconnect.js';
 import { ownerReady } from '../oauth/provision.js';
 import { dirname } from 'node:path';
@@ -222,7 +223,7 @@ async function saveSource(snapshot: PanelSnapshot, drafts: Documents, source: Se
     await writeFile(temporary, text, { mode: 0o600, flush: true });
     if ((await read(path)) !== snapshot.originals[source])
         throw new Error('Concurrent edit detected. Backup retained; no target overwritten.');
-    await rename(temporary, path);
+    await replaceFile(temporary, path);
     return text;
 }
 async function saveSources(snapshot: PanelSnapshot, drafts: Documents, sources: SettingsSource[]): Promise<void> {
@@ -242,7 +243,7 @@ async function saveSources(snapshot: PanelSnapshot, drafts: Documents, sources: 
                 });
             const temporary = `${snapshot.paths[source]}.${process.pid}.rollback.tmp`;
             await writeFile(temporary, snapshot.originals[source], { mode: 0o600, flush: true });
-            await rename(temporary, snapshot.paths[source]);
+            await replaceFile(temporary, snapshot.paths[source]);
         }
         throw error;
     }
