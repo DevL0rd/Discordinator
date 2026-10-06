@@ -24,20 +24,20 @@ flowchart LR
 
 ## Modules
 
-| Location                            | Responsibility                                                                                               |
-| :---------------------------------- | :----------------------------------------------------------------------------------------------------------- |
-| `src/core/config.ts`                | Environment/policy parsing, capability schema, intent prerequisites                                          |
-| `src/core/policy.ts`, `triggers.ts` | Exact user whitelist, resource scopes, destination/origin constraints, literal triggers                      |
-| `src/core/queue.ts`, `approvals.ts` | Bounded event retention/dedupe and same-user confirmation                                                    |
-| `src/core/journal.ts`, `runtime.ts` | Serialized persistent idempotency and one-instance lock                                                      |
-| `src/core/bridge.ts`                | Shared authorization before every mutation and outbound response                                             |
-| `src/discord/`                      | Gateway capture, safe output projection, fixed typed operation families                                      |
-| `src/core/context.ts`               | Bounded context ingestion/search, separate from action origins                                               |
-| `src/events/`                       | Durable owner/filter/expiry state, verified SSRF-safe HTTPS callbacks, signatures and retry outbox           |
-| `src/media/`                        | Bounded upload memory, safe format checks, scoped attachment index/handles, refreshed CDN-only retrieval     |
-| `src/interactions/`                 | Typed prompts, single-use actor/message/application bindings, immediate modal launch and child event capture |
-| `src/mcp/`                          | Loopback listener, bearer/OAuth validation and tool registration                                             |
-| `scripts/`                          | Practical offline validation with disposable fixtures                                                        |
+| Location | Responsibility |
+| :-- | :-- |
+| `src/core/config.ts` | Environment/policy parsing, capability schema, intent prerequisites |
+| `src/core/policy.ts`, `triggers.ts` | Exact user whitelist, resource scopes, destination/origin constraints, literal triggers |
+| `src/core/queue.ts`, `approvals.ts` | Bounded event retention/dedupe and same-user confirmation |
+| `src/core/journal.ts`, `runtime.ts` | Serialized persistent idempotency and one-instance lock |
+| `src/core/bridge.ts` | Shared authorization before every mutation and outbound response |
+| `src/discord/` | Gateway capture, safe output projection, fixed typed operation families |
+| `src/core/context.ts` | Bounded context ingestion/search, separate from action origins |
+| `src/events/` | Durable owner/filter/expiry state, verified SSRF-safe HTTPS callbacks, signatures and retry outbox |
+| `src/media/` | Bounded upload memory, safe format checks, scoped attachment index/handles, refreshed CDN-only retrieval |
+| `src/interactions/` | Typed prompts, single-use actor/message/application bindings, immediate modal launch and child event capture |
+| `src/mcp/` | Loopback listener, bearer/OAuth validation and tool registration |
+| `scripts/` | Practical offline validation with disposable fixtures |
 
 The bot receives messages and its own `/discordinator` interactions. It checks user IDs before trigger text or reply-reference fetches. A reply must resolve to a message by this bot in the same channel/guild. Accepted message events are captured only on creation. Bot/webhook messages never become triggers or webhook events. Optional context indexing can include bot messages; message edits/deletes update/remove retained context without triggering actions. A slash command is an explicit reference to the application and is gated by its name/application ID, whitelist, origin and messages.write scope before an ephemeral defer. The response closure awaits defer completion, retains the interaction internally and rechecks authorization before editing. No interaction token or raw Discord object is serialized to MCP.
 
@@ -51,20 +51,20 @@ Configuration is local. The runtime is event-driven: it watches its settings fil
 
 ## Bounds and failure handling
 
-| Resource          | Bound                                                                                                                                    |
-| :---------------- | :--------------------------------------------------------------------------------------------------------------------------------------- |
-| Event retention   | 500 events, ten-minute TTL, at most 4,000 text characters each                                                                           |
-| Event dedupe      | 2,000 IDs retained for the same TTL; overload rejects new IDs and increments a counter                                                   |
-| Context           | Defaults 500 records, 50/channel, 30 minutes, 1,000 text characters; policy hard maxima described in [Events and context](mcp-events.md) |
-| Webhooks          | 100 subscriptions, 500 pending deliveries, ten-minute outbox TTL, six attempts, 256 KiB/body, 8 MiB store                                |
-| Gateway handlers  | 32 simultaneous message handlers; overload is counted                                                                                    |
-| Polls             | 25 events, 20-second wait, eight waiting callers                                                                                         |
-| Approvals         | 100 entries, two-minute TTL, process-local                                                                                               |
-| Journal           | 4,096 records, completed-record retention of 24 hours                                                                                    |
-| HTTP              | 512,000-byte body/output, 16 active dispatches, 32 connections, 120 requests/minute                                                      |
-| HTTP timeouts     | Five-second headers, 30-second request receipt timeout                                                                                   |
-| Discord REST      | 15-second network timeout, zero automatic 5xx retries                                                                                    |
-| Output projection | Allowlisted fields, at most 100 entries per array, 4,000 characters/string, six nesting levels                                           |
+| Resource | Bound |
+| :-- | :-- |
+| Event retention | 500 events, ten-minute TTL, at most 4,000 text characters each |
+| Event dedupe | 2,000 IDs retained for the same TTL; overload rejects new IDs and increments a counter |
+| Context | Defaults 500 records, 50/channel, 30 minutes, 1,000 text characters; policy hard maxima described in [Events and context](mcp-events.md) |
+| Webhooks | 100 subscriptions, 500 pending deliveries, ten-minute outbox TTL, six attempts, 256 KiB/body, 8 MiB store |
+| Gateway handlers | 32 simultaneous message handlers; overload is counted |
+| Polls | 25 events, 20-second wait, eight waiting callers |
+| Approvals | 100 entries, two-minute TTL, process-local |
+| Journal | 4,096 records, completed-record retention of 24 hours |
+| HTTP | 512,000-byte body/output, 16 active dispatches, 32 connections, 120 requests/minute |
+| HTTP timeouts | Five-second headers, 30-second request receipt timeout |
+| Discord REST | 15-second network timeout, zero automatic 5xx retries |
+| Output projection | Allowlisted fields, at most 100 entries per array, 4,000 characters/string, six nesting levels |
 
 discord.js handles Gateway heartbeats/reconnect/resume and Discord REST rate-limit buckets/Retry-After waits. There is no assumption of unlimited API throughput. Rate-limit waits can outlast a client’s call timeout; an HTTP timeout is not proof that a mutation failed. A client disconnect does not undo already-issued work. Partial event loss during disconnection, expiration or overload is possible. The queue reports discarded cursors and dedupe-limit drops instead of implying guaranteed delivery. A DM, permission failure or unsupported resource type can still be refused by Discord.
 

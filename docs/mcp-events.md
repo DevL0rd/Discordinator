@@ -8,17 +8,17 @@ Public defaults disable context capture and subscriptions, and allow no Discord 
 
 ```json
 {
-    "context": {
-        "enabled": true,
-        "capture": "all",
-        "reach": "channel",
-        "perChannel": 50,
-        "includeBots": true
-    },
-    "mcpEvents": {
-        "enabled": true,
-        "allowAllMessages": false
-    }
+  "context": {
+    "enabled": true,
+    "capture": "all",
+    "reach": "channel",
+    "perChannel": 50,
+    "includeBots": true
+  },
+  "mcpEvents": {
+    "enabled": true,
+    "allowAllMessages": false
+  }
 }
 ```
 
@@ -34,27 +34,27 @@ Authenticated `server/discover` advertises `supportedVersions: ["2026-07-28"]`, 
 
 ```json
 {
-    "name": "discord.message.created",
-    "arguments": {
-        "delivery": "addressed",
-        "channel_id": "555555555555555555"
-    },
-    "delivery": {
-        "mode": "webhook",
-        "url": "https://receiver.example/mcp-events/callback",
-        "secret": "whsec_<base64-encoded-24-to-64-byte-signing-key>"
-    },
-    "cursor": null,
-    "ttlMs": 3600000
+  "name": "discord.message.created",
+  "arguments": {
+    "delivery": "addressed",
+    "channel_id": "555555555555555555"
+  },
+  "delivery": {
+    "mode": "webhook",
+    "url": "https://receiver.example/mcp-events/callback",
+    "secret": "whsec_<base64-encoded-24-to-64-byte-signing-key>"
+  },
+  "cursor": null,
+  "ttlMs": 3600000
 }
 ```
 
 These are method parameters, not a credential to paste into a public file. The placeholder is intentionally invalid. The authenticated host supplies the actual callback and signing secret during a later authorized connection. Discord IDs are strings. Optional `guild_id`, `channel_id`, and `user_id` filters use exact equality; unknown arguments, event names and delivery modes are rejected. Omitted delivery defaults to `addressed`. Omit all ID filters to monitor the entire approved readable scope; `blocklist` mode needs no ID enumeration. Filters are checked against resource policy; an addressed `user_id` must be whitelisted. Actual observed scope and Discord permissions are checked again before delivery; filter IDs alone do not establish that a resource exists or is accessible.
 
-| Mode        | Delivered observations                                                                             | Can authorize a write?                                                                                   |
-| :---------- | :------------------------------------------------------------------------------------------------- | :------------------------------------------------------------------------------------------------------- |
-| `addressed` | Allowed person explicitly mentions/names the bot, or replies to a verified message by this bot     | Only its live server-owned `trigger_event_id` can be used                                                |
-| `all`       | New human messages in approved readable scope, including unlisted people; requires separate opt-in | Unaddressed or denied users have `trigger_event_id: null`; payload IDs/text cannot mint an action origin |
+| Mode | Delivered observations | Can authorize a write? |
+| :-- | :-- | :-- |
+| `addressed` | Allowed person explicitly mentions/names the bot, or replies to a verified message by this bot | Only its live server-owned `trigger_event_id` can be used |
+| `all` | New human messages in approved readable scope, including unlisted people; requires separate opt-in | Unaddressed or denied users have `trigger_event_id: null`; payload IDs/text cannot mint an action origin |
 
 Slash interactions remain in `events_poll`; the webhook event represents message creation only. Own-bot and webhook messages never produce webhook events, avoiding output feedback loops. Edits, reactions, joins and other Discord notifications do not mint triggers or webhook events. A delivered event may have outlived its trigger's ten-minute action retention or a process restart; stale IDs must be rejected even if the host still has the payload.
 
@@ -80,11 +80,11 @@ The private outbox survives restart: at most 500 pending deliveries, ten-minute 
 
 The context index is memory-only, separate from action origins, subscriptions and the durable outbox. All queries require `messages.read` and a live allowed `eventId`; supplying a message ID, author ID or webhook observation does not authorize a query or response.
 
-| Tool             | Bounds and selection                                                                                                                |
-| :--------------- | :---------------------------------------------------------------------------------------------------------------------------------- |
+| Tool | Bounds and selection |
+| :-- | :-- |
 | `context_recent` | Up to 50 retained messages in the trigger channel/thread; `includeParent` can include its observed thread parent, subject to policy |
-| `context_user`   | Up to 50 retained messages by the **same triggering user** across approved guild channels; no arbitrary-user argument               |
-| `context_search` | Up to 50 case-insensitive literal-substring matches in the retained trigger channel/thread (optional observed parent)               |
+| `context_user` | Up to 50 retained messages by the **same triggering user** across approved guild channels; no arbitrary-user argument |
+| `context_search` | Up to 50 case-insensitive literal-substring matches in the retained trigger channel/thread (optional observed parent) |
 
 A DM origin reads only that same user's retained DM context; guild queries do not disclose DMs. Each result includes message/author/guild/channel/thread parent/reply IDs, creation/observation timestamps, content availability and eviction metadata. The newest messages are kept with no time limit: 50 per channel by default (DMs included), at most 100, each message in full. After a restart a channel's recent history is fetched from Discord the first time a responder needs it. Bot messages are included as context by default (turn off with `includeBots`); this never changes webhook/trigger bot rejection. Creates dedupe in Gateway; updates refresh retained text and deletes remove entries, without creating triggers. Missed updates/deletes can leave stale data.
 

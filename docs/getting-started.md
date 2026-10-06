@@ -27,12 +27,12 @@ npm run setup
 
 `npm run setup` opens a full-screen terminal setup app that works with keyboard and mouse. On first run it is a short wizard:
 
-| Step               | What happens                                                                                                                                                                                |
-| :----------------- | :------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| Discord            | Paste the bot token (hidden as you type), enter your owner user ID, and pick a first channel from the channels the bot can see. Everything is checked read-only before anything is written. |
-| Who answers        | Choose the responder that answers new Discord messages. See [Operator](operator.md#responders).                                                                                             |
-| Connect            | Connect your AI. For **Claude Code**, Discordinator installs a local plugin with nothing to sign in to.                                                                                     |
-| Background service | Optionally install the background user service so Discordinator starts when you log in.                                                                                                     |
+| Step | What happens |
+| :-- | :-- |
+| Discord | Paste the bot token (hidden as you type), enter your owner user ID, and pick a first channel from the channels the bot can see. Everything is checked read-only before anything is written. |
+| Who answers | Choose the responder that answers new Discord messages. See [Operator](operator.md#responders). |
+| Connect | Connect your AI. For **Claude Code** or **Codex**, Discordinator connects it on this computer with nothing to sign in to. |
+| Background service | Optionally install the background user service so Discordinator starts when you log in. |
 
 If you quit part-way, setup resumes where you left off. After the wizard you land on the dashboard; [Operator](operator.md) explains every page.
 
@@ -70,15 +70,15 @@ Keep any existing `.env` and `policy.json`. A minimal policy for a first convers
 
 ```json
 {
-    "allowedUserIds": ["YOUR_DISCORD_USER_ID"],
-    "servers": { "mode": "allowlist", "allowed": ["YOUR_SERVER_ID"], "blocked": [] },
-    "channels": { "mode": "allowlist", "allowed": ["YOUR_CHANNEL_ID"], "blocked": [] },
-    "scopes": ["messages.write"],
-    "triggers": {
-        "matchNames": true,
-        "names": ["Discordinator", "disco"],
-        "replyToBot": true
-    }
+  "allowedUserIds": ["YOUR_DISCORD_USER_ID"],
+  "servers": { "mode": "allowlist", "allowed": ["YOUR_SERVER_ID"], "blocked": [] },
+  "channels": { "mode": "allowlist", "allowed": ["YOUR_CHANNEL_ID"], "blocked": [] },
+  "scopes": ["messages.write"],
+  "triggers": {
+    "matchNames": true,
+    "names": ["Discordinator", "disco"],
+    "replyToBot": true
+  }
 }
 ```
 
@@ -86,11 +86,11 @@ Replace the placeholders with real quoted IDs. An empty allowlist allows nothing
 
 ## Troubleshooting
 
-| Symptom                            | Check                                                                                                                                                |
-| :--------------------------------- | :--------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Discordinator will not start       | Real bot token, valid policy, Message Content intent enabled in the portal, free port, complete auth settings. Process environment overrides `.env`. |
-| The bot ignores a message          | Your user ID is allowed, the server and channel are allowed, and the message mentions the bot, uses a trigger name or replies to the bot.            |
-| No reply arrives                   | The responder is started on **Home**, and the bot has Send Messages in that channel.                                                                 |
-| A cloud app cannot connect         | Public domain, HTTPS proxy, allowed Host and OAuth settings. See [Connection](connection.md).                                                        |
-| Sensitive action returns a preview | Approve it in Discord with `@Discordinator approve APPROVAL_UUID` from the same person in the same channel.                                          |
-| Unknown outcome after a timeout    | Check Discord before retrying; follow [recovery](architecture.md#idempotency-and-recovery).                                                          |
+| Symptom | Check |
+| :-- | :-- |
+| Discordinator will not start | Real bot token, valid policy, Message Content intent enabled in the portal, free port, complete auth settings. Process environment overrides `.env`. |
+| The bot ignores a message | Your user ID is allowed, the server and channel are allowed, and the message mentions the bot, uses a trigger name or replies to the bot. |
+| No reply arrives | The responder is started on **Home**, and the bot has Send Messages in that channel. |
+| A cloud app cannot connect | Public domain, HTTPS proxy, allowed Host and OAuth settings. See [Connection](connection.md). |
+| Sensitive action returns a preview | Approve it in Discord with `@Discordinator approve APPROVAL_UUID` from the same person in the same channel. |
+| Unknown outcome after a timeout | Check Discord before retrying; follow [recovery](architecture.md#idempotency-and-recovery). |

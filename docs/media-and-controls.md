@@ -10,13 +10,13 @@ Merge the following fields into your private ignored `policy.json`, preserving i
 
 ```json
 {
-    "media": {
-        "enabled": true,
-        "capture": "addressed",
-        "maxAttachments": 500,
-        "ttlMinutes": 30,
-        "maxFileBytes": 2097152
-    }
+  "media": {
+    "enabled": true,
+    "capture": "addressed",
+    "maxAttachments": 500,
+    "ttlMinutes": 30,
+    "maxFileBytes": 2097152
+  }
 }
 ```
 
@@ -26,11 +26,11 @@ For non-addressed guild attachment visibility, enable **Developer Portal → app
 
 ## Find the right incoming file
 
-| Tool                    | Coverage and pagination                                                                                                                                                                                                                                                                                                                                                                                                      |
-| :---------------------- | :--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `media_search`          | Bounded in-memory observed index. Newest first; `limit=1` gets the latest match. Optional `userId`, `channelId`, `messageId`, `attachmentIds`, `from`, `to`, `kind=all/image/file`. Without a channel filter, searches currently approved channels in the trigger's guild; a DM searches only its originating DM. Returns an opaque `nextCursor`; repeat the same event/filters/limit with that cursor.                      |
-| `media_history`         | One Discord history page in an explicit approved `channelId` (defaults to the origin), or one exact `messageId`. Same filters, `pageSize` 1–100 and result `limit` 1–25. `nextBefore` advances messages. If matching attachments exceed `limit`, `remaining` identifies omitted message/attachment pairs; fetch those exact messages with `attachmentIds` before advancing. This avoids silently losing files between pages. |
-| `media_attachment_read` | Freshly verifies a returned `sourceId`, then returns up to 128 KiB at `offset`, with `nextOffset`, size, filename, MIME and whole-file SHA-256. Requires current `media.read`/`messages.read` grants.                                                                                                                                                                                                                        |
+| Tool | Coverage and pagination |
+| :-- | :-- |
+| `media_search` | Bounded in-memory observed index. Newest first; `limit=1` gets the latest match. Optional `userId`, `channelId`, `messageId`, `attachmentIds`, `from`, `to`, `kind=all/image/file`. Without a channel filter, searches currently approved channels in the trigger's guild; a DM searches only its originating DM. Returns an opaque `nextCursor`; repeat the same event/filters/limit with that cursor. |
+| `media_history` | One Discord history page in an explicit approved `channelId` (defaults to the origin), or one exact `messageId`. Same filters, `pageSize` 1–100 and result `limit` 1–25. `nextBefore` advances messages. If matching attachments exceed `limit`, `remaining` identifies omitted message/attachment pairs; fetch those exact messages with `attachmentIds` before advancing. This avoids silently losing files between pages. |
+| `media_attachment_read` | Freshly verifies a returned `sourceId`, then returns up to 128 KiB at `offset`, with `nextOffset`, size, filename, MIME and whole-file SHA-256. Requires current `media.read`/`messages.read` grants. |
 
 Local searches explicitly report `coverage="bounded-local-index"`, `incomplete=true`, and retention. The index defaults to 500 attachments/30 minutes; hard limits are 1,000/60 minutes. It has no persistence, startup backfill or global Discord search. Deletes remove cached entries/handles; edits invalidate old entries and all-message capture can replace them. Addressed capture does not turn an edit into a trigger or newly capture its attachments. Pagination snapshots last one minute, at most 16; source handles last at most ten minutes and the owning event's lifetime, at most 1,000 handles. Scope/whitelist changes and source deletion fail closed. Image classification during search uses metadata/extension and says `imageTypeVerified=false`; retrieval verifies the bytes.
 
@@ -57,11 +57,11 @@ Each file defaults to 2 MiB, with a policy maximum of 8 MiB; Discord may impose 
 
 `discord_prompt` takes mutation controls, `content`, and `mode`:
 
-| Mode      | Additional input                                                                                                      | Behavior                                                                                                                               |
-| :-------- | :-------------------------------------------------------------------------------------------------------------------- | :------------------------------------------------------------------------------------------------------------------------------------- |
-| `buttons` | 1–5 `options`, each `{ "key": "continue", "label": "Continue" }`                                                      | One row of single-use buttons; chosen key is returned in a child event.                                                                |
-| `select`  | 1–25 uniquely keyed `options`                                                                                         | One string select, exactly one selected key. No arbitrary entity selectors.                                                            |
-| `modal`   | `title`, 1–5 `fields`, each with `key`, `label`, optional `placeholder`, `multiline`, `required`, `maxLength` (1–500) | A launch button opens a current Discord Label/Text Input modal immediately. Submission becomes a child event with a bounded field map. |
+| Mode | Additional input | Behavior |
+| :-- | :-- | :-- |
+| `buttons` | 1–5 `options`, each `{ "key": "continue", "label": "Continue" }` | One row of single-use buttons; chosen key is returned in a child event. |
+| `select` | 1–25 uniquely keyed `options` | One string select, exactly one selected key. No arbitrary entity selectors. |
+| `modal` | `title`, 1–5 `fields`, each with `key`, `label`, optional `placeholder`, `multiline`, `required`, `maxLength` (1–500) | A launch button opens a current Discord Label/Text Input modal immediately. Submission becomes a child event with a bounded field map. |
 
 The server generates opaque custom IDs and binds each flow to its actual bot-authored prompt message, originating application, actor, guild/channel and parent event. Another whitelisted person cannot consume your flow. Forged IDs, wrong message/application/type, unknown choices/fields, repeat submission and expiry fail closed. At most 100 flows live for at most ten minutes and their parent event's lifetime. Buttons are not URL buttons; labels/keys cannot provide routes or executable actions.
 

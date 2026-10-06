@@ -202,19 +202,19 @@ Connecting only ever touches the entry named <code>discordinator</code>. Your ot
 
 ## 📚 Docs
 
-| Need                             | Read                                                          |
-| :------------------------------- | :------------------------------------------------------------ |
-| Start to first reply             | [Getting started](docs/getting-started.md)                    |
-| The setup app and responders     | [Operator](docs/operator.md)                                  |
-| Every setting and file           | [Configuration](docs/configuration.md)                        |
-| Discord bot, intents and service | [Setup and permissions](docs/setup.md)                        |
-| People, places, approvals        | [Security](docs/security.md)                                  |
-| Sign-in, endpoints and apps      | [Connection](docs/connection.md) · [OAuth](docs/oauth.md)     |
-| Every tool and its grant         | [Capabilities](docs/capabilities.md)                          |
-| Wake-ups and recent context      | [Events and context](docs/mcp-events.md)                      |
-| Files and interactive controls   | [Files and controls](docs/media-and-controls.md)              |
-| How it fits together             | [Architecture](docs/architecture.md)                          |
-| Checks and CI                    | [Validation](docs/validation.md) · [Quality](docs/quality.md) |
+| Need | Read |
+| :-- | :-- |
+| Start to first reply | [Getting started](docs/getting-started.md) |
+| The setup app and responders | [Operator](docs/operator.md) |
+| Every setting and file | [Configuration](docs/configuration.md) |
+| Discord bot, intents and service | [Setup and permissions](docs/setup.md) |
+| People, places, approvals | [Security](docs/security.md) |
+| Sign-in, endpoints and apps | [Connection](docs/connection.md) · [OAuth](docs/oauth.md) |
+| Every tool and its grant | [Capabilities](docs/capabilities.md) |
+| Wake-ups and recent context | [Events and context](docs/mcp-events.md) |
+| Files and interactive controls | [Files and controls](docs/media-and-controls.md) |
+| How it fits together | [Architecture](docs/architecture.md) |
+| Checks and CI | [Validation](docs/validation.md) · [Quality](docs/quality.md) |
 
 ---
 
