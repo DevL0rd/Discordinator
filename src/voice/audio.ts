@@ -1,8 +1,12 @@
-import OpusScript from 'opusscript';
+import { createRequire } from 'node:module';
 
 const discordRate = 48_000;
 export const speechRate = 16_000;
 const frameSamples = 960;
+const channels = 2;
+const audioApplication = 2049;
+const maxPacketBytes = 1276 * 3;
+const maxPcmBytes = 2880 * channels * 2;
 
 export interface OpusCodec {
     decode(packet: Buffer): Int16Array;
@@ -10,15 +14,65 @@ export interface OpusCodec {
     free(): void;
 }
 
+interface OpusHandler {
+    _encode(input: number, bytes: number, output: number, frameSize: number): number;
+    _decode(input: number, bytes: number, output: number): number;
+}
+
+interface OpusNative {
+    HEAPU8: Uint8Array;
+    HEAPU16: Uint16Array;
+    _malloc(bytes: number): number;
+    _free(pointer: number): void;
+    OpusScriptHandler: {
+        new (rate: number, channels: number, application: number): OpusHandler;
+        destroy_handler(handler: OpusHandler): void;
+    };
+}
+
+let native: OpusNative | undefined;
+
+function opusNative(): OpusNative {
+    native ??= (createRequire(import.meta.url)('opusscript/build/opusscript_native_wasm.js') as () => OpusNative)();
+    return native;
+}
+
+function opusResult(result: number, action: string): number {
+    if (result < 0) throw new Error(`Opus ${action} failed (${result})`);
+    return result;
+}
+
 export function opusCodec(): OpusCodec {
-    const codec = new OpusScript(discordRate, 2, OpusScript.Application.AUDIO);
+    const opus = opusNative();
+    const handler = new opus.OpusScriptHandler(discordRate, channels, audioApplication);
+    const pointers = [opus._malloc(maxPcmBytes * 2), opus._malloc(maxPacketBytes)];
+    const [pcmPointer, packetPointer] = pointers as [number, number];
+    const pcmSlot = pcmPointer / 2;
+    let freed = false;
+    const live = (): void => {
+        if (freed) throw new Error('Opus codec was already freed');
+    };
     return {
         decode: (packet) => {
-            const pcm = codec.decode(packet);
-            return new Int16Array(pcm.buffer, pcm.byteOffset, pcm.byteLength / 2);
+            live();
+            if (packet.length > maxPacketBytes) throw new Error('Opus packet is too large');
+            opus.HEAPU8.set(packet, packetPointer);
+            const bytes = opusResult(handler._decode(packetPointer, packet.length, pcmPointer), 'decode') * channels * 2;
+            return new Int16Array(Uint8Array.from(opus.HEAPU16.subarray(pcmSlot, pcmSlot + bytes)).buffer);
         },
-        encode: (pcm) => codec.encode(Buffer.from(pcm.buffer, pcm.byteOffset, pcm.byteLength), frameSamples),
-        free: () => codec.delete(),
+        encode: (pcm) => {
+            live();
+            if (pcm.byteLength > maxPcmBytes) throw new Error('Opus frame is too large');
+            opus.HEAPU16.set(new Uint8Array(pcm.buffer, pcm.byteOffset, pcm.byteLength), pcmSlot);
+            const length = opusResult(handler._encode(pcmPointer, pcm.byteLength, packetPointer, frameSamples), 'encode');
+            return Buffer.from(opus.HEAPU8.slice(packetPointer, packetPointer + length));
+        },
+        free: () => {
+            if (freed) return;
+            freed = true;
+            opus.OpusScriptHandler.destroy_handler(handler);
+            for (const pointer of pointers) opus._free(pointer);
+        },
     };
 }
 

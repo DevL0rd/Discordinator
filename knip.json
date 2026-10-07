@@ -14,5 +14,8 @@
         "src/**/*.ts",
         "scripts/**/*.ts"
     ],
-    "includeEntryExports": true
+    "includeEntryExports": true,
+    "ignoreDependencies": [
+        "opusscript"
+    ]
 }
