@@ -194,7 +194,10 @@ async function checkConfig(file: string): Promise<void> {
     };
     const loaded = await loadConfig(env);
     assert.deepEqual(loaded.policy.allowedUserIds, []);
-    await assert.rejects(() => loadConfig({ ...env, DISCORDINATOR_MESSAGE_CONTENT: 'false' }), /Name matching requires/);
+    await assert.doesNotReject(
+        () => loadConfig({ ...env, DISCORDINATOR_MESSAGE_CONTENT: 'false' }),
+        'Names on without Message Content still starts',
+    );
     await assert.rejects(() => loadConfig({ ...env, DISCORD_BOT_TOKEN: '' }));
     await assert.rejects(() => loadConfig({ ...env, DISCORDINATOR_MCP_TOKEN: 'short' }));
 }

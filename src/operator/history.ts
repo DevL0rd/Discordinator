@@ -54,9 +54,21 @@ function format(policy: Policy, records: ContextRecord[], since: string | undefi
     return [heading, ...groups, '---', ''].join('\n');
 }
 
+/** Fetches history again when the servers, channels or context settings it was loaded under change. */
+function reloadOnScopeChange(policy: Policy, loaded: Map<string, Promise<void>>): void {
+    const scope = () => JSON.stringify([policy.config.servers, policy.config.channels, policy.config.context]);
+    let loadedFor = scope();
+    policy.onChange(() => {
+        if (scope() === loadedFor) return;
+        loadedFor = scope();
+        loaded.clear();
+    });
+}
+
 export function channelHistory(context: ContextIndex, policy: Policy, api: Api): History {
     const loaded = new Map<string, Promise<void>>();
     const names = new Map<string, string>();
+    reloadOnScopeChange(policy, loaded);
     const once = (key: string, work: () => Promise<void>): Promise<void> => {
         const existing = loaded.get(key);
         if (existing) return existing;

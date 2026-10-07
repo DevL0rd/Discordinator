@@ -273,8 +273,5 @@ export async function loadConfig(env: NodeJS.ProcessEnv): Promise<{ config: Conf
     parsed.data.DISCORDINATOR_RESOURCE_URL ??= `http://127.0.0.1:${parsed.data.DISCORDINATOR_PORT}/mcp`;
     const policy = policySchema.safeParse(JSON.parse(await readFile(parsed.data.DISCORDINATOR_POLICY_FILE, 'utf8')));
     if (!policy.success) throw new Error('Invalid policy configuration; check policy.example.json');
-    if (policy.data.triggers.matchNames && parsed.data.DISCORDINATOR_MESSAGE_CONTENT !== 'true') {
-        throw new Error('Name matching requires DISCORDINATOR_MESSAGE_CONTENT=true and the Developer Portal Message Content intent');
-    }
     return { config: parsed.data, policy: policy.data };
 }

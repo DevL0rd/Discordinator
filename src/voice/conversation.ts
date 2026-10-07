@@ -42,6 +42,7 @@ export class Conversation {
     private lastActivity: number;
     private closed = false;
     private reconnected = false;
+    private generation = 0;
     private readonly tasks = new Map<string, { id: string; name: string }>();
 
     constructor(
@@ -70,6 +71,8 @@ export class Conversation {
 
     private open(): Promise<LiveSession> {
         const settings = this.hooks.settings();
+        const generation = ++this.generation;
+        const current = () => generation === this.generation;
         return this.providers.live(
             {
                 model: settings.liveModel,
@@ -80,17 +83,17 @@ export class Conversation {
                 ...(this.resume ? { resume: this.resume } : {}),
             },
             {
-                audio: (pcm) => this.play(pcm),
+                audio: (pcm) => current() && this.play(pcm),
                 said: (text) => {
-                    this.said += text;
+                    if (current()) this.said += text;
                 },
-                interrupted: () => this.cut(),
-                turnComplete: () => this.finishTurn(),
-                tool: (id, name, args) => this.tool(id, name, args),
+                interrupted: () => current() && this.cut(),
+                turnComplete: () => current() && this.finishTurn(),
+                tool: (id, name, args) => current() && this.tool(id, name, args),
                 resumable: (handle) => {
-                    this.resume = handle;
+                    if (current()) this.resume = handle;
                 },
-                closed: () => void this.dropped(),
+                closed: () => current() && void this.dropped(),
             },
         );
     }
@@ -153,6 +156,25 @@ export class Conversation {
         return true;
     }
 
+    /** Reconnects with the current settings (voice, model, instructions), carrying the conversation over when Gemini allows it. */
+    async reopen(): Promise<void> {
+        if (this.closed || !this.session) return;
+        const previous = this.session;
+        this.session = undefined;
+        this.generation++;
+        this.cut();
+        previous.close();
+        const next = await this.open()
+            .catch(() => {
+                this.resume = undefined;
+                return this.open();
+            })
+            .catch(() => undefined);
+        if (this.closed) return next?.close();
+        if (!next) return this.end();
+        this.session = next;
+    }
+
     private async dropped(): Promise<void> {
         if (this.closed) return;
         if (this.reconnected || !this.resume) return this.end();
@@ -203,7 +225,7 @@ export class Conversation {
     }
 
     private tick(): void {
-        if (this.closed) return;
+        if (this.closed || !this.session) return;
         do this.session?.audio(this.mix());
         while (this.backlog());
         if (!this.out && this.now() - this.lastActivity > this.hooks.settings().idleSeconds * 1000) void this.end();

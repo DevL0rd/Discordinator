@@ -43,6 +43,9 @@ export class EventsService {
     ) {
         this.access = new EventAccess(policy, ownerAllowed, now);
         this.verifier = new Verifier(sender, now);
+        policy.onChange(() => {
+            if (this.running) void this.pump().catch(paused);
+        });
     }
 
     list(owner: Principal) {
@@ -241,7 +244,7 @@ export class EventsService {
         for (const subscription of this.store.state.subscriptions)
             if (!this.access.active(subscription)) this.inFlight.get(subscription.id)?.abort();
         await this.store.change((state) => {
-            state.subscriptions = state.subscriptions.filter((item) => this.access.valid(item));
+            state.subscriptions = state.subscriptions.filter((item) => this.access.retained(item));
             for (const item of state.subscriptions) if (item.previous && item.previous.until <= this.now()) delete item.previous;
             state.jobs = state.jobs.filter(
                 (job) =>

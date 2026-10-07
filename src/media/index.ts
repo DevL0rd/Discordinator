@@ -27,7 +27,7 @@ export interface Entry {
     guildId: string | null;
     userId: string;
     timestamp: string;
-    expires: number;
+    storedAt: number;
 }
 export const searchSchema = z
     .object({
@@ -79,9 +79,21 @@ export class AttachmentIndex {
     constructor(
         readonly access: MediaAccess,
         readonly now = Date.now,
-    ) {}
+    ) {
+        access.policy.onChange(() => {
+            this.prune();
+            this.trim();
+        });
+    }
+    private expired(entry: Entry): boolean {
+        return entry.storedAt + this.access.policy.config.media.ttlMinutes * 60_000 <= this.now();
+    }
+    private trim(): void {
+        while (this.entries.size > this.access.policy.config.media.maxAttachments) this.entries.delete(this.entries.keys().next().value!);
+    }
     private prune(): void {
-        for (const map of [this.entries, this.sources, this.pages]) {
+        for (const [key, entry] of this.entries) if (this.expired(entry)) this.entries.delete(key);
+        for (const map of [this.sources, this.pages]) {
             for (const [key, item] of map) if (item.expires <= this.now()) map.delete(key);
         }
     }
@@ -97,7 +109,7 @@ export class AttachmentIndex {
             channelId: message.channel_id,
             userId: message.author.id,
             timestamp: message.timestamp,
-            expires: this.now() + this.access.policy.config.media.ttlMinutes * 60_000,
+            storedAt: this.now(),
         }));
     }
     ingest(value: unknown, guildId: string | null, addressed: boolean): void {
@@ -109,7 +121,7 @@ export class AttachmentIndex {
         this.prune();
         this.remove(message.id);
         for (const entry of this.records(message, guildId)) this.entries.set(`${message.id}:${entry.attachment.id}`, entry);
-        while (this.entries.size > config.maxAttachments) this.entries.delete(this.entries.keys().next().value!);
+        this.trim();
     }
     source(eventId: string, id: string): Entry {
         this.access.event(eventId);
@@ -166,7 +178,7 @@ export class AttachmentIndex {
     }
     private allowed(eventId: string, entry: Entry): boolean {
         const origin = this.access.event(eventId).event;
-        if (entry.expires <= this.now()) return false;
+        if (this.expired(entry)) return false;
         if (entry.guildId !== origin.guildId || (!origin.guildId && entry.channelId !== origin.channelId)) return false;
         try {
             this.access.policy.assertObservation({ actorId: entry.userId, channelId: entry.channelId, guildId: entry.guildId });

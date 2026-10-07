@@ -21,7 +21,7 @@ function checkFilters(): void {
         guildId: null,
         userId: ids.user,
         timestamp: '2026-01-02T00:00:00.000Z',
-        expires: Number.MAX_SAFE_INTEGER,
+        storedAt: 0,
     });
     const search = (filters: Record<string, unknown>) => searchSchema.parse({ eventId: crypto.randomUUID(), ...filters });
     const photo = entry('photo.JPG');
@@ -114,7 +114,10 @@ async function checkIndexBounds(directory: string): Promise<void> {
     index.ingest(message(), ids.guild, false);
     assert.equal((await search()).length, 0, 'Disabled media and unaddressed messages are not indexed');
     f.policy.config.media.capture = 'all';
-    f.policy.config.media.maxAttachments = 1;
+    index.ingest(message(), ids.guild, false);
+    index.ingest({ ...message(), id: ids.channel }, ids.guild, false);
+    f.policy.update({ ...f.policy.config, media: { ...f.policy.config.media, maxAttachments: 1 } });
+    assert.equal((await search()).length, 1, 'a lower attachment limit applies right away');
     index.ingest(message(), ids.guild, false);
     index.ingest({ ...message(), id: ids.other }, ids.guild, false);
     assert.deepEqual(
@@ -130,7 +133,7 @@ async function checkIndexBounds(directory: string): Promise<void> {
     );
     const foreign = index.records(message(), ids.other)[0]!;
     assert.throws(() => index.expose(f.event.id, foreign), /outside current resource grants/);
-    const stale = { ...index.records(message(), ids.guild)[0]!, expires: 0 };
+    const stale = { ...index.records(message(), ids.guild)[0]!, storedAt: 0 };
     assert.throws(() => index.expose(f.event.id, stale), /outside current resource grants/, 'Expired entries are never exposed');
     const dm = f.queue.add('dm-index', { ...f.event, guildId: null })!;
     const elsewhere = { ...index.records({ ...message(), channel_id: ids.other }, null)[0]! };

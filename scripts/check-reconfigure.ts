@@ -63,6 +63,15 @@ async function checkReconfigure(): Promise<void> {
     await assert.rejects(reconfigure(config, parseEnvironment({}, moved), broken.target), /listener failed/);
     assert.deepEqual(config, before, 'A failed change is rolled back');
     assert.deepEqual(broken.steps, ['listener', 'listener'], 'Only what was touched is restored; the Discord connection is left alone');
+    const signedIn: Config = {
+        ...parseEnvironment({}, env()),
+        DISCORDINATOR_AUTH_MODE: 'oauth',
+        DISCORDINATOR_OAUTH_SERVER: 'bundled',
+        DISCORDINATOR_OAUTH_SUBJECTS: 'owner-subject',
+    };
+    const saved = { ...signedIn, DISCORDINATOR_OAUTH_SUBJECTS: '', GEMINI_API_KEY: 'new-gemini-key' };
+    assert.deepEqual(await reconfigure(signedIn, saved, target().target), ['GEMINI_API_KEY']);
+    assert.equal(signedIn.DISCORDINATOR_OAUTH_SUBJECTS, 'owner-subject', 'Saving .env keeps the bundled sign-in owner');
 }
 
 async function checkWatcher(directory: string): Promise<void> {

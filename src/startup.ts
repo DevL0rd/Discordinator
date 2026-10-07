@@ -248,6 +248,7 @@ function liveTargets(runtime: Runtime, config: Config): Reconfigurable {
 async function applySettings(runtime: Runtime, config: Config, next: Config): Promise<void> {
     try {
         const changed = await reconfigure(config, next, liveTargets(runtime, config));
+        if (changed.includes('GEMINI_API_KEY')) runtime.voice.keyChanged();
         if (changed.length) console.error(`Applied new settings without restarting: ${changed.join(', ')}`);
     } catch (error) {
         failure('Settings change could not be applied; the previous settings were restored', 'reconfigure', error);

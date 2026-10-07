@@ -58,6 +58,11 @@ export class OperatorService {
             bridge.voice ? (guildId, actorId, seen) => bridge.voice!.context(guildId, actorId, seen) : undefined,
         );
         this.meter = new ThresholdMeter((eventId, content, idempotencyKey) => this.bridge.respond({ eventId, content, idempotencyKey }));
+        bridge.policy.onChange((previous) => {
+            if (!this.controller || previous.ownerUserId === bridge.policy.config.ownerUserId) return;
+            this.appliedConfigAt = null;
+            this.schedule();
+        });
     }
 
     start(): void {
@@ -223,6 +228,10 @@ export class OperatorService {
             return true;
         }
         if (this.appliedConfigAt === config.updatedAt) return true;
+        if (this.router?.status().busy) {
+            this.blockedReason = 'Saved provider changes wait for the current reply to finish';
+            return false;
+        }
         if (status && (status.busy || status.tasks.some((item) => ['running', 'approval'].includes(item.state)))) {
             this.blockedReason = 'Saved provider changes wait for existing work to finish';
             return false;
@@ -247,14 +256,21 @@ export class OperatorService {
             activity: config.activityVisibility,
             history: this.history,
             finished: (eventId) => this.discordTurnFinished(eventId),
-            changed: () => this.onStatus?.(),
+            changed: () => {
+                this.schedule();
+                this.onStatus?.();
+            },
+            brief: () => this.standing(config),
         });
         await this.router.start();
         this.appliedConfigAt = config.updatedAt;
     }
+    private standing(config: OperatorConfig): string {
+        return [ownerNote(this.bridge.policy, this.bridge.people), config.instructions].filter(Boolean).join('\n\n');
+    }
     private async withOwner(config: OperatorConfig): Promise<OperatorConfig> {
         await this.bridge.people.approved();
-        const instructions = [ownerNote(this.bridge.policy, this.bridge.people), config.instructions].filter(Boolean).join('\n\n');
+        const instructions = this.standing(config);
         return instructions ? { ...config, instructions } : config;
     }
     private async createController(config: OperatorConfig, adapter: ProviderAdapter, shared: boolean): Promise<void> {

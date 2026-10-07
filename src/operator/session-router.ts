@@ -26,7 +26,12 @@ import { ownerNote } from '../core/directory.js';
 
 const exec = promisify(execFile);
 const stateFile = '.data/claude-session.json';
-const stateSchema = z.object({ sessionId: z.uuid(), workspace: z.string(), seen: z.record(z.string(), z.string()).default({}) });
+const stateSchema = z.object({
+    sessionId: z.uuid(),
+    workspace: z.string(),
+    seen: z.record(z.string(), z.string()).default({}),
+    briefed: z.string().optional(),
+});
 type SessionState = z.infer<typeof stateSchema>;
 
 function liveMessage(bridge: Bridge, event: BotEvent): string {
@@ -37,8 +42,9 @@ function liveMessage(bridge: Bridge, event: BotEvent): string {
 }
 
 const nudge = 'Please handle the pending Discord message above.';
-const greeting = (owner: string) =>
-    `This is the Discordinator conversation. Discordinator will deliver Discord messages here for you to answer with the discord_send tool (pass the eventId you are given). Each one names its sender with their numeric ID.${owner ? ` ${owner}` : ''} Reply with: Ready.`;
+const greeting = (brief: string) =>
+    `This is the Discordinator conversation. Discordinator will deliver Discord messages here for you to answer with the discord_send tool (pass the eventId you are given). Each one names its sender with their numeric ID.${brief ? `\n\n${brief}\n\n` : ' '}Reply with: Ready.`;
+const rebriefing = (brief: string) => `[Updated standing instructions; they replace any earlier ones]\n${brief || 'None.'}`;
 
 async function savedState(workspace: string): Promise<SessionState | undefined> {
     const parsed = stateSchema.safeParse(JSON.parse(await readFile(stateFile, 'utf8').catch(() => '{}')));
@@ -63,6 +69,7 @@ export class SessionRouter {
     private unwatch?: () => void;
     private sessionId?: string;
     private seen: Record<string, string> = {};
+    private briefed?: string;
     private delivered: string[] = [];
     private readonly picked = new Set<string>();
     private readonly activity: SessionActivity;
@@ -78,6 +85,7 @@ export class SessionRouter {
             history?: History;
             finished?: (eventId: string) => void;
             changed?: () => void;
+            brief?: () => string;
         } = {},
     ) {
         this.typing = new ProcessingIndicator((eventId) => this.bridge.typing(eventId));
@@ -92,6 +100,7 @@ export class SessionRouter {
         const saved = await savedState(this.workspace);
         this.sessionId = saved?.sessionId;
         this.seen = saved?.seen ?? {};
+        this.briefed = saved?.briefed;
         this.unwatch = watchDirectory(sessionsDir(), () => void this.refresh(), 200);
         await this.refresh();
     }
@@ -107,6 +116,7 @@ export class SessionRouter {
         await rm(stateFile, { force: true });
         this.sessionId = undefined;
         this.seen = {};
+        this.briefed = undefined;
         this.live = undefined;
         this.activity.stop();
         this.typing.stop();
@@ -136,7 +146,7 @@ export class SessionRouter {
             this.live = live;
             const transcript = await transcriptPath(sessionId);
             if (transcript) await this.activity.follow(transcript, event.id);
-            await deliver(live, await this.withHistory(event, liveMessage(this.bridge, event)));
+            await deliver(live, await this.withBrief(await this.withHistory(event, liveMessage(this.bridge, event))));
         } catch (error) {
             this.settle(event.id);
             throw error;
@@ -166,28 +176,39 @@ export class SessionRouter {
         ];
         const claude = await claudeProgram();
         await this.bridge.people.approved();
+        const brief = this.brief();
         await exec(
             claude.command,
-            [
-                ...claude.args,
-                '-p',
-                '--session-id',
-                sessionId,
-                '--name',
-                'Discordinator',
-                ...options,
-                greeting(ownerNote(this.bridge.policy, this.bridge.people)),
-            ],
+            [...claude.args, '-p', '--session-id', sessionId, '--name', 'Discordinator', ...options, greeting(brief)],
             {
                 cwd: this.workspace,
                 timeout: 180_000,
             },
         );
         if (!(await conversationExists(sessionId))) throw new Error('Claude Code did not create the Discordinator conversation');
-        await saveState({ sessionId, workspace: this.workspace, seen: {} });
+        await saveState({ sessionId, workspace: this.workspace, seen: {}, briefed: brief });
         this.sessionId = sessionId;
         this.seen = {};
+        this.briefed = brief;
         return sessionId;
+    }
+
+    private brief(): string {
+        return this.launch.brief?.() ?? ownerNote(this.bridge.policy, this.bridge.people);
+    }
+
+    private async save(): Promise<void> {
+        await saveState({ sessionId: this.sessionId!, workspace: this.workspace, seen: this.seen, briefed: this.briefed });
+    }
+
+    /** Owner and instruction changes reach the existing conversation with the next message, without starting over. */
+    private async withBrief(message: string): Promise<string> {
+        await this.bridge.people.approved();
+        const brief = this.brief();
+        if (brief === this.briefed) return message;
+        this.briefed = brief;
+        await this.save();
+        return `${rebriefing(brief)}\n\n${message}`;
     }
 
     private async withHistory(event: BotEvent, message: string): Promise<string> {
@@ -196,7 +217,7 @@ export class SessionRouter {
         const seen = marks(result);
         if (Object.keys(seen).length) {
             Object.assign(this.seen, seen);
-            await saveState({ sessionId: this.sessionId!, workspace: this.workspace, seen: this.seen });
+            await this.save();
         }
         return `${result.text}${message}`;
     }

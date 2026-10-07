@@ -21,7 +21,8 @@ export const operatorSettings = [
         {
             path: 'timeoutSeconds',
             label: 'Execution time limit',
-            description: '0 means no time limit; otherwise 30–1800 seconds.',
+            description:
+                '0 means no time limit; otherwise 30–1800 seconds. Background assistants only; Claude Desktop replies are not cut off.',
             kind: 'integer',
             minimum: 0,
             maximum: 1800,
@@ -51,7 +52,8 @@ export const operatorSettings = [
         {
             path: 'claudeEffort',
             label: 'Claude thinking effort',
-            description: 'Thinking effort levels the selected Claude model offers. Default uses Claude’s own setting.',
+            description:
+                'Thinking effort levels the selected Claude model offers. Default uses Claude’s own setting. Like the model, it applies when the Discordinator conversation is created; change it in Claude for an existing one.',
             kind: 'text',
         },
     ]),
@@ -65,7 +67,8 @@ export const operatorSettings = [
         {
             path: 'progressSeconds',
             label: 'Progress interval',
-            description: 'Local acknowledgment immediately; progress every 15–600 seconds while work continues.',
+            description:
+                'Local acknowledgment immediately; progress every 15–600 seconds while work continues. Background assistants only; in Claude Desktop the assistant sends its own updates.',
             kind: 'integer',
             minimum: 15,
             maximum: 600,

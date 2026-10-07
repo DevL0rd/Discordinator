@@ -46,8 +46,17 @@ function replace(config: Config, next: Config): void {
     Object.assign(config, next);
 }
 
+/** The bundled sign-in server sets its owner at runtime, so a saved .env without one must not erase it. */
+function withRuntimeOwner(config: Config, next: Config): Config {
+    const bundled = next.DISCORDINATOR_AUTH_MODE === 'oauth' && next.DISCORDINATOR_OAUTH_SERVER === 'bundled';
+    return bundled && !next.DISCORDINATOR_OAUTH_SUBJECTS
+        ? { ...next, DISCORDINATOR_OAUTH_SUBJECTS: config.DISCORDINATOR_OAUTH_SUBJECTS }
+        : next;
+}
+
 /** Applies new settings to the running process: values in place, and only the affected parts rebuilt. Rolls back on failure. */
-export async function reconfigure(config: Config, next: Config, target: Reconfigurable): Promise<(keyof Config)[]> {
+export async function reconfigure(config: Config, saved: Config, target: Reconfigurable): Promise<(keyof Config)[]> {
+    const next = withRuntimeOwner(config, saved);
     const changed = changedKeys(config, next);
     if (!changed.length) return [];
     const previous = { ...config };

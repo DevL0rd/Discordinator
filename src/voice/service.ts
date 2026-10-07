@@ -1,5 +1,6 @@
 import type { Api } from '../discord/api.js';
 import { describePerson, person, type Directory, type Person } from '../core/directory.js';
+import type { PolicyConfig } from '../core/config.js';
 import type { Policy } from '../core/policy.js';
 import type { EventQueue } from '../core/queue.js';
 import { ownerNote } from '../core/directory.js';
@@ -21,6 +22,17 @@ export interface VoiceGuilds {
     states(): { guildId: string; userId: string; channelId: string }[];
 }
 
+const liveSettings = (policy: PolicyConfig) =>
+    JSON.stringify([
+        policy.voice.liveModel,
+        policy.voice.liveVoice,
+        policy.voice.pauseMs,
+        policy.voice.contextMinutes,
+        policy.ownerUserId,
+        policy.triggers.names,
+    ]);
+const pruneEveryMs = 6 * 60 * 60_000;
+
 const offline: VoiceGuilds = {
     occupants: () => [],
     channelOf: () => null,
@@ -37,6 +49,7 @@ export class VoiceService {
     private readonly joining = new Set<string>();
     private readonly leaving = new Map<string, NodeJS.Timeout>();
     private readonly muted = new Set<string>();
+    private pruning?: NodeJS.Timeout;
     readonly requests: VoiceRequests;
     readonly live: LiveVoices;
     private connect?: Connect;
@@ -70,6 +83,36 @@ export class VoiceService {
             names,
             owner: () => ownerNote(policy, people),
         });
+        policy.onChange((previous) => void this.settingsChanged(previous));
+    }
+
+    /** Applies saved settings to calls in progress: leaves calls it may no longer be in, rejoins approved people, and refreshes the live voice. */
+    private async settingsChanged(previous: PolicyConfig): Promise<void> {
+        if (this.available()) {
+            for (const guildId of [...this.sessions.keys()]) await this.leave(guildId);
+            return;
+        }
+        if (previous.voice.retentionDays !== this.settings.retentionDays)
+            await this.store.prune(this.settings.retentionDays).catch(() => 0);
+        const reconnect = liveSettings(previous) !== liveSettings(this.policy.config);
+        for (const session of [...this.sessions.values()]) {
+            if (!this.policy.guildAllowed(session.guildId) || !this.policy.channelAllowed(session.call.channelId)) {
+                await this.leave(session.guildId);
+                continue;
+            }
+            this.live.settingsChanged(session, reconnect);
+            this.checkPresence(session.guildId, previous.voice.leaveAfterSeconds !== this.settings.leaveAfterSeconds);
+        }
+        await this.rejoin();
+    }
+
+    /** A new Gemini key reaches the live voice right away. */
+    keyChanged(): void {
+        for (const session of this.sessions.values()) this.live.settingsChanged(session, true);
+    }
+
+    private async rejoin(): Promise<void> {
+        for (const state of this.guilds.states()) await this.arrived(state.guildId, state.userId, state.channelId);
     }
 
     attach(connect: Connect, guilds: VoiceGuilds): void {
@@ -99,7 +142,10 @@ export class VoiceService {
 
     async ready(): Promise<void> {
         await this.store.prune(this.settings.retentionDays).catch(() => 0);
-        for (const state of this.guilds.states()) await this.arrived(state.guildId, state.userId, state.channelId);
+        clearInterval(this.pruning);
+        this.pruning = setInterval(() => void this.store.prune(this.settings.retentionDays).catch(() => 0), pruneEveryMs);
+        this.pruning.unref();
+        await this.rejoin();
     }
 
     async join(guildId: string, channelId: string): Promise<CallRecord> {
@@ -200,7 +246,7 @@ export class VoiceService {
         await this.join(guildId, channelId).catch(() => console.error('Voice auto-join failed'));
     }
 
-    private checkPresence(guildId: string): void {
+    private checkPresence(guildId: string, restartTimer = false): void {
         const session = this.sessions.get(guildId);
         if (!session) return;
         const approved = this.guilds
@@ -211,7 +257,8 @@ export class VoiceService {
             this.leaving.delete(guildId);
             return;
         }
-        if (this.leaving.has(guildId)) return;
+        if (this.leaving.has(guildId) && !restartTimer) return;
+        clearTimeout(this.leaving.get(guildId));
         const timer = setTimeout(() => void this.leave(guildId), this.settings.leaveAfterSeconds * 1000);
         timer.unref();
         this.leaving.set(guildId, timer);
@@ -296,6 +343,7 @@ export class VoiceService {
     }
 
     async stop(): Promise<void> {
+        clearInterval(this.pruning);
         for (const guildId of [...this.sessions.keys()]) await this.leave(guildId);
         await this.store.flush();
     }

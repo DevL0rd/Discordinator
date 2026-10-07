@@ -1,7 +1,7 @@
 import { Client, Events, GatewayIntentBits, Partials } from 'discord.js';
 import { builtInCommands, commandDefinitions, denyCommand, runCommand, type CommandHandler } from './commands.js';
 import type { Message, PartialMessage, ChatInputCommandInteraction, Interaction } from 'discord.js';
-import type { Config } from '../core/config.js';
+import type { Config, PolicyConfig } from '../core/config.js';
 import type { Policy } from '../core/policy.js';
 import type { EventQueue } from '../core/queue.js';
 import type { Approvals } from '../core/approvals.js';
@@ -39,6 +39,7 @@ export class Gateway {
     private readonly triggers: Triggers;
     private state = 'offline';
     private readonly unknownMembers = new Map<string, number>();
+    private rolesCheckedFor?: PolicyConfig;
     private seen = new Map<string, number>();
     private activeMessages = 0;
     private droppedMessages = 0;
@@ -255,9 +256,18 @@ export class Gateway {
         return Boolean(this.events) && !message.author.bot && !message.webhookId && this.policy.config.mcpEvents.enabled;
     }
 
+    /** Skips people just looked up without an approved role, until saved settings change. */
+    private recentlyUnknown(userId: string): boolean {
+        if (this.rolesCheckedFor !== this.policy.config) {
+            this.rolesCheckedFor = this.policy.config;
+            this.unknownMembers.clear();
+        }
+        return (this.unknownMembers.get(userId) ?? 0) > Date.now();
+    }
+
     private async learnRoles(userId: string): Promise<void> {
         if (!this.policy.config.allowedRoleIds.length || this.policy.userAllowed(userId)) return;
-        if ((this.unknownMembers.get(userId) ?? 0) > Date.now()) return;
+        if (this.recentlyUnknown(userId)) return;
         for (const guild of this.client.guilds.cache.values()) {
             const member = await guild.members.fetch(userId).catch(() => undefined);
             if (member) this.policy.noteRoles(userId, guild.id, member.roles.cache.keys());

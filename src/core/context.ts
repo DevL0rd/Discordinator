@@ -27,7 +27,19 @@ export class ContextIndex {
         readonly policy: Policy,
         readonly queue: EventQueue,
         readonly now = Date.now,
-    ) {}
+    ) {
+        policy.onChange(() => this.trim());
+    }
+
+    /** Keeps only the newest messages per channel, so a lower limit applies right away. */
+    private trim(): void {
+        const kept = new Map<string, number>();
+        for (const [id, item] of [...this.items].reverse()) {
+            const count = (kept.get(item.record.channelId) ?? 0) + 1;
+            kept.set(item.record.channelId, count);
+            if (count > this.policy.config.context.perChannel) this.evict(id);
+        }
+    }
 
     ingest(input: ObservedMessage, addressed: boolean): void {
         const config = this.policy.config.context;

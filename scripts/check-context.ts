@@ -62,6 +62,12 @@ function checkBounds(index: ContextIndex, f: ReturnType<typeof fixture>): void {
     const page = index.query(f.event.id, 'recent', 50);
     assert.equal(page.records.length, 2);
     assert.ok(page.evicted >= 2);
+    f.policy.update({ ...f.policy.config, context: { ...f.policy.config.context, perChannel: 1 } });
+    assert.deepEqual(
+        index.query(f.event.id, 'recent', 50).records.map((item) => item.messageId),
+        [ids.guild],
+        'a lower limit trims every channel right away, keeping the newest',
+    );
     f.policy.config.context.capture = 'addressed';
     index.ingest(observed({ messageId: ids.bot }), false);
     assert.equal(

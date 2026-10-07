@@ -18,10 +18,26 @@ export interface Origin {
 export class Policy {
     private readonly memberRoles = new Map<string, Map<string, Set<string>>>();
 
+    private readonly listeners = new Set<(previous: PolicyConfig) => void>();
+
     constructor(public config: PolicyConfig) {}
 
     update(next: PolicyConfig): void {
+        const previous = this.config;
         this.config = next;
+        for (const listener of this.listeners) {
+            try {
+                listener(previous);
+            } catch {
+                console.error('A part of Discordinator could not apply the new settings');
+            }
+        }
+    }
+
+    /** Runs after saved settings change, with the settings that were in effect before. Returns a function that stops it. */
+    onChange(listener: (previous: PolicyConfig) => void): () => void {
+        this.listeners.add(listener);
+        return () => this.listeners.delete(listener);
     }
 
     private readonly threadParents = new Map<string, string>();

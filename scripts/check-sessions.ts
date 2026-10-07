@@ -84,7 +84,8 @@ export async function checkSessions(): Promise<void> {
 async function checkRouter(directory: string, sessionId: string, socket: string, workspace: string): Promise<void> {
     {
         const f = fixture(join(directory, 'router.json'));
-        const router = new SessionRouter(f.bridge, workspace);
+        let brief = 'Be terse.';
+        const router = new SessionRouter(f.bridge, workspace, { brief: () => brief });
         await router.start();
         assert.equal(router.status().live, true, 'the saved conversation is found live');
         const busy = () =>
@@ -104,6 +105,7 @@ async function checkRouter(directory: string, sessionId: string, socket: string,
         const text = (JSON.parse((await second.received).trim().split('\n').at(-1)!) as { message: { content: string } }).message.content;
         assert.match(text, new RegExp(`eventId "${f.event.id}"`), 'Discord context reaches the session');
         assert.match(text, /discord_send/);
+        assert.match(text, /Updated standing instructions[^\n]*\nBe terse\./, 'instructions reach a conversation that has not seen them');
         await second.close();
         let repeated = false;
         const third = await inbox(socket, () => (repeated = true));
@@ -111,6 +113,21 @@ async function checkRouter(directory: string, sessionId: string, socket: string,
         await until(() => router.status().busy);
         assert.equal(repeated, false, 'a retried event is never delivered twice');
         await third.close();
+        const sent = async (key: string): Promise<string> => {
+            const box = await inbox(socket);
+            await router.route(f.queue.add(key, { ...f.event })!);
+            const message = (JSON.parse((await box.received).trim().split('\n').at(-1)!) as { message: { content: string } }).message
+                .content;
+            await box.close();
+            return message;
+        };
+        assert.doesNotMatch(await sent('brief-same'), /standing instructions/, 'unchanged instructions are not repeated');
+        brief = 'Answer in French.';
+        assert.match(
+            await sent('brief-new'),
+            /Updated standing instructions[^\n]*\nAnswer in French\./,
+            'changed instructions arrive with the next message',
+        );
         router.stop();
     }
 }

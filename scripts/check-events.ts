@@ -150,8 +150,13 @@ async function checkAllMessages(service: EventsService, store: SubscriptionStore
     assert.equal(store.state.jobs.length, 1);
     f.policy.config.channels = { mode: 'allowlist', allowed: [], blocked: [] };
     await service.pump();
-    assert.equal(store.state.subscriptions.length, 0);
+    assert.deepEqual([store.state.subscriptions.length, store.state.jobs.length], [1, 0], 'Settings that block a subscription pause it');
+    assert.equal(service.access.active(store.state.subscriptions[0]!), false);
     f.policy.config.channels = { mode: 'blocklist', allowed: [], blocked: [] };
+    assert.equal(service.access.active(store.state.subscriptions[0]!), true, 'and it resumes once they allow it again');
+    await store.change((state) => {
+        state.subscriptions = [];
+    });
 }
 
 async function checkRotation(directory: string, f: ReturnType<typeof fixture>) {

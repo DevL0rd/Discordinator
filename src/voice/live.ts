@@ -104,6 +104,14 @@ export class LiveVoices {
         return true;
     }
 
+    /** Applies saved settings to an open conversation: it stops if it may no longer talk, and reconnects to pick up a new voice, model or instructions. */
+    settingsChanged(session: CallSession, reconnect: boolean): void {
+        const conversation = this.conversations.get(session.guildId);
+        if (!conversation?.active) return;
+        if (!this.speaks(session)) return void conversation.end();
+        if (reconnect) void conversation.reopen();
+    }
+
     async end(guildId: string): Promise<void> {
         await this.conversations.get(guildId)?.end();
     }
