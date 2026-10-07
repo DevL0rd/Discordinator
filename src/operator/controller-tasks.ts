@@ -1,4 +1,5 @@
 import { randomUUID } from 'node:crypto';
+import type { BotEvent } from '../core/queue.js';
 import type { ControllerStore, ControllerTask } from './controller-state.js';
 
 const activeStates = ['queued', 'running', 'approval', 'recovering'];
@@ -125,4 +126,20 @@ export class TaskDesk {
             if (task) Object.assign(task, { progress: clip(text, progressLimit), updatedAt: this.stamp() });
         }, this.generation());
     }
+}
+
+export function workerReport(
+    task: ControllerTask,
+    text: string,
+    ok: boolean,
+    origin: BotEvent,
+    turnId: string,
+): BotEvent & { replyTo: string } {
+    const title = task.title ?? 'Task';
+    return {
+        ...origin,
+        id: `${task.id}:${turnId}`,
+        replyTo: task.originEventId,
+        text: `[Report from your worker "${title}" (task ${task.id}): it ${ok ? 'finished' : 'failed'}]\n${text}\n\nTell the requester what they need to know about it, in your own words.`,
+    };
 }

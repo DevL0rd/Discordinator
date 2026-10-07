@@ -271,7 +271,7 @@ export class OperatorService {
                 this.schedule();
                 this.onStatus?.();
             },
-            brief: () => [desktopGuide(claudeChoice(config, true)), this.standing(config)].filter(Boolean).join('\n\n'),
+            brief: (sessionId) => [desktopGuide(claudeChoice(config, true), sessionId), this.standing(config)].filter(Boolean).join('\n\n'),
         });
         await this.router.start();
         this.appliedConfigAt = config.updatedAt;
@@ -312,6 +312,7 @@ export class OperatorService {
                 history: this.history,
                 describe: (event) => requestText(this.bridge.policy, event),
                 brief: (eventId, title, prompt) => this.brief(eventId, title, prompt),
+                origin: (eventId) => this.origin(eventId),
                 notice: (event) => void this.notice(event).catch((error: unknown) => logFailure('Operator notice failed', error)),
             },
         );
@@ -322,15 +323,16 @@ export class OperatorService {
         await controller.start();
         this.appliedConfigAt = config.updatedAt;
     }
+    private origin(eventId: string): BotEvent | undefined {
+        try {
+            return this.queue.context(eventId).event;
+        } catch {
+            return undefined;
+        }
+    }
     private brief(eventId: string, title: string, prompt: string): string {
-        const origin = (() => {
-            try {
-                return requestText(this.bridge.policy, this.queue.context(eventId).event).split('\n')[0];
-            } catch {
-                return undefined;
-            }
-        })();
-        return workerBrief(title, prompt, eventId, origin);
+        const event = this.origin(eventId);
+        return workerBrief(title, prompt, eventId, event ? requestText(this.bridge.policy, event).split('\n')[0] : undefined);
     }
 }
 function localBlock(config: OperatorConfig): string | null {

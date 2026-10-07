@@ -15,7 +15,7 @@ function checkGuides(): void {
     );
     assert.match(
         roleInstructions('worker', 'Owner note.'),
-        /^You are a Discordinator worker[\s\S]*posted to Discord automatically[\s\S]*Owner note\.$/,
+        /^You are a Discordinator worker[\s\S]*Report to Discordinator, not to Discord[\s\S]*Owner note\.$/,
     );
     assert.doesNotMatch(roleInstructions('worker', undefined), /start_task/, 'workers are not told to start more workers');
     assert.match(
@@ -24,6 +24,11 @@ function checkGuides(): void {
         'Claude Desktop manages chats with its own tools',
     );
     assert.doesNotMatch(desktopGuide(), /assistant_|--model/);
+    assert.match(
+        desktopGuide({}, 'responder-session'),
+        /report to you, not to Discord[\s\S]*session ID responder-session/,
+        'new chats report back to the responder by its session',
+    );
     assert.match(
         desktopGuide({ model: 'opus', effort: 'high' }),
         /start them with --model opus --effort high/,
@@ -54,6 +59,27 @@ function checkGuides(): void {
     );
 }
 
+async function checkReport(
+    controller: ConversationController,
+    adapter: FakeProvider,
+    sent: string[],
+    taskId: string,
+    worker: string,
+): Promise<void> {
+    await adapter.hooks.onEvent({ type: 'final', sessionId: 'session-1', turnId: adapter.turns[0]!.turnId, text: 'On it' });
+    await adapter.hooks.onEvent({ type: 'progress', sessionId: worker, turnId: adapter.turns[1]!.turnId, text: 'Halfway there' });
+    assert.equal(controller.tasks.get(taskId).progress, 'Halfway there', 'the latest progress is kept for status questions');
+    assert.ok(!sent.includes('Halfway there'), 'worker progress goes to the responder, not to Discord');
+    await adapter.hooks.onEvent({ type: 'final', sessionId: worker, turnId: adapter.turns[1]!.turnId, text: 'Built and green' });
+    await settle(() => adapter.turns.length === 3);
+    assert.equal(controller.tasks.get(taskId).state, 'completed');
+    assert.ok(!sent.includes('Built and green'), 'a worker does not post its result to Discord itself');
+    assert.equal(adapter.turns[2]!.sessionId, 'session-1', 'the result is reported to the responder');
+    assert.match(adapter.turns[2]!.text, /^\[Report from your worker "Build it" \(task [^)]+\): it finished\]\nBuilt and green\n/);
+    await adapter.hooks.onEvent({ type: 'final', sessionId: 'session-1', turnId: adapter.turns[2]!.turnId, text: 'The build passed.' });
+    await settle(() => sent.includes('The build passed.'));
+}
+
 export async function checkControllerTasks(directory: string): Promise<void> {
     checkGuides();
     const adapter = new FakeProvider();
@@ -67,7 +93,10 @@ export async function checkControllerTasks(directory: string): Promise<void> {
             return Promise.resolve();
         },
         () => Promise.resolve(),
-        { brief: (eventId, title, prompt) => `${title} | ${eventId} | ${prompt}` },
+        {
+            brief: (eventId, title, prompt) => `${title} | ${eventId} | ${prompt}`,
+            origin: (eventId) => (eventId === 'first' ? controllerEvent('first') : undefined),
+        },
     );
     await controller.start();
     await controller.ingest(controllerEvent('first'));
@@ -84,16 +113,12 @@ export async function checkControllerTasks(directory: string): Promise<void> {
     const listed = (await call('list_tasks', {})) as Tasks;
     assert.deepEqual([listed.tasks[0]!.title, listed.tasks[0]!.state], ['Build it', 'running'], 'workers are listed by title');
 
-    await adapter.hooks.onEvent({ type: 'progress', sessionId: worker, turnId: adapter.turns[1]!.turnId, text: 'Halfway there' });
-    assert.equal(controller.tasks.get(taskId).progress, 'Halfway there', 'the latest progress is kept for status questions');
-    await adapter.hooks.onEvent({ type: 'final', sessionId: worker, turnId: adapter.turns[1]!.turnId, text: 'Built and green' });
-    await settle(() => controller.tasks.get(taskId).state === 'completed');
-    assert.ok(sent.includes('Built and green'), 'the result is posted to the request');
+    await checkReport(controller, adapter, sent, taskId, worker);
 
     assert.equal(await controller.tasks.message(taskId, 'Now run the tests too', 'first'), 'queued');
-    await settle(() => adapter.turns.length === 3);
+    await settle(() => adapter.turns.length === 4);
     assert.deepEqual(
-        [adapter.turns[2]!.sessionId, adapter.turns[2]!.text],
+        [adapter.turns[3]!.sessionId, adapter.turns[3]!.text],
         [worker, 'Now run the tests too'],
         'follow-up work resumes the same worker',
     );
@@ -105,7 +130,7 @@ export async function checkControllerTasks(directory: string): Promise<void> {
         title: 'Research',
         prompt: 'Look into it',
     });
-    await settle(() => adapter.turns.length === 4);
+    await settle(() => adapter.turns.length === 5);
     assert.deepEqual(
         adapter.keys.filter((key) => key.startsWith('task:')),
         [`task:${taskId}`, `task:${taskId}`, `task:${other}`],

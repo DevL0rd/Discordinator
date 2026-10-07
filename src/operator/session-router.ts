@@ -85,7 +85,7 @@ export class SessionRouter {
             history?: History;
             finished?: (eventId: string) => void;
             changed?: () => void;
-            brief?: () => string;
+            brief?: (sessionId?: string) => string;
         } = {},
     ) {
         this.typing = new ProcessingIndicator((eventId) => this.bridge.typing(eventId));
@@ -176,7 +176,7 @@ export class SessionRouter {
         ];
         const claude = await claudeProgram();
         await this.bridge.people.approved();
-        const brief = this.brief();
+        const brief = this.brief(sessionId);
         await exec(
             claude.command,
             [...claude.args, '-p', '--session-id', sessionId, '--name', 'Discordinator', ...options, greeting(brief)],
@@ -193,8 +193,8 @@ export class SessionRouter {
         return sessionId;
     }
 
-    private brief(): string {
-        return this.launch.brief?.() ?? ownerNote(this.bridge.policy, this.bridge.people);
+    private brief(sessionId = this.sessionId): string {
+        return this.launch.brief?.(sessionId) ?? ownerNote(this.bridge.policy, this.bridge.people);
     }
 
     private async save(): Promise<void> {

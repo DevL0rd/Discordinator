@@ -18,6 +18,7 @@ const inputSchema = z.object({
     text: z.string(),
     name: z.string().optional(),
     sourceEventId: z.string().optional(),
+    replyTo: z.string().optional(),
     author: personSchema.optional(),
     mentions: z.array(personSchema).max(20).optional(),
 });
@@ -90,7 +91,7 @@ export class ControllerStore {
         });
         return generation;
     }
-    async enqueue(event: BotEvent): Promise<boolean> {
+    async enqueue(event: BotEvent & { replyTo?: string }): Promise<boolean> {
         let added = false;
         await this.update((state) => {
             if (state.seen.includes(event.id)) return;

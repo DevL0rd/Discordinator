@@ -1,6 +1,6 @@
 import { withHistory, type History } from './history.js';
 import { progressPost } from './activity-format.js';
-import { TaskDesk } from './controller-tasks.js';
+import { TaskDesk, workerReport } from './controller-tasks.js';
 import type { BotEvent } from '../core/queue.js';
 import type { OperatorConfig } from './config.js';
 import { ControllerStore, controllerStatus, conversationKey, type ControllerTask } from './controller-state.js';
@@ -25,6 +25,7 @@ export type ControllerOptions = {
     sessionIdleMs?: number;
     describe?: (event: BotEvent) => string;
     brief?: (eventId: string, title: string, prompt: string) => string;
+    origin?: (eventId: string) => BotEvent | undefined;
 };
 type Origin = Pick<BotEvent, 'guildId' | 'channelId' | 'actorId'>;
 
@@ -174,7 +175,8 @@ export class ConversationController {
             }
         }
     }
-    private async dispatch(event: BotEvent): Promise<void> {
+    private async dispatch(event: BotEvent & { replyTo?: string }): Promise<void> {
+        const replyTo = event.replyTo ?? event.id;
         const key = this.options.sharedConversation ?? conversationKey(event);
         const existing = this.store.snapshot().conversations.find((item) => item.key === key);
         if (existing && existing.state !== 'idle') return;
@@ -182,14 +184,14 @@ export class ConversationController {
         if (sessionId) this.turns.wake(sessionId);
         await this.store.update((state) => {
             const item = state.conversations.find((item) => item.key === key);
-            if (item) Object.assign(item, { state: 'busy', originEventId: event.id });
+            if (item) Object.assign(item, { state: 'busy', originEventId: replyTo });
             else
                 state.conversations.push({
                     key,
                     actorId: event.actorId,
                     channelId: event.channelId,
                     seen: {},
-                    originEventId: event.id,
+                    originEventId: replyTo,
                     state: 'busy',
                 });
         }, this.generation);
@@ -197,8 +199,9 @@ export class ConversationController {
         try {
             sessionId = await this.openConversation(key, sessionId);
             submitted = true;
-            const text = await withHistory(this.store, this.generation, key, event, this.options.history, this.options.describe);
-            const turn = await this.adapter.startTurn(sessionId, { text, originEventId: event.id });
+            const describe = event.replyTo ? () => event.text : this.options.describe;
+            const text = await withHistory(this.store, this.generation, key, event, this.options.history, describe);
+            const turn = await this.adapter.startTurn(sessionId, { text, originEventId: replyTo });
             this.turns.arm(sessionId, turn.turnId);
             this.progressAt.set(sessionId, Date.now());
             await this.store.update((state) => {
@@ -334,8 +337,10 @@ export class ConversationController {
         if (owner.turnId !== event.turnId) return;
         const text = this.turns.outcome(event);
         this.release(event.sessionId, event.turnId, owner.originEventId);
+        const report = 'prompt' in owner ? this.report(owner, text, event) : undefined;
         await this.store.update((current) => {
-            appendReply(current, owner.originEventId, text, `controller-final-${event.sessionId}-${event.turnId}`);
+            if (report) current.inbox.push(report);
+            else appendReply(current, owner.originEventId, text, `controller-final-${event.sessionId}-${event.turnId}`);
             const worker = current.tasks.find((item) => item.sessionId === event.sessionId);
             if (worker && worker.state !== 'cancelled') {
                 worker.state = event.type === 'final' ? 'completed' : 'failed';
@@ -354,6 +359,10 @@ export class ConversationController {
         this.schedulePump();
         this.options.changed?.();
     }
+    private report(task: ControllerTask, text: string, event: Extract<ProviderEvent, { type: 'final' | 'turn.failed' }>) {
+        const origin = this.options.origin?.(task.originEventId);
+        return origin && workerReport(task, text, event.type === 'final', origin, event.turnId);
+    }
     private closeIdle(sessionId: string): void {
         this.turns.wake(sessionId);
         const owner = this.owner(sessionId);
@@ -367,7 +376,7 @@ export class ConversationController {
     private async progress(event: Extract<ProviderEvent, { type: 'progress' }>): Promise<void> {
         const owner = this.owner(event.sessionId);
         if (!owner || owner.turnId !== event.turnId) return;
-        if ('prompt' in owner) await this.tasks.progress(event.sessionId, event.text);
+        if ('prompt' in owner) return this.tasks.progress(event.sessionId, event.text);
         if (event.activity && !this.options.activity) return;
         const quiet = this.progressAt.get(event.sessionId) ?? Date.now();
         const text = progressPost(Boolean(event.activity), event.text, quiet, this.config.progressSeconds ?? 60);
