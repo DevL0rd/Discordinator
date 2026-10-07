@@ -1,4 +1,6 @@
 import { createConnection } from 'node:net';
+import { homedir } from 'node:os';
+import { macServiceStatus } from './mac-service.js';
 import { supervisorRunning, windowsServiceInstalled } from './windows-service.js';
 import { runFile, type Runner } from './run.js';
 
@@ -21,8 +23,13 @@ export function parseServiceStatus(output: string): ManagedServiceStatus {
     ) as Record<string, string | undefined>;
     return { available: true, installed: values.LoadState === 'loaded', active: values.ActiveState === 'active' };
 }
-export async function managedServiceStatus(platform = process.platform, run: Runner = runFile): Promise<ManagedServiceStatus> {
+export async function managedServiceStatus(
+    platform = process.platform,
+    run: Runner = runFile,
+    home = homedir(),
+): Promise<ManagedServiceStatus> {
     if (platform === 'win32') return { available: true, installed: await windowsServiceInstalled(run), active: await supervisorRunning() };
+    if (platform === 'darwin') return macServiceStatus(home, run);
     try {
         const result = await run(
             'systemctl',

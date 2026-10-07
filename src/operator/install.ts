@@ -8,6 +8,7 @@ import { runtimePresent } from './status.js';
 import { bridgeListening, managedServiceStatus, startBlocked } from './service-status.js';
 import { installWindowsService, requestRestart, startWindowsService, supervisorPidFile, supervisorRunning } from './windows-service.js';
 import { waitForFile } from './file-watch.js';
+import { installMacService, restartMacService, startMacService } from './mac-service.js';
 import { runFile, type Runner } from './run.js';
 
 export interface ServiceHost {
@@ -36,6 +37,7 @@ export async function buildDiscordinator(run: Runner = runFile): Promise<void> {
 
 async function registerService({ platform, home, run }: ServiceHost): Promise<void> {
     if (platform === 'win32') return installWindowsService(process.cwd(), process.execPath, run);
+    if (platform === 'darwin') return installMacService(process.cwd(), home, process.execPath, userPath(), run);
     const directory = join(home, '.config/systemd/user');
     await mkdir(directory, { recursive: true });
     await writeFile(join(directory, 'discordinator.service'), serviceUnit(process.cwd(), process.execPath, userPath()), {
@@ -45,7 +47,8 @@ async function registerService({ platform, home, run }: ServiceHost): Promise<vo
     await run('systemctl', ['--user', 'enable', 'discordinator.service']);
 }
 
-async function startService({ platform, run }: ServiceHost): Promise<void> {
+async function startService({ platform, home, run }: ServiceHost): Promise<void> {
+    if (platform === 'darwin') return startMacService(home, run);
     if (platform !== 'win32') {
         await run('systemctl', ['--user', 'start', 'discordinator.service']);
         await run('systemctl', ['--user', 'is-active', '--quiet', 'discordinator.service']);
@@ -59,13 +62,13 @@ async function startService({ platform, run }: ServiceHost): Promise<void> {
 }
 
 export async function installService(host = localHost()): Promise<string> {
-    if (host.platform !== 'linux' && host.platform !== 'win32')
-        throw new Error('Automatic service installation supports Linux (systemd) and Windows.');
+    if (host.platform !== 'linux' && host.platform !== 'win32' && host.platform !== 'darwin')
+        throw new Error('Automatic service installation supports Linux (systemd), macOS (launchd) and Windows.');
     await loadConfig({ ...process.env, ...parseEnv(await readFile('.env', 'utf8')) });
     await buildDiscordinator(host.run);
     await writeOperatorConfig(await readOperatorConfig());
     await registerService(host);
-    const state = await managedServiceStatus(host.platform, host.run);
+    const state = await managedServiceStatus(host.platform, host.run, host.home);
     if (startBlocked(state, await bridgeListening(), await runtimePresent()))
         return state.active
             ? 'Service installed and enabled; existing managed runtime left running. No restart performed.'
@@ -74,12 +77,16 @@ export async function installService(host = localHost()): Promise<string> {
     return 'Service installed, enabled and running.';
 }
 
-export async function restartService({ platform, run } = localHost()): Promise<string> {
-    const state = await managedServiceStatus(platform, run);
+export async function restartService({ platform, home, run } = localHost()): Promise<string> {
+    const state = await managedServiceStatus(platform, run, home);
     if (!state.available || !state.installed || !state.active) throw new Error('No active managed service to restart.');
     if (platform === 'win32') {
         await requestRestart();
         return 'Restart requested. Discordinator restarts as soon as its current work is done.';
+    }
+    if (platform === 'darwin') {
+        await restartMacService(run);
+        return 'Service restarted; environment and Discord policy changes applied.';
     }
     await run('systemctl', ['--user', 'restart', 'discordinator.service']);
     await run('systemctl', ['--user', 'is-active', '--quiet', 'discordinator.service']);
