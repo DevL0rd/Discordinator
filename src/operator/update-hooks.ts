@@ -1,5 +1,6 @@
 import { access, readdir, readFile } from 'node:fs/promises';
 import { userInfo } from 'node:os';
+import { dirname } from 'node:path';
 import type { Runner } from './run.js';
 
 const updaterDirectory = '/usr/lib/discordinator';
@@ -94,13 +95,14 @@ export async function registerUpdateHook(run: Runner, elevated: Elevated, root: 
     if (!manager)
         return 'No supported package manager (pacman, dnf, zypper or apt) was found, so system updates do not update Discordinator. Update it from the Overview page.';
     const target = hookTargets[manager];
-    await elevated.sudo(['install', '-d', '-m755', updaterDirectory]);
-    await elevated.sudo(['install', '-m755', '/dev/stdin', updaterPath], updaterScript());
-    await elevated.sudo(['install', '-m644', '/dev/stdin', ownerPath], `${userInfo().username}\n${root}\n${node}\n`);
-    await elevated.sudo(
-        ['install', '-D', `-m${target.mode}`, '/dev/stdin', target.path],
-        hookFile(manager, manager === 'pacman' && (await pacmanSandboxed())),
-    );
+    const write = async (path: string, mode: string, text: string) => {
+        await elevated.sudo(['install', '-d', '-m755', dirname(path)]);
+        await elevated.sudo(['tee', path], text);
+        await elevated.sudo(['chmod', mode, path]);
+    };
+    await write(updaterPath, '755', updaterScript());
+    await write(ownerPath, '644', `${userInfo().username}\n${root}\n${node}\n`);
+    await write(target.path, target.mode, hookFile(manager, manager === 'pacman' && (await pacmanSandboxed())));
     return `System updates with ${manager} now update Discordinator.`;
 }
 

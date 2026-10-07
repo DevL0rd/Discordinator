@@ -129,7 +129,7 @@ async function checkInstallUpdateUninstall(root: string): Promise<void> {
             assert.match(unit, new RegExp(`^WorkingDirectory=${target}$`, 'm'), 'the service runs from the installed copy');
             assert.match(await readFile(join(home, '.local/bin/discordinator'), 'utf8'), new RegExp(`cd '${target}'`));
             assert.ok(
-                sudo.some((args) => args.includes('/usr/share/libalpm/hooks/discordinator-update.hook')),
+                sudo.some((args) => args.join(' ') === 'tee /usr/share/libalpm/hooks/discordinator-update.hook'),
                 'system updates are hooked',
             );
             assert.equal((await installRecord(target))?.branch, 'main');
