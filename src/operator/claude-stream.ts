@@ -1,4 +1,4 @@
-import { activityLine } from './activity-format.js';
+import { activityLine, toolLabel } from './activity-format.js';
 import type { ClaudeMessage, ClaudeUserMessage } from './claude-protocol.js';
 
 export class MessageQueue implements AsyncIterable<ClaudeUserMessage> {
@@ -30,15 +30,31 @@ export class MessageQueue implements AsyncIterable<ClaudeUserMessage> {
     }
 }
 
+type Value = (key: string) => string;
+const fileName = (value: Value, ...keys: string[]) => (keys.map(value).find(Boolean) ?? '').split('/').pop() ?? '';
+const helper = (value: Value) => value('description') || 'Starting a helper agent';
+const edit = (value: Value) => `Editing ${fileName(value, 'file_path', 'notebook_path')}`;
+
+const friendly: Record<string, (value: Value) => string> = {
+    Bash: (value) => value('description') || 'Running a command',
+    Edit: edit,
+    Write: edit,
+    NotebookEdit: edit,
+    Read: (value) => `Reading ${fileName(value, 'file_path')}`,
+    WebSearch: (value) => `Searching the web for “${value('query')}”`,
+    Grep: (value) => (value('pattern') ? `Searching files for “${value('pattern').slice(0, 60)}”` : 'Searching files'),
+    Glob: () => 'Finding files',
+    WebFetch: () => 'Reading a web page',
+    Agent: helper,
+    Task: helper,
+    Monitor: () => 'Watching for a result',
+    Skill: () => 'Loading a skill',
+};
+
 export function toolActivity(name: string, input: unknown): string {
     const fields = input && typeof input === 'object' ? (input as Record<string, unknown>) : {};
-    const value = (key: string) => (typeof fields[key] === 'string' ? fields[key] : '');
-    if (name === 'Bash') return activityLine('Running', value('command'));
-    if (['Edit', 'Write', 'NotebookEdit'].includes(name))
-        return activityLine(`Editing ${(value('file_path') || value('notebook_path')).split('/').pop() ?? ''}`);
-    if (name === 'Read') return activityLine(`Reading ${value('file_path').split('/').pop() ?? ''}`);
-    if (name === 'WebSearch') return activityLine(`Searching the web for “${value('query')}”`);
-    return activityLine(`Using ${name.replace(/^mcp__[^_]+__/, '')}`);
+    const value: Value = (key) => (typeof fields[key] === 'string' ? fields[key] : '');
+    return activityLine(friendly[name]?.(value) ?? toolLabel(name));
 }
 
 export function progressText(message: ClaudeMessage): Array<{ text: string; activity: boolean }> {

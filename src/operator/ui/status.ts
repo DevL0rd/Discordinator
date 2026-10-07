@@ -5,12 +5,14 @@ import type { View } from './model.js';
 const chatgptDot = {
     name: 'ChatGPT - Dot',
     provider: 'ChatGPT',
-    blurb: 'New messages wake your Discordinator app in ChatGPT through your public domain.',
+    tag: { text: 'SLOW', tone: 'warn' as const },
+    blurb: 'New messages wake your Discordinator app in ChatGPT through your public domain. Replies are slow, because ChatGPT takes a while to wake up for each message.',
 };
-export const assistants: Record<OperatingMode, { name: string; provider: string; blurb: string }> = {
+export const assistants: Record<OperatingMode, { name: string; provider: string; blurb: string; tag?: { text: string; tone: Tone } }> = {
     'claude-session': {
         name: 'Claude Code',
         provider: 'Claude',
+        tag: { text: 'RECOMMENDED', tone: 'good' },
         blurb: 'Discord messages go to one ongoing Claude conversation. With Claude Desktop installed it opens there, starting the app if needed, so you can watch and chat; otherwise it runs in the background.',
     },
     'codex-local': {

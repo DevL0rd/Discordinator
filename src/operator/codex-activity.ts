@@ -1,4 +1,4 @@
-import { activityLine } from './activity-format.js';
+import { activityLine, toolLabel } from './activity-format.js';
 
 type Item = Record<string, unknown>;
 
@@ -16,11 +16,23 @@ function fileChange(item: Item): string | undefined {
     return `Editing ${files.slice(0, 3).join(', ')}${files.length > 3 ? ` and ${files.length - 3} more` : ''}`;
 }
 
+const actionWords: Record<string, (target: string, query: string) => string> = {
+    read: (target) => (target ? `Reading ${target}` : 'Reading a file'),
+    search: (_target, query) => (query ? `Searching files for “${query}”` : 'Searching files'),
+    listFiles: (target) => (target ? `Listing files in ${target}` : 'Listing files'),
+};
+
+function commandAction(actions: unknown): string {
+    const action = ((Array.isArray(actions) ? actions[0] : undefined) ?? {}) as Item;
+    const target = clip(text(action.name) || text(action.path).split('/').pop() || '', 60);
+    return actionWords[text(action.type)]?.(target, clip(text(action.query), 60)) ?? 'Running a command';
+}
+
 const describers: Record<string, (item: Item) => string | undefined> = {
-    commandExecution: (item) => (text(item.command) ? activityLine('Running', text(item.command)) : undefined),
+    commandExecution: (item) => (text(item.command) ? commandAction(item.commandActions) : undefined),
     fileChange,
-    mcpToolCall: (item) => (text(item.server) === 'discordinator' ? undefined : `Using ${text(item.server)} · ${text(item.tool)}`),
-    dynamicToolCall: (item) => (text(item.tool) ? `Using ${text(item.tool)}` : undefined),
+    mcpToolCall: (item) => (text(item.server) === 'discordinator' ? undefined : toolLabel(text(item.tool))),
+    dynamicToolCall: (item) => (text(item.tool) ? toolLabel(text(item.tool)) : undefined),
     webSearch: (item) => (text(item.query) ? `Searching the web for “${clip(text(item.query), 80)}”` : 'Searching the web'),
     imageGeneration: () => 'Generating an image',
     collabAgentToolCall: () => 'Working with a helper agent',
@@ -29,7 +41,7 @@ const describers: Record<string, (item: Item) => string | undefined> = {
 
 export function codexActivity(item: Item): string | undefined {
     const described = describers[text(item.type)]?.(item);
-    return described === undefined || described.startsWith('-# ') ? described : activityLine(described);
+    return described === undefined ? described : activityLine(described);
 }
 
 const baselineTokens = 12_000;

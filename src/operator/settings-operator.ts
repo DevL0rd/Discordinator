@@ -112,9 +112,9 @@ export const operatorSettings = [
             path: 'activityVisibility',
             label: 'Show tool activity in Discord',
             description:
-                'Optional redacted tool activity, off by default. Genuine harness approvals and questions are always relayed independently.',
+                'Shows what the AI is doing, like the command it is running, under its acknowledgement while it works. Genuine harness approvals and questions are always relayed independently.',
             kind: 'boolean',
-            defaultValue: false,
+            defaultValue: true,
         },
     ]),
 ];

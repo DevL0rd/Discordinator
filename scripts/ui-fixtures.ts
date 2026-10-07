@@ -103,6 +103,8 @@ export function fakeServices(calls: Calls, overrides: Partial<Services> = {}): S
         installService: record('installService', 'Installed.'),
         restartService: record('restartService', 'Restarted.'),
         savePassword: record('savePassword', undefined),
+        checkUpdate: record('checkUpdate', undefined),
+        applyUpdate: record('applyUpdate', 'Updated.'),
     };
     return { ...fakes, ...overrides };
 }

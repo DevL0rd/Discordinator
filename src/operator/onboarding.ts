@@ -5,7 +5,7 @@ import { markWebAdded } from './web-connectors.js';
 import { openUrl } from './open-url.js';
 import { passwordError } from '../oauth/provision.js';
 import { useApp, useInput, useStdout } from 'ink';
-import { installService } from './install.js';
+import { installApp, localShell } from './self-install.js';
 import { appNames, connectApp, responderApps } from './connections.js';
 import { readOperatorConfig, type OperatingMode } from './config.js';
 import { domainError } from './connection-domain.js';
@@ -150,7 +150,7 @@ export async function advance(state: State, onComplete: () => void): Promise<Sta
 
 async function finish(state: State, button: string | undefined): Promise<State> {
     if (button === 'Back') return back(state);
-    if (button === 'Install service') await installService();
+    if (button === 'Install') await installApp(localShell(false));
     await writePhase('verify');
     return { ...fresh(state), step: 'verify', checks: await verifyChecks(state.choice) };
 }

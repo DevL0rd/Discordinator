@@ -1,6 +1,6 @@
 # Setup and permissions
 
-Start with [Get started](getting-started.md); the setup app (`npm run setup`) handles the files below for you. Installing dependencies alone does not acquire credentials, configure OAuth, install a Discord application or start a service.
+Start with [Get started](getting-started.md); the setup app (`discordinator`) handles the files below for you. Installing dependencies alone does not acquire credentials, configure OAuth, install a Discord application or start a service.
 
 ## Runtime files
 

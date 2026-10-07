@@ -114,7 +114,11 @@ export class Bridge {
     }
 
     private readonly typingChecks = new Map<string, { context: AccessContext; until: number }>();
-    private readonly statuses = new StatusBoard((message) => this.api.delete(`/channels/${message.channel_id}/messages/${message.id}`));
+    private readonly statuses = new StatusBoard(
+        (message, content) =>
+            this.api.patch(`/channels/${message.channel_id}/messages/${message.id}`, { content, allowed_mentions: mentions }),
+        (message) => this.api.delete(`/channels/${message.channel_id}/messages/${message.id}`),
+    );
     private async replyEvent(id: string): Promise<AccessContext> {
         if (this.ownerContexts.has(id)) return this.event(id);
         if (!this.replyOrigins) return this.event(id);
@@ -144,21 +148,15 @@ export class Bridge {
             this.policy.assertResponse(context.event, context.event.channelId);
             if ((input.embeds?.length && context.deliver) || context.respond) return this.interactionReply(context, input, input.status);
             if (input.status)
-                return this.statuses.show(
-                    input.eventId,
-                    () => this.send(context.event.channelId, input, input.idempotencyKey),
-                    (message) =>
-                        this.api.patch(`/channels/${message.channel_id}/messages/${message.id}`, {
-                            content: input.content.slice(0, 2000),
-                            embeds: input.embeds ?? [],
-                            allowed_mentions: mentions,
-                        }),
+                return this.statuses.show(input.eventId, input.content, (content) =>
+                    this.send(context.event.channelId, { content }, input.idempotencyKey, { replyTo: context.event.messageId }),
                 );
-            const sent = await this.send(context.event.channelId, input, input.idempotencyKey, {
-                replyTo: context.event.messageId,
-                ...(input.notifyRequester ? { notify: context.event.actorId } : {}),
-            });
-            await this.statuses.clear(input.eventId);
+            const options = { replyTo: context.event.messageId, ...(input.notifyRequester ? { notify: context.event.actorId } : {}) };
+            const sent = await this.send(context.event.channelId, input, input.idempotencyKey, options);
+            await this.statuses.settle(
+                input.eventId,
+                sent.parts ? undefined : { message: sent, content: withMention(input.content, options) },
+            );
             return sent;
         });
     }
@@ -232,7 +230,7 @@ export class Bridge {
             },
             delivery.files,
         )) as { id: string; channel_id: string };
-        await this.statuses.clear(eventId);
+        await this.statuses.settle(eventId);
         return { id: result.id, channel_id: result.channel_id };
     }
 

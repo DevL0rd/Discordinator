@@ -1,6 +1,6 @@
 # Operator guide
 
-`npm run setup` opens the Discordinator setup app, a full-screen terminal app that works with keyboard and mouse. The first run is a guided wizard (see [Get started](getting-started.md)); after that it opens straight to the dashboard. `npm run tui` is an alias.
+`discordinator` opens the Discordinator setup app, a full-screen terminal app that works with keyboard and mouse. Before Discordinator is installed, run `npm run discordinator` from the folder you cloned. The first run is a guided wizard (see [Get started](getting-started.md)); after that it opens straight to the dashboard.
 
 ## Pages
 
@@ -110,6 +110,30 @@ Another MCP app connects to `http://127.0.0.1:8787/mcp` (your port) with `Author
 
 Local tools such as the setup app and the Claude plugin reach the runtime with a local key in `.data/local.key`. It is created automatically and kept private. It only works for requests with a `127.0.0.1` or `localhost` Host header, so traffic arriving through a tunnel can never use it.
 
-## Background service
+<a id="install"></a>
 
-The **System** page installs (or reinstalls) the background service, building Discordinator first, and restarts it while it runs. On Linux it is a systemd user service named `discordinator.service`. On macOS it is a launchd agent, `~/Library/LaunchAgents/com.github.devl0rd.discordinator.plist`, that starts when you log in and logs to `.data/service.log`. On Windows it starts hidden when you sign in, through your account's startup entries, with no admin rights needed, and logs to `.data/service.log`. It never stops a Discordinator you started by hand.
+## Install, update and uninstall
+
+Installing from the wizard, the **System** page or `npm run discordinator -- install` gives Discordinator its own copy, like a normal program:
+
+| | Linux | macOS | Windows |
+| :-- | :-- | :-- | :-- |
+| Installed copy and settings | `~/.local/share/discordinator` | `~/Library/Application Support/Discordinator` | `%LOCALAPPDATA%\Discordinator` |
+| `discordinator` command | `~/.local/bin` | the first of `/opt/homebrew/bin`, `/usr/local/bin` or `~/.local/bin` on your PATH | `%LOCALAPPDATA%\Microsoft\WindowsApps` |
+| Background service | systemd user service `discordinator.service` | launchd agent `com.github.devl0rd.discordinator` | hidden startup entry, no admin rights |
+| Updates | every system update, plus the Overview page | the Overview page | the Overview page |
+
+The installed copy is a git checkout of the branch you installed from, following GitHub. Nothing runs from the folder you cloned, so you can move or delete it. The first install copies your settings (`.env`, `policy.json`, `discord-app.json` and `.data`) into the installed copy, and the Claude Code plugin is moved there too. Only committed work is installed. Installing again, from any checkout, replaces the installed code and keeps your settings.
+
+`discordinator` with no command opens the setup app on the installed copy, from any folder. It also takes:
+
+| Command | What it does |
+| :-- | :-- |
+| `discordinator install` | Install or reinstall from the current folder. |
+| `discordinator update` | Pull the latest commits from GitHub, rebuild and restart the service. |
+| `discordinator uninstall` | Remove the service, the command, the update hook and the code. Your settings stay, so installing again picks them up. |
+| `discordinator uninstall --purge` | Also delete your settings. |
+
+**Updates.** The **Overview** page shows when GitHub has new commits; press <kbd>U</kbd> (or choose **Update and restart**) to pull them, rebuild and restart the service. On Linux, Discordinator also hooks into your package manager, like Konveyor: after every pacman, dnf, zypper or apt transaction, `/usr/lib/discordinator/discordinator-update` updates it as you and restarts the service. Adding that hook asks for your password once; installing from the setup app skips it and tells you to run `discordinator install` in a terminal. When Node.js itself is upgraded, the next update reinstalls dependencies for the new version. An installed copy with local changes or commits that are not on GitHub is never overwritten; the update says why it stopped.
+
+The service runs `dist/src/main.js` from the installed copy. On macOS and Windows it logs to `.data/service.log` there. Installing never leaves two copies running: a service that is already running is stopped, moved and started again. **Restart Discordinator** on the **System** page restarts it.

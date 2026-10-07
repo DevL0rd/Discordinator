@@ -10,8 +10,7 @@
   "scripts": {
     "build": "tsc",
     "start": "node --env-file=.env dist/src/main.js",
-    "setup": "node --env-file-if-exists=.env --import tsx src/operator/tui.ts",
-    "tui": "npm run setup",
+    "discordinator": "node --import tsx src/cli.ts",
     "check": "tsc --noEmit",
     "validate": "tsx scripts/validate.ts",
     "coverage": "c8 tsx scripts/validate.ts",

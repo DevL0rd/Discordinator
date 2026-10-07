@@ -5,7 +5,7 @@ Discordinator can join voice calls, keep a transcript of everyone, and talk with
 ## Turning it on
 
 1. Get a key at [aistudio.google.com/apikey](https://aistudio.google.com/apikey).
-2. In the setup app (`npm run setup`), open **Voice** (key 4), turn on **Use voice calls** and paste the **Google Gemini API key**. It is stored privately in `.env` and used right away.
+2. In the setup app (`discordinator`), open **Voice** (key 4), turn on **Use voice calls** and paste the **Google Gemini API key**. It is stored privately in `.env` and used right away.
 3. On the **Discord** page, add `voice.listen` (join and transcribe) and `voice.speak` (talk) to **Allowed abilities**.
 4. The bot needs **Connect** and **Speak** in the voice channels it uses, and permission to post in each call's text chat.
 

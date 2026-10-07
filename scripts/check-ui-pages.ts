@@ -104,10 +104,13 @@ function checkSystem(): void {
     const service = (active: boolean, installed: boolean) =>
         pageText(state({}, { observed: { ...observed, service: { available: true, installed, active } } }), 'system');
     const running = service(true, true);
-    assert.ok(running.includes('Reinstall service') && running.includes('Restart Discordinator'), 'a running service can be restarted');
+    assert.ok(
+        running.includes('Reinstall Discordinator') && running.includes('Restart Discordinator'),
+        'a running service can be restarted',
+    );
     const stopped = service(false, true);
-    assert.ok(stopped.includes('Reinstall service') && !stopped.includes('Restart Discordinator'));
-    assert.ok(service(false, false).includes('Install service'));
+    assert.ok(stopped.includes('Reinstall Discordinator') && !stopped.includes('Restart Discordinator'));
+    assert.ok(service(false, false).includes('Install Discordinator'));
     assert.ok(running.includes('.data/setup-backups'));
 }
 

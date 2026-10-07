@@ -1,3 +1,4 @@
+import { codexActivity } from '../src/operator/codex-activity.js';
 import assert from 'node:assert/strict';
 import { createServer } from 'node:net';
 import { appendFile, mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
@@ -147,7 +148,18 @@ async function until(predicate: () => boolean): Promise<void> {
 }
 
 export async function checkSessionActivity(directory: string): Promise<void> {
-    assert.deepEqual(transcriptSteps(tool('Bash', { command: 'npm test' })), ['-# Running\n```sh\nnpm test\n```']);
+    const command = (commandActions: unknown[]) => codexActivity({ type: 'commandExecution', command: 'rg -n x src', commandActions });
+    assert.equal(command([{ type: 'search', command: 'rg', query: 'x' }]), 'Searching files for “x”', 'Codex commands say what they do');
+    assert.equal(command([{ type: 'read', command: 'cat', name: 'a.ts', path: '/r/a.ts' }]), 'Reading a.ts');
+    assert.equal(command([{ type: 'unknown', command: 'make' }]), 'Running a command', 'Codex commands never show their text');
+    assert.equal(codexActivity({ type: 'mcpToolCall', server: 'github', tool: 'list_issues' }), 'Using list issues');
+    assert.deepEqual(transcriptSteps(tool('Bash', { command: 'npm test', description: 'Run the tests' })), ['Run the tests']);
+    assert.deepEqual(transcriptSteps(tool('Bash', { command: 'npm test' })), ['Running a command'], 'commands never show their text');
+    assert.deepEqual(
+        transcriptSteps(tool('mcp__plugin_x_server__list_open_issues', {})),
+        ['Using list open issues'],
+        'tools show in words',
+    );
     assert.deepEqual(transcriptSteps(tool('mcp__discordinator__discord_send', {})), [], 'Discord replies are not echoed as activity');
     assert.deepEqual(transcriptSteps('not json'), []);
     const path = join(directory, 'activity.jsonl');
@@ -168,14 +180,14 @@ export async function checkSessionActivity(directory: string): Promise<void> {
     await appendFile(path, `${delivered('event-1')}\n${tool('Edit', { file_path: '/repo/src/app.ts' })}\n`);
     assert.equal(await pickup, true, 'the delivered entry is confirmed from the transcript');
     await until(() => posted.length === 1);
-    assert.deepEqual(posted, ['event-1:-# Editing app.ts'], 'only steps after delivery are posted');
+    assert.deepEqual(posted, ['event-1:Editing app.ts'], 'only steps after delivery are posted');
     await activity.follow(path, 'event-2');
     await appendFile(path, `${tool('Read', { file_path: '/repo/a.ts' })}\n`);
     await until(() => posted.length === 2);
-    assert.equal(posted[1], 'event-1:-# Reading a.ts', 'steps before the next message is picked up stay with the earlier message');
+    assert.equal(posted[1], 'event-1:Reading a.ts', 'steps before the next message is picked up stay with the earlier message');
     await appendFile(path, `${delivered('event-2')}\n${tool('Read', { file_path: '/repo/b.ts' })}\n`);
     await until(() => posted.length === 3);
-    assert.equal(posted[2], 'event-2:-# Reading b.ts', 'steps follow the message Claude is working on');
+    assert.equal(posted[2], 'event-2:Reading b.ts', 'steps follow the message Claude is working on');
     await appendFile(path, `${tool('mcp__discordinator__discord_send', { eventId: 'event-1' })}\n${usage}\n`);
     await until(() => replied.length === 1);
     assert.deepEqual(picked, ['event-1', 'event-2']);
@@ -194,8 +206,8 @@ async function checkTranscriptSwitch(
     const fresh = join(directory, 'activity-new.jsonl');
     await writeFile(fresh, '');
     await activity.follow(fresh, 'event-3');
-    await appendFile(path, `${tool('Bash', { command: 'stale' })}\n`);
-    await appendFile(fresh, `${delivered('event-3')}\n${tool('Bash', { command: 'fresh' })}\n`);
+    await appendFile(path, `${tool('Bash', { command: 'stale', description: 'stale' })}\n`);
+    await appendFile(fresh, `${delivered('event-3')}\n${tool('Bash', { command: 'fresh', description: 'fresh' })}\n`);
     await until(() => posted.length === 4);
     assert.match(posted[3]!, /^event-3:[\s\S]*fresh/, 'a new conversation transcript replaces the old one');
     trace.enabled = false;

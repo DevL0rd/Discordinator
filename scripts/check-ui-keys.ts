@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { handleKey, typed, type Key } from '../src/operator/ui/keys.js';
-import { selectedIndex } from '../src/operator/ui/state.js';
+import { selectedIndex, viewOf } from '../src/operator/ui/state.js';
+import { homeItems } from '../src/operator/ui/pages/home.js';
 import { setting } from '../src/operator/ui/items.js';
 import type { Sheet } from '../src/operator/ui/sheets.js';
 import { dispatch } from '../src/operator/ui/intents.js';
@@ -76,6 +77,30 @@ function checkActivation(): void {
     assert.equal(busy.state.page, 'memory', 'keys are ignored while busy');
 }
 
+async function checkUpdateKey(calls: Calls): Promise<void> {
+    const current = uiStore(fakeServices(calls));
+    handleKey(current, 'u', key());
+    await settle();
+    assert.equal(called(calls, 'applyUpdate').length, 0, 'U does nothing without an update');
+    const update = { behind: 2, current: 'aaa1111', latest: 'bbb2222' };
+    const behind = uiStore(fakeServices(calls), { extras: { apps: {}, update } });
+    const button = homeItems(viewOf(behind.state)).find((item) => item.id === 'update');
+    assert.ok(button, 'the Overview offers the update');
+    assert.match(
+        button
+            .lines(80, false, viewOf(behind.state))
+            .map((row) => row.spans.map((part) => part.text).join(''))
+            .join('\n'),
+        /2 new commits, aaa1111 → bbb2222 · press U/,
+    );
+    handleKey(behind, 'u', key());
+    await settle();
+    assert.equal(called(calls, 'applyUpdate').length, 1, 'U updates and restarts');
+    const blocked = uiStore(fakeServices(calls), { extras: { apps: {}, update: { ...update, blocker: 'It has local changes.' } } });
+    const items = homeItems(viewOf(blocked.state)).map((item) => item.id);
+    assert.ok(items.includes('update-blocked') && !items.includes('update'), 'a blocked update is explained instead of offered');
+}
+
 async function checkShortcuts(): Promise<void> {
     const calls: Calls = [];
     const ui = uiStore(fakeServices(calls));
@@ -100,6 +125,7 @@ async function checkShortcuts(): Promise<void> {
     handleKey(paused, 'p', key());
     await settle();
     assert.deepEqual(called(calls, 'startSaved').at(-1)?.[2], true, 'P starts a paused assistant');
+    await checkUpdateKey(calls);
     handleKey(ui, 'q', key());
     assert.equal(ui.exited, true, 'Q quits when nothing is unsaved');
     const ctrl = uiStore(fakeServices(calls));

@@ -48,10 +48,10 @@
 git clone https://github.com/DevL0rd/Discordinator.git discordinator
 cd discordinator
 npm ci --ignore-scripts
-npm run setup
+npm run discordinator
 ```
 
-The setup app walks you through everything on first run: your Discord bot, who answers, and how it connects. Nothing is written until you review it.
+The setup app walks you through everything on first run: your Discord bot, who answers, and how it connects. Nothing is written until you review it. Its last step installs Discordinator for you.
 
 <p align="center">
   <img alt="First-run setup: bot token, adding the bot to your server, picking the owner, a sign-in password, choosing who answers, and a final check that everything works" src="docs/media/first-run.gif" width="80%">
@@ -59,16 +59,20 @@ The setup app walks you through everything on first run: your Discord bot, who a
 
 <table>
   <tr>
-    <td>▶️ <b>Run it</b></td>
-    <td><code>npm run build</code> then <code>npm start</code>, or install the background service from <b>System</b> so Discordinator starts when you log in.</td>
+    <td>📦 <b>Install</b></td>
+    <td>Finish the wizard, or run <code>npm run discordinator -- install</code>. Discordinator gets its own copy and a background service that starts when you log in, so nothing runs from the folder you cloned and you can delete it.</td>
   </tr>
   <tr>
     <td>⚙️ <b>Change anything</b></td>
-    <td><code>npm run setup</code> opens the setup app any time. Keyboard and mouse both work, and every change is reviewed before it is saved.</td>
+    <td>Type <code>discordinator</code> in any terminal, on Linux, macOS or Windows. Keyboard and mouse both work, and every change is reviewed before it is saved.</td>
   </tr>
   <tr>
     <td>🔄 <b>Update</b></td>
-    <td><code>git pull</code>, <code>npm ci --ignore-scripts</code>, <code>npm run build</code>, then restart. Settings carry over, and older settings files are migrated automatically.</td>
+    <td>The <b>Overview</b> page says when an update is out; press <kbd>U</kbd> to update and restart. On Linux, every system update (pacman, dnf, zypper or apt) also updates Discordinator. Settings always carry over.</td>
+  </tr>
+  <tr>
+    <td>🗑️ <b>Uninstall</b></td>
+    <td><code>discordinator uninstall</code> removes the service, the command and the update hook and keeps your settings; add <code>--purge</code> to delete them too.</td>
   </tr>
   <tr>
     <td>🖥️ <b>Needs</b></td>
@@ -86,7 +90,7 @@ The setup app walks you through everything on first run: your Discord bot, who a
 
 ### 🧠 One responder, full memory
 
-Pick one AI to answer Discord. Mention the bot or reply to it, and the request lands in an ongoing conversation that remembers what came before, along with what was said in the channel since. It shows it is typing, posts each step as it works (with commands in code blocks), and answers in the same channel, thread or DM. When the conversation fills up, it warns you at 50% and 90%.
+Pick one AI to answer Discord. Mention the bot or reply to it, and the request lands in an ongoing conversation that remembers what came before, along with what was said in the channel since. It replies right away to say it is on it, shows what it is doing under that reply while it works (like "Running the tests"), and answers in the same channel, thread or DM. When the conversation fills up, it warns you at 50% and 90%.
 
 ### 🤝 Every AI can help
 
@@ -123,7 +127,7 @@ Live status for Discord, the bridge and your AI on one screen, with honest state
     <th align="left">Memory</th>
   </tr>
   <tr>
-    <td>✨ <b>Claude Code</b></td>
+    <td>✨ <b>Claude Code</b> (recommended)</td>
     <td>Messages are pushed live into your Discordinator conversation in Claude Desktop, which opens by itself when needed. Without Desktop it answers in the background.</td>
     <td>One ongoing conversation</td>
   </tr>
@@ -133,8 +137,8 @@ Live status for Discord, the bridge and your AI on one screen, with honest state
     <td>One ongoing conversation</td>
   </tr>
   <tr>
-    <td>💡 <b>ChatGPT - Dot</b></td>
-    <td>New messages wake your Discordinator app in ChatGPT through your public domain.</td>
+    <td>💡 <b>ChatGPT - Dot</b> (slow)</td>
+    <td>New messages wake your Discordinator app in ChatGPT through your public domain. Replies are slow, because ChatGPT takes a while to wake up for each message.</td>
     <td>Managed by ChatGPT</td>
   </tr>
   <tr>

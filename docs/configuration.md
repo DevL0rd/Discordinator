@@ -1,6 +1,6 @@
 # Configuration reference
 
-Start with [Get started](getting-started.md). The setup app (`npm run setup`) edits all of these for you. Authentication is mandatory: use your public HTTPS URL and an OAuth provider, or an independent bearer credential for a local client. No hosting or identity provider is built in.
+Start with [Get started](getting-started.md). The setup app (`discordinator`) edits all of these for you. Authentication is mandatory: use your public HTTPS URL and an OAuth provider, or an independent bearer credential for a local client. No hosting or identity provider is built in.
 
 ## Environment defaults
 

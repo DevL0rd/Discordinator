@@ -7,7 +7,7 @@
         "scripts/validate.ts",
         "scripts/check-banner.ts",
         "scripts/check-quality.ts",
-        "src/operator/tui.ts",
+        "src/cli.ts",
         "scripts/check-settings-registry.ts"
     ],
     "project": [

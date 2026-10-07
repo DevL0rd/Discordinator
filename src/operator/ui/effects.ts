@@ -3,7 +3,10 @@ import { affectsConnections } from '../reconnect.js';
 import { readOperatorConfig } from '../config.js';
 import { ownerReady } from '../../oauth/provision.js';
 import { oauthDirectory } from '../../oauth/registration.js';
-import { installService, restartService } from '../install.js';
+import { restartService } from '../install.js';
+import { applyUpdate, checkForUpdate, installApp, localShell, updateBlocker } from '../self-install.js';
+import { installRecord } from '../app-home.js';
+import type { AppUpdate } from './model.js';
 import { openConversation } from '../session-router.js';
 import { appNames, appState, connectApp, disconnectApp, statusHint, type AppId } from '../connections.js';
 import { observations } from './observe.js';
@@ -40,10 +43,23 @@ const services = {
     listServers,
     openUrl,
     openConversation,
-    installService,
+    installService: async () => (await installApp(localShell(false))).join(' '),
     restartService,
     savePassword,
+    checkUpdate,
+    applyUpdate: async () => `${await applyUpdate(localShell(false))} Reopen discordinator to use the new version of this app.`,
 };
+
+async function checkUpdate(): Promise<AppUpdate | undefined> {
+    if (!(await installRecord())) return undefined;
+    try {
+        const state = await checkForUpdate(localShell(false));
+        const blocker = updateBlocker(state);
+        return { behind: state.behind, current: state.current, latest: state.latest, ...(blocker ? { blocker } : {}) };
+    } catch (error) {
+        return { behind: 0, current: '', latest: '', error: error instanceof Error ? error.message.slice(0, 160) : 'unknown error' };
+    }
+}
 export type Services = typeof services;
 
 export interface Store {
@@ -104,16 +120,17 @@ async function extras(store: Store): Promise<void> {
     const environment = store.get().snapshot.documents.environment;
     const token = scalar(environment.DISCORD_BOT_TOKEN);
     const use = io(store);
-    const [claude, codex, web, password, servers] = await Promise.all([
+    const [claude, codex, web, password, servers, update] = await Promise.all([
         use.appState('claude-code'),
         use.appState('codex'),
         use.webConnectors(),
         use.ownerReady(oauthDirectory.parse(environment.DISCORDINATOR_OAUTH_DATA_DIR)),
         token ? use.listServers(token).catch(() => undefined) : undefined,
+        use.checkUpdate(),
     ]);
     store.set((state) => ({
         ...state,
-        extras: { apps: { 'claude-code': claude, codex }, web, password, ...(servers ? { servers } : {}) },
+        extras: { apps: { 'claude-code': claude, codex }, web, password, ...(servers ? { servers } : {}), ...(update ? { update } : {}) },
     }));
 }
 
@@ -293,6 +310,7 @@ export function run(store: Store, action: ActionId): void {
         'sign-in-password': () => passwordSheet(store, 0),
         'install-service': () => service(store, true),
         'restart-service': () => service(store, false),
+        update: () => task(store, 'Updating Discordinator…', () => io(store).applyUpdate()).then(() => refresh(store, true)),
     };
     void handlers[action]();
 }

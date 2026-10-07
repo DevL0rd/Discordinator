@@ -1,5 +1,5 @@
 import { blank, box, fit, line, span, wrap, width, type Line, type Span } from './ui/canvas.js';
-import { color, glyph } from './ui/theme.js';
+import { color, glyph, tone, type Tone } from './ui/theme.js';
 
 export interface StepView {
     stage: number;
@@ -7,6 +7,7 @@ export interface StepView {
     body: string[];
     input?: { value: string; masked: boolean };
     options?: string[];
+    tags?: ({ text: string; tone: Tone } | undefined)[];
     buttons?: string[];
     selected: number;
     notice?: string;
@@ -39,7 +40,13 @@ function choices(step: StepView, size: number): Line[] {
         const on = index === step.selected;
         const bg = on ? color.raised : color.panel;
         const mark = span(` ${on ? glyph.radioOn : glyph.radioOff} `, on ? color.violet : color.dim);
-        return fit({ ...line([mark, span(label, on ? color.text : color.soft, { bold: on })], bg), target: `opt:${index}` }, size, bg);
+        const tag = step.tags?.[index];
+        const badge = tag ? [span('  '), span(` ${tag.text} `, color.ink, { bg: tone[tag.tone], bold: true })] : [];
+        return fit(
+            { ...line([mark, span(label, on ? color.text : color.soft, { bold: on }), ...badge], bg), target: `opt:${index}` },
+            size,
+            bg,
+        );
     });
 }
 

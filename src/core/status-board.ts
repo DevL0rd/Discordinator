@@ -1,15 +1,37 @@
-import { fade } from './fade.js';
-
 export interface Posted {
     id: string;
     channel_id: string;
 }
 
+interface Anchor {
+    message: Posted;
+    base: string;
+    steps: string[];
+}
+
+const shownSteps = 6;
+const limit = 2000;
+
+export function statusSection(steps: string[]): string {
+    const recent = steps.slice(-shownSteps);
+    const done = recent.slice(0, -1).map((step) => `> -# ✓ ${step}`);
+    return ['> ⏳ **Working on it**', ...done, `> **›** ${recent.at(-1) ?? ''}`].join('\n');
+}
+
+function withSection(base: string, steps: string[]): string {
+    const section = statusSection(steps.map((step) => step.replace(/\s+/g, ' ').trim()).filter(Boolean));
+    const text = base ? `${base}\n\n${section}` : section;
+    return text.length > limit ? `${text.slice(0, limit - 1)}…` : text;
+}
+
 export class StatusBoard {
-    private readonly posted = new Map<string, { message: Posted; timer: NodeJS.Timeout }>();
+    private readonly anchors = new Map<string, Anchor>();
     private readonly chains = new Map<string, Promise<unknown>>();
 
-    constructor(private readonly remove: (message: Posted) => Promise<unknown>) {}
+    constructor(
+        private readonly edit: (message: Posted, content: string) => Promise<unknown>,
+        private readonly remove: (message: Posted) => Promise<unknown>,
+    ) {}
 
     private serial<T>(eventId: string, work: () => Promise<T>): Promise<T> {
         const next = (this.chains.get(eventId) ?? Promise.resolve()).catch(() => undefined).then(work);
@@ -22,27 +44,33 @@ export class StatusBoard {
         return next;
     }
 
-    show(eventId: string, post: () => Promise<Posted>, edit: (message: Posted) => Promise<unknown>): Promise<Posted> {
+    show(eventId: string, step: string, post: (content: string) => Promise<Posted>): Promise<Posted> {
         return this.serial(eventId, async () => {
-            const current = this.posted.get(eventId);
-            let message = current?.message;
-            if (message) await edit(message).catch(() => (message = undefined));
-            message ??= await post();
-            clearTimeout(current?.timer);
-            const timer = setTimeout(() => void this.clear(eventId), fade.ms);
-            timer.unref();
-            this.posted.set(eventId, { message, timer });
+            const anchor = this.anchors.get(eventId);
+            if (anchor) {
+                if (anchor.steps.at(-1) === step) return anchor.message;
+                anchor.steps.push(step);
+                const edited = await this.edit(anchor.message, withSection(anchor.base, anchor.steps)).then(
+                    () => true,
+                    () => false,
+                );
+                if (edited) return anchor.message;
+            }
+            const steps = [step];
+            const message = await post(withSection('', steps));
+            this.anchors.set(eventId, { message, base: '', steps });
             return message;
         });
     }
 
-    clear(eventId: string): Promise<void> {
+    settle(eventId: string, reply?: { message: Posted; content: string }): Promise<void> {
         return this.serial(eventId, async () => {
-            const current = this.posted.get(eventId);
-            if (!current) return;
-            this.posted.delete(eventId);
-            clearTimeout(current.timer);
-            await this.remove(current.message).catch(() => undefined);
+            const anchor = this.anchors.get(eventId);
+            if (anchor?.steps.length)
+                await (anchor.base ? this.edit(anchor.message, anchor.base) : this.remove(anchor.message)).catch(() => undefined);
+            if (reply && reply.content.length <= limit)
+                this.anchors.set(eventId, { message: reply.message, base: reply.content, steps: [] });
+            else this.anchors.delete(eventId);
         });
     }
 }

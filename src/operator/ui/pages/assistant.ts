@@ -2,7 +2,7 @@ import { mcpAddresses, publicDomain } from '../../connection-domain.js';
 import { connectorStatus } from '../../web-connectors.js';
 import type { OperatingMode } from '../../config.js';
 import { box, line, span, wrap, type Line, type Span } from '../canvas.js';
-import { color, glyph } from '../theme.js';
+import { color, glyph, tone } from '../theme.js';
 import { actionItem, heading, note, section, settingItem } from '../items.js';
 import type { Item, View } from '../model.js';
 import type { AppId } from '../../connections.js';
@@ -19,6 +19,12 @@ function badge(mode: OperatingMode, view: View): Span[] {
     if (saved) return [span(' SAVED ', color.ink, { bg: color.violet, bold: true })];
     return [];
 }
+
+function tag(mode: OperatingMode): Span[] {
+    const value = assistants[mode].tag;
+    return value ? [span(' '), span(` ${value.text} `, color.ink, { bg: tone[value.tone], bold: true })] : [];
+}
+const tagWidth = (mode: OperatingMode) => tag(mode).reduce((total, item) => total + item.text.length, 0);
 const badgeWidth = (mode: OperatingMode, view: View) => badge(mode, view).reduce((total, item) => total + item.text.length, 0);
 
 const check = (ok: boolean | undefined, label: string): Span[] => [
@@ -64,7 +70,8 @@ function card(mode: OperatingMode): Item {
             const title: Line = line([
                 span(chosen ? glyph.radioOn : glyph.radioOff, chosen ? color.violet : color.dim),
                 span(` ${assistants[mode].name}`, chosen || selected ? color.text : color.soft, { bold: true }),
-                span(' '.repeat(Math.max(1, size - 8 - assistants[mode].name.length - badgeWidth(mode, view)))),
+                ...tag(mode),
+                span(' '.repeat(Math.max(1, size - 8 - assistants[mode].name.length - tagWidth(mode) - badgeWidth(mode, view)))),
                 ...badge(mode, view),
             ]);
             const rows = [

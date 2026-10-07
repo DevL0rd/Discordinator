@@ -33,7 +33,8 @@ export type ActionId =
     | 'chatgpt-guide'
     | 'sign-in-password'
     | 'install-service'
-    | 'restart-service';
+    | 'restart-service'
+    | 'update';
 
 export type Intent =
     | { type: 'page'; page: PageId }
@@ -60,6 +61,14 @@ export interface Extras {
     web?: WebConnectors;
     password?: boolean;
     servers?: BotServers;
+    update?: AppUpdate;
+}
+export interface AppUpdate {
+    behind: number;
+    current: string;
+    latest: string;
+    blocker?: string;
+    error?: string;
 }
 export interface Activity {
     at: string;

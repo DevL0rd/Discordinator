@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { join } from 'node:path';
 import { fade, fadeLater } from '../src/core/fade.js';
+import { statusSection } from '../src/core/status-board.js';
 import { until } from './discord-fakes.js';
 import { fixture, ids } from './fixtures.js';
 import { tone, voiceChannel, voiceHarness } from './voice-fakes.js';
@@ -19,28 +20,37 @@ async function checkMessageOrigin(directory: string): Promise<void> {
     const f = fixture(join(directory, 'fade.json'));
     const route = `/channels/${ids.channel}/messages`;
     const sent = (method: string, path = route) => f.api.calls.filter((call) => call.method === method && call.route === path);
+    const contents = () => sent('PATCH', `${route}/${ids.message}`).map((call) => (call.body as { content: string }).content);
     const status = (content: string, key: string) => f.bridge.respond({ eventId: f.event.id, content, idempotencyKey: key, status: true });
-    fade.ms = 300;
-    await status('On it, reading files', 'fade-status-1');
-    await status('Running the tests', 'fade-status-2');
-    assert.equal(sent('POST').length, 1, 'status updates share one message');
-    const edits = sent('PATCH', `${route}/${ids.message}`);
-    assert.deepEqual(
-        edits.map((call) => (call.body as { content: string }).content),
-        ['Running the tests'],
-        'later updates edit it in place',
+    await f.bridge.respond({ eventId: f.event.id, content: 'On it.', idempotencyKey: 'status-ack' });
+    await status('Reading files', 'status-1');
+    await status('Reading files', 'status-1b');
+    await status('Running the tests', 'status-2');
+    assert.equal(sent('POST').length, 1, 'progress never posts a new message after the acknowledgement');
+    assert.equal(contents().length, 2, 'a repeated step does not edit again');
+    assert.equal(
+        contents().at(-1),
+        `On it.\n\n${statusSection(['Reading files', 'Running the tests'])}`,
+        'steps show under the acknowledgement',
     );
-    await f.bridge.respond({ eventId: f.event.id, content: 'Here is the answer.', idempotencyKey: 'fade-answer' });
-    assert.deepEqual(
-        deletes(f.api.calls).map((call) => call.route),
-        [`${route}/${ids.message}`],
-        'the status message goes as soon as the answer arrives',
+    assert.match(contents().at(-1)!, /✓ Reading files[\s\S]*Running the tests/);
+    await f.bridge.respond({ eventId: f.event.id, content: 'Here is the answer.', idempotencyKey: 'status-answer' });
+    assert.equal(contents().at(-1), 'On it.', 'the answer removes the status section and keeps the acknowledgement');
+    assert.equal(deletes(f.api.calls).length, 0, 'nothing is deleted');
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    assert.equal(sent('PATCH', `${route}/${ids.message}`).length, 3, 'nothing changes on its own later');
+}
+
+async function checkWithoutAcknowledgement(directory: string): Promise<void> {
+    const f = fixture(join(directory, 'fade-bare.json'));
+    await f.bridge.respond({ eventId: f.event.id, content: 'Checking', idempotencyKey: 'bare-1', status: true });
+    assert.equal(
+        f.api.calls.filter((call) => call.method === 'POST').length,
+        1,
+        'without an acknowledgement the status gets its own reply',
     );
-    await new Promise((resolve) => setTimeout(resolve, 400));
-    assert.equal(deletes(f.api.calls).length, 1, 'Real answers stay');
-    fade.ms = 20;
-    await status('Still working', 'fade-status-3');
-    await until(() => deletes(f.api.calls).length === 2, 'a status message with no further updates is removed');
+    await f.bridge.respond({ eventId: f.event.id, content: 'Done.', idempotencyKey: 'bare-answer' });
+    assert.equal(deletes(f.api.calls).length, 1, 'a status-only reply goes when the answer arrives');
 }
 
 async function checkMutedCall(directory: string): Promise<void> {
@@ -62,6 +72,7 @@ export async function checkFade(directory: string): Promise<void> {
     fade.ms = 20;
     try {
         await checkMessageOrigin(directory);
+        await checkWithoutAcknowledgement(directory);
         await checkMutedCall(directory);
     } finally {
         fade.ms = 6000;

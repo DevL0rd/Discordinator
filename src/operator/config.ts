@@ -32,7 +32,7 @@ const operatorObject = z
         workerClaudeEffort: z.enum(['low', 'medium', 'high', 'xhigh', 'max']).optional(),
         instructions: z.string().max(8000).optional(),
         progressSeconds: z.number().int().min(15).max(600).optional(),
-        activityVisibility: z.boolean().default(false),
+        activityVisibility: z.boolean().default(true),
         backgroundOnly: z.boolean().default(false),
         updatedAt: z.iso.datetime(),
     })
@@ -70,7 +70,7 @@ export const defaultOperatorConfig = (): OperatorConfig => ({
     enabled: false,
     workspace: homedir(),
     timeoutSeconds: 0,
-    activityVisibility: false,
+    activityVisibility: true,
     backgroundOnly: false,
     updatedAt: new Date().toISOString(),
 });

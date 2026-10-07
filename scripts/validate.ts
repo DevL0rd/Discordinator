@@ -79,6 +79,7 @@ import { checkStdio } from './check-stdio.js';
 import { checkSetupApp } from './check-setup-app.js';
 import { checkStatusFile } from './check-status-file.js';
 import { checkServiceHost } from './check-service-host.js';
+import { checkSelfInstall } from './check-self-install.js';
 import { checkSupervisor } from './check-supervisor.js';
 import { checkProviders } from './check-providers.js';
 import { checkClaudePlugin } from './check-claude-plugin.js';
@@ -147,6 +148,7 @@ try {
             await checkAccessRules(directory);
             await checkStatusFile(directory);
             await checkServiceHost(directory);
+            await checkSelfInstall(directory);
             await checkSupervisor(directory);
             await checkProviders(directory);
             await checkClaudePlugin(directory);

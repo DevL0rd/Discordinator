@@ -44,9 +44,9 @@ export function systemItems(view: View): Item[] {
             ),
             actionItem(
                 'install-service',
-                service.installed ? 'Reinstall service' : 'Install service',
+                service.installed ? 'Reinstall Discordinator' : 'Install Discordinator',
                 { type: 'run', action: 'install-service' },
-                'Builds, then installs a user service',
+                'Installs its own copy, the discordinator command and a background service',
             ),
             ...(service.active
                 ? [

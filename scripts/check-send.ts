@@ -90,7 +90,7 @@ async function checkReplies(f: Fixture, sender: Sender, base: { content: string;
     assert.equal(reply.body.message_reference.message_id, ids.message, 'Replies with files stay in the request conversation');
     await sender.send({ eventId: f.event.id, content: 'Working on it', files: [], progress: true, idempotencyKey: 'reply-progress' });
     const progress = f.api.calls.at(-1)!;
-    assert.equal(progress.method, 'POST', 'Progress updates are posted, then fade');
+    assert.equal(progress.method, 'POST', 'After a reply with files, progress gets its own reply');
 }
 
 async function checkLocalFiles(root: string): Promise<void> {

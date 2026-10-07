@@ -39,7 +39,7 @@ function checkTitles(): void {
         ['password-confirm', {}, /Confirm/, 1],
         ['ai-review', {}, /Ready to save/, 1],
         ['connect', { choice: 'codex-local' }, /Connect Codex/, 2],
-        ['service', {}, /Keep Discordinator running/, 3],
+        ['service', {}, /Install Discordinator/, 3],
         ['verify', {}, /Make sure it works/, 3],
     ];
     for (const [step, patch, title, stage] of titles) {
@@ -100,7 +100,7 @@ function checkButtons(): void {
         [blank('ai-review'), ['Save', 'Back']],
         [blank('connect'), ['Continue']],
         [blank('connect', { error: 'Install failed.' }), ['Retry', 'Skip']],
-        [blank('service'), ['Skip', 'Install service', 'Back']],
+        [blank('service'), ['Skip', 'Install', 'Back']],
         [blank('verify'), ['Check again']],
         [blank('verify', { checks: [] }), ['Finish']],
         [blank('verify', { checks: [pending] }), ['Check again']],

@@ -22,16 +22,16 @@ export function desktopGuide(choice: ModelChoice = {}, self?: string): string {
         .filter(Boolean)
         .join(' ');
     const launch = flags
-        ? ` The owner chose how new chats run: start them with ${flags} (for example claude --bg ${flags} --name "<title>" "<brief>"), or the same model and effort in your session tools.`
+        ? ` The owner chose how new chats run: start them with ${flags} (for example claude --remote-control "<title>" ${flags} "<brief>"), or the same model and effort in your session tools.`
         : '';
     return [
         role('other Claude work'),
         quick,
-        'Big or long work you hand to a new Claude chat instead of doing it in this conversation: multi-step coding or refactors, research, builds, debugging sessions, anything likely to take more than a few minutes or many tool calls. Start it with your own tools: in Claude Desktop, your session tools start a new session and send it a message; otherwise `claude --bg --name "<title>" "<brief>"` starts a background agent.' +
+        'Big or long work you hand to a new Claude chat instead of doing it in this conversation: multi-step coding or refactors, research, builds, debugging sessions, anything likely to take more than a few minutes or many tool calls. Start it where the owner can see it, never as a background agent (no `claude --bg`): in Claude Desktop, your session tools start a new session in the Code tab and send it a message; otherwise open a new terminal window running `claude --remote-control "<title>" "<brief>"`, an interactive session the owner can also open from the Claude app.' +
             launch +
             ` Give it a short title and a complete brief: that it was started by Discordinator for a Discord request and who asked, the goal, the context and where things are, constraints, what done looks like, what they asked in their own words, and the Discord eventId. Tell it to report to you, not to Discord: a short update at real milestones, any question it needs answered, and its result when done, sent as a message to ${you} with its own tools for messaging other sessions. Only tell it to post in Discord itself when they explicitly asked for that. Then tell them in a sentence that it is started, and stay free to keep chatting.`,
         'When a chat you started reports back, decide what the requester needs to know and tell them in your own words with discord_send and that eventId: the result, a real blocker or a question for them, not every small step. Pass their answers back to it with a message to that session.',
-        'Before starting a new chat, check what is already running: your session tools list the sessions, and `claude agents --json` lists every Claude chat and background agent on this computer with its name, folder and whether it is busy. If one is already on that work, send it the follow-up instead of starting another.',
+        'Before starting a new chat, check what is already running: your session tools list the sessions, and `claude agents --json` lists every Claude chat on this computer with its name, folder and whether it is busy. If one is already on that work, send it the follow-up instead of starting another.',
         'When someone asks how something is going, whether it is done, what is running, or mentions work you are not doing in this conversation, it is most likely another Claude chat or agent. Look it up with those tools, read what it last did, and answer from that; never guess.',
         style,
     ].join('\n\n');

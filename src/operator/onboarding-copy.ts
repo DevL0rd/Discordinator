@@ -66,7 +66,7 @@ export function buttonsFor(state: State): string[] {
         'discord-review': state.identity ? ['Save', 'Back'] : ['Verify'],
         'ai-review': ['Save', 'Back'],
         connect: state.error ? ['Retry', 'Skip'] : ['Continue'],
-        service: ['Skip', 'Install service', 'Back'],
+        service: ['Skip', 'Install', 'Back'],
         verify: startable(state.checks) ? ['Finish'] : ['Check again'],
     };
     return sets[state.step] ?? [];
@@ -144,9 +144,9 @@ function copy(state: State): { title: string; body: string[] } {
             body: ['Discordinator connects it on this computer so it gets the Discord tools. Nothing to sign in to.'],
         }),
         service: () => ({
-            title: 'Keep Discordinator running',
+            title: 'Install Discordinator',
             body: [
-                'Optionally install Discordinator as a background service that starts when you log in.',
+                'Installs Discordinator with its own copy and a background service that starts when you log in. Afterwards, type discordinator in any terminal to open this app, and you can delete the folder you cloned.',
                 'A Discordinator you started by hand is never stopped.',
             ],
         }),
@@ -158,6 +158,7 @@ export function stepView(state: State, tick: number): StepView {
     const options = optionsFor(state);
     const view: StepView = { stage: stageOf[state.step], ...copy(state), selected: state.selected, tick, buttons: buttonsFor(state) };
     if (options) view.options = options;
+    if (state.step === 'ai') view.tags = choices.map((choice) => assistants[choice].tag);
     if (textSteps.includes(state.step)) view.input = { value: state.input, masked: maskedSteps.includes(state.step) };
     for (const key of ['notice', 'error', 'busy'] as const) if (state[key]) view[key] = state[key];
     return view;

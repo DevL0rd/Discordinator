@@ -248,7 +248,7 @@ async function checkReuse(harness: Harness): Promise<string> {
         snapshot: true,
     });
     assert.ok(events.every((event) => event.type !== 'progress' || !event.text.includes('private')));
-    assert.ok(events.some((event) => event.type === 'progress' && event.text.startsWith('-# Reading') && event.activity));
+    assert.ok(events.some((event) => event.type === 'progress' && event.text.startsWith('Reading') && event.activity));
     assert.ok(events.some((event) => event.type === 'progress' && event.text === 'hello' && !event.activity));
     return controller.id;
 }

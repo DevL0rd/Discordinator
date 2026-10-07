@@ -16,7 +16,7 @@ export interface ServiceHost {
     home: string;
     run: Runner;
 }
-const localHost = (): ServiceHost => ({ platform: process.platform, home: homedir(), run: runFile });
+export const localHost = (): ServiceHost => ({ platform: process.platform, home: homedir(), run: runFile });
 const quote = (value: string) => `"${value.replaceAll('\\', '\\\\').replaceAll('"', '\\"').replaceAll('%', '%%')}"`;
 
 export function serviceUnit(root: string, node: string, path: string): string {

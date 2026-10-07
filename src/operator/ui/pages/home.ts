@@ -109,6 +109,23 @@ function attention(view: View): Item[] {
     ];
 }
 
+function update(view: View): Item[] {
+    const state = view.extras.update;
+    if (state?.error) return [note('update-error', `${glyph.warn} Could not check for updates: ${state.error}`, color.amber)];
+    if (!state?.behind) return [];
+    const commits = `${state.behind} new commit${state.behind === 1 ? '' : 's'}`;
+    if (state.blocker) return [note('update-blocked', `${glyph.warn} Update available (${commits}). ${state.blocker}`, color.amber)];
+    return [
+        actionItem(
+            'update',
+            `⬆ Update and restart`,
+            { type: 'run', action: 'update' },
+            `${commits}, ${state.current} → ${state.latest} · press U`,
+            'good',
+        ),
+    ];
+}
+
 export function homeItems(view: View): Item[] {
     const recent = view.activity.slice(0, 5);
     return [
@@ -124,6 +141,7 @@ export function homeItems(view: View): Item[] {
         block('hero', (size, current) => [blank(), ...pipeline(current, size - 2).map((value) => line([span('  '), ...value.spans]))]),
         block('gap', () => [blank()]),
         primary(view),
+        ...update(view),
         block('tiles', (size, current) => [blank(), ...tiles(current, size)]),
         ...attention(view),
         heading('recent', 'Recent activity'),

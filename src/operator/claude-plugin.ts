@@ -12,6 +12,7 @@ const pluginId = `${plugin}@${marketplace}`;
 export interface PluginState {
     cli: boolean;
     marketplace: boolean;
+    path?: string;
     installed: boolean;
     enabled: boolean;
 }
@@ -65,11 +66,13 @@ export async function pluginState(run: Runner = runFile): Promise<PluginState> {
         const [plugins, marketplaces] = (await Promise.all([
             claudeJson(['plugin', 'list'], run),
             claudeJson(['plugin', 'marketplace', 'list'], run),
-        ])) as [{ id: string; enabled?: boolean }[], { name: string }[]];
+        ])) as [{ id: string; enabled?: boolean }[], { name: string; path?: string }[]];
         const installed = plugins.find((item) => item.id === pluginId);
+        const listed = marketplaces.find((item) => item.name === marketplace);
         return {
             cli: true,
-            marketplace: marketplaces.some((item) => item.name === marketplace),
+            marketplace: Boolean(listed),
+            ...(listed?.path ? { path: listed.path } : {}),
             installed: Boolean(installed),
             enabled: installed?.enabled !== false && Boolean(installed),
         };
@@ -98,12 +101,22 @@ export async function installPlugin(home = process.cwd(), run: Runner = runFile)
     let changed = false;
     for (const [path, value] of Object.entries(pluginFiles(resolve(home))))
         changed = (await writeIfChanged(join(root, path), value)) || changed;
-    const before = await pluginState(run);
+    let before = await pluginState(run);
     if (!before.cli) throw new Error('Claude Code is not installed or not signed in. Install it, run claude once, then try again.');
+    if (before.path && resolve(before.path) !== root) {
+        await removePlugin(run);
+        before = await pluginState(run);
+    }
     await register(root, before, changed, run);
     const after = await pluginState(run);
     if (!after.installed || !after.enabled) throw new Error('Claude did not report the Discordinator plugin as installed and enabled.');
     return 'Discordinator plugin installed in Claude Code. Start a Claude session to begin listening.';
+}
+
+export async function removePlugin(run: Runner = runFile): Promise<void> {
+    const state = await pluginState(run);
+    if (state.installed) await runClaude(['plugin', 'uninstall', pluginId], run);
+    if (state.marketplace) await runClaude(['plugin', 'marketplace', 'remove', marketplace], run);
 }
 
 export async function uninstallPlugin(run: Runner = runFile): Promise<string> {

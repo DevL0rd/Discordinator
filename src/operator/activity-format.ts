@@ -1,8 +1,20 @@
 export const fence = (code: string): string => `\`\`\`sh\n${code.replaceAll('```', "'''").slice(0, 1500)}\n\`\`\``;
 
-export function activityLine(label: string, code?: string): string {
-    const line = `-# ${label.replace(/\s+/g, ' ').trim().slice(0, 200)}`;
-    return code?.trim() ? `${line}\n${fence(code.trim())}` : line;
+export function activityLine(label: string): string {
+    return label.replace(/\s+/g, ' ').trim().slice(0, 200);
+}
+
+export function toolLabel(name: string): string {
+    const words = name
+        .replace(/^mcp__/, '')
+        .replace(/^plugin_[^_]+_/, '')
+        .split('__')
+        .at(-1)!
+        .replace(/[_-]+/g, ' ')
+        .replace(/([a-z])([A-Z])/g, '$1 $2')
+        .toLowerCase()
+        .trim();
+    return `Using ${words || 'a tool'}`;
 }
 
 export function progressPost(activity: boolean, text: string, quietSince: number, intervalSeconds: number): string | undefined {

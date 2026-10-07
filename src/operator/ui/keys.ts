@@ -53,6 +53,10 @@ function shortcut(store: Store, input: string, key: Key): boolean {
         r: () => void refresh(store, true).then(() => store.set((state) => logged(state, 'Settings and status reloaded.', 'idle'))),
         s: () => review(store),
         p: toggleActive,
+        u: () => {
+            const update = store.get().extras.update;
+            if (update?.behind && !update.blocker) run(store, 'update');
+        },
     };
     if (key.ctrl && input === 'c') quit(store);
     else if (/^[1-7]$/.test(input)) store.set((state) => goPage(state, pages[Number(input) - 1]!.id));

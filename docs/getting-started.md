@@ -22,10 +22,10 @@ Turn on **Settings → Advanced → Developer Mode** in Discord so you can copy 
 git clone https://github.com/DevL0rd/Discordinator.git discordinator
 cd discordinator
 npm ci --ignore-scripts
-npm run setup
+npm run discordinator
 ```
 
-`npm run setup` opens a full-screen terminal setup app that works with keyboard and mouse. On first run it is a short wizard:
+`npm run discordinator` opens a full-screen terminal setup app that works with keyboard and mouse. On first run it is a short wizard:
 
 | Step | What happens |
 | :-- | :-- |
@@ -35,21 +35,27 @@ npm run setup
 | Who answers | Choose the responder that answers new Discord messages. See [Operator](operator.md#responders). |
 | Domain and password | Only for **ChatGPT - Dot**, or when a public domain is already set: enter your public domain and choose the sign-in password that cloud apps use. |
 | Connect | For **Claude Code** or **Codex**, Discordinator connects it on this computer with nothing to sign in to. |
-| Background service | Optionally install the background user service so Discordinator starts when you log in. |
+| Install | Installs Discordinator: its own copy, the `discordinator` command and a background service that starts when you log in. See [Install, update and uninstall](operator.md#install). |
 | Check | Shows what is still missing. **Finish** starts the responder once everything else is ready. |
 
 If you quit part-way, setup resumes where you left off. After the wizard you land on the dashboard; [Operator](operator.md) explains every page.
 
 ## 3. Run Discordinator
 
-Either run it yourself:
+Install it from the wizard, the setup app's **System** page, or a terminal:
+
+```sh
+npm run discordinator -- install
+```
+
+From then on Discordinator runs from its own installed copy, so you can delete the folder you cloned, and `discordinator` in any terminal opens the setup app. [Install, update and uninstall](operator.md#install) covers where it lives, updates and removal.
+
+To try it without installing, run it in the foreground instead:
 
 ```sh
 npm run build
 npm start
 ```
-
-or install the background service from the setup app's **System** page. On Linux this is a systemd user service named `discordinator.service`. On macOS it is a launchd agent, `~/Library/LaunchAgents/com.github.devl0rd.discordinator.plist`, that starts when you log in and logs to `.data/service.log`. On Windows it starts hidden when you sign in, through your account's startup entries, with no admin rights needed, and logs to `.data/service.log`. Installing it never stops a Discordinator you started by hand.
 
 The responder you pick in the wizard starts when you choose **Finish**. Later, saving a different responder on the **Responder** page starts it. Press **p** on the setup app's **Home** page (or use Pause and Start) to pause and resume it.
 
@@ -57,7 +63,7 @@ The responder you pick in the wizard starts when you choose **Finish**. Later, s
 
 In your approved channel, mention the bot: `@Discordinator say hello`. You can also use a name trigger such as `disco, say hello` if name triggers are on. Your AI should reply in the same channel.
 
-Requests from Discord are always answered in the channel, thread or DM they came from. Before it uses any tool, the AI acknowledges in one short line. While it works, that line becomes a single status message that is edited in place with progress and activity (such as "Using a tool…"), and it is removed as soon as the answer arrives, or about 6 seconds after its last update, so only the answers stay; for `/discordinator` requests it is also private to you.
+Requests from Discord are always answered in the channel, thread or DM they came from. Before it uses any tool, the AI acknowledges in one short line. While it works, a status section under that acknowledgement is edited in place with its progress and activity (such as "Using a tool…"), and the section is removed as soon as the answer arrives, so the acknowledgement and the answers stay; for `/discordinator` requests progress is private to you.
 
 If you use **Another MCP app** or a client that polls, give it the [instructions for your AI](connection.md#instructions-for-your-ai).
 
