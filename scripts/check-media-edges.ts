@@ -3,7 +3,7 @@ import { join } from 'node:path';
 import { inspectFile } from '../src/media/formats.js';
 import { jumpUrl, matches, searchSchema, type Entry } from '../src/media/index.js';
 import { MediaService } from '../src/media/service.js';
-import { ProactiveUploads } from '../src/media/proactive.js';
+import { fileAccess, fileBucket, Uploads } from '../src/media/uploads.js';
 import { fixture, ids } from './fixtures.js';
 import { mediaFixture, message, png } from './check-media.js';
 
@@ -85,24 +85,21 @@ async function checkReads(directory: string): Promise<void> {
     await assert.rejects(media.read(input), /exceeds local file limit/);
 }
 
-function checkProactiveSessions(directory: string): void {
-    const f = fixture(join(directory, 'proactive-sessions.json'));
-    f.policy.config.proactive = [{ channelId: ids.channel, scopes: ['message.send'] }];
-    f.policy.config.media.enabled = true;
-    f.policy.config.scopes.push('media.write');
+function checkFileBucket(directory: string): void {
+    const f = fixture(join(directory, 'file-bucket.json'));
     let now = 0;
-    const proactive = new ProactiveUploads(f.policy, () => now);
-    const upload = { channelId: ids.channel, fileName: 'image.png', mimeType: 'image/png', size: png.length };
-    const first = proactive.begin({ ...upload, idempotencyKey: 'session-0' });
-    for (let index = 1; index < 16; index++) proactive.begin({ ...upload, idempotencyKey: `session-${index}` });
-    assert.throws(() => proactive.begin({ ...upload, idempotencyKey: 'session-16' }), /Upload session limit reached/);
-    f.policy.config.media.enabled = false;
-    assert.throws(() => proactive.ready(ids.channel, first.scopeId, [first.uploadId]), /Media is disabled/);
+    const uploads = new Uploads(fileAccess(f.policy), () => now);
+    const upload = { eventId: fileBucket, fileName: 'image.png', mimeType: 'image/png', size: png.length };
+    assert.throws(() => uploads.begin({ ...upload, idempotencyKey: 'bucket-scope' }), /Capability is not approved/);
+    f.policy.config.scopes.push('media.write');
+    assert.throws(() => uploads.begin({ ...upload, idempotencyKey: 'bucket-disabled' }), /Media is disabled/);
     f.policy.config.media.enabled = true;
+    const first = uploads.begin({ ...upload, idempotencyKey: 'bucket-0' });
+    for (let index = 1; index < 16; index++) uploads.begin({ ...upload, idempotencyKey: `bucket-${index}` });
+    assert.throws(() => uploads.begin({ ...upload, idempotencyKey: 'bucket-16' }), /limit reached/);
     now = 10 * 60_000;
-    assert.throws(() => proactive.ready(ids.channel, first.scopeId, [first.uploadId]), /begin a new upload/, 'Expired sessions end');
-    const fresh = proactive.begin({ ...upload, idempotencyKey: 'session-0' });
-    assert.notEqual(fresh.scopeId, first.scopeId, 'Expired sessions are pruned and their keys reusable');
+    assert.throws(() => uploads.get(fileBucket, first.uploadId), /expired/, 'Unsent uploads expire after ten minutes');
+    assert.notEqual(uploads.begin({ ...upload, idempotencyKey: 'bucket-0' }).uploadId, first.uploadId, 'Expired keys are reusable');
 }
 
 async function checkIndexBounds(directory: string): Promise<void> {
@@ -144,6 +141,6 @@ export async function checkMediaEdges(directory: string): Promise<void> {
     checkFilters();
     await checkHistory(directory);
     await checkReads(directory);
-    checkProactiveSessions(directory);
+    checkFileBucket(directory);
     await checkIndexBounds(directory);
 }

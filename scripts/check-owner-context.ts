@@ -29,7 +29,6 @@ async function checkContextReuse(f: ReturnType<typeof fixture>): Promise<void> {
 
 export async function checkOwnerContext(directory: string): Promise<void> {
     const f = fixture(join(directory, 'owner-context.json'));
-    f.policy.config.proactive = [{ channelId: ids.channel, scopes: ['message.send'] }];
     f.policy.config.scopes.push('interactions.write', 'messages.read', 'media.read');
     f.policy.config.context.enabled = true;
     f.policy.config.media.enabled = true;
@@ -41,10 +40,13 @@ export async function checkOwnerContext(directory: string): Promise<void> {
     assert.equal(queue.snapshot(0, 25).events.length, 0, 'Authorization does not fabricate a Discord event');
     assert.throws(() => queue.context(context.contextId), /unknown/);
     assert.throws(() => bridge.media.access.event(context.contextId), /Authenticated owner/);
+    f.policy.config.channels.blocked = [ids.other];
     await assert.rejects(
         bridge.withOwner(() => bridge.authorizeContext(ids.other, ids.user)),
-        /not approved/,
+        /Channel or thread is not approved/,
+        'Owner contexts follow the channel rules',
     );
+    f.policy.config.channels.blocked = [];
     await assert.rejects(
         bridge.withOwner(() => bridge.authorizeContext(ids.channel, ids.denied)),
         /whitelisted/,

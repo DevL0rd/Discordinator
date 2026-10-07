@@ -19,7 +19,6 @@
     ],
     "replyToBot": true
   },
-  "proactive": [],
   "context": {
     "enabled": false,
     "capture": "addressed",

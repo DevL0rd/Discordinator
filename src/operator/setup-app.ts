@@ -54,7 +54,6 @@ export async function runSetup(options: Partial<SetupApp> = {}): Promise<void> {
             stdout: app.stdout,
             exitOnCtrlC: false,
             patchConsole: true,
-            incrementalRendering: true,
         });
         await ink.waitUntilExit();
     } finally {

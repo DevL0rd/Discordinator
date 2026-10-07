@@ -61,6 +61,7 @@ function migratePolicy(value: unknown): unknown {
     const raw = { ...(value as Record<string, unknown>) };
     migrateScope(raw, 'guildScope', 'guildIds', 'servers');
     migrateScope(raw, 'channelScope', 'channelIds', 'channels');
+    delete raw.proactive;
     return raw;
 }
 const modelSlug = z
@@ -162,17 +163,6 @@ const policyObject = z
             .strict()
             .prefault({}),
         voice: voiceSchema.prefault({}),
-        proactive: z
-            .array(
-                z
-                    .object({
-                        channelId: snowflake,
-                        scopes: z.array(z.enum(['message.send'])).max(1),
-                    })
-                    .strict(),
-            )
-            .max(100)
-            .default([]),
     })
     .strict()
     .refine((policy) => !policy.ownerUserId || policy.allowedUserIds.includes(policy.ownerUserId), {

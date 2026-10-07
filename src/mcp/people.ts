@@ -5,7 +5,7 @@ import { snowflake } from '../core/config.js';
 import { describePerson, displayName, person, readableText, type Person } from '../core/directory.js';
 import type { BotEvent } from '../core/queue.js';
 import type { Principal } from '../events/security.js';
-import { requireOwner } from './proactive-media.js';
+import { requireOwner } from './owner.js';
 import { guarded } from './tools.js';
 
 export const userRef = z
@@ -18,11 +18,6 @@ export const userRef = z
 
 export async function resolveUser(bridge: Bridge, value: string, guildId?: unknown): Promise<string> {
     return snowflake.parse(await bridge.people.resolve(value, typeof guildId === 'string' ? guildId : undefined));
-}
-
-export async function resolveNotify<T extends { notifyUserId?: string | undefined }>(bridge: Bridge, args: T): Promise<T> {
-    const { notifyUserId, ...rest } = args;
-    return (notifyUserId ? { ...rest, notifyUserId: await resolveUser(bridge, notifyUserId) } : rest) as T;
 }
 
 export async function resolveUserArgs(bridge: Bridge, args: Record<string, unknown>): Promise<Record<string, unknown>> {

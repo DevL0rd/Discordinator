@@ -72,8 +72,8 @@ If epoch changes or latestCursor is lower than your cursor, reset after to zero.
 If gap is true, some events expired or were dropped; do not invent missing requests.
 Check droppedOnDedupeLimit for overload loss too.
 Handle only captured whitelisted triggers. Use the eventId for user-driven writes.
-Use discord_respond for the original destination or discord_dm for that same author.
-Never route a user response through discord_proactive_send to evade origin rules.
+Answer with discord_send and the eventId so the reply stays in its conversation.
+Never move a user's reply to another channel or DM to evade origin rules.
 Before executing a sensitive operation, show its exact preview to the originating
 user and wait for a new addressed Discord approval from that user in that channel.
 Repeat the exact original input/key with approvalId only after that confirmation.
@@ -100,4 +100,4 @@ For richer responses, use `context_recent`, `context_user` or `context_search` w
 
 ## Media and interactive handoff
 
-Use `media_search` for retained attachment metadata or `media_history` for an explicit history page/exact message. Read returned handles with `media_attachment_read`; assemble larger base64 chunks and verify SHA-256 in a capable client before editing. Small complete images also yield MCP image content, but automatic host download/editor attachment is not guaranteed. Return edited bytes through begin/chunk/seal upload tools and `discord_media_reply`, optionally linking verified sources. No caller URL/path is read. `discord_prompt` sends correlated buttons/selects or a modal launch button; poll child events and respond using their captured IDs. These controls never approve sensitive operations. See [files and controls](media-and-controls.md) for bounds and examples.
+Use `media_search` for retained attachment metadata or `media_history` for an explicit history page/exact message. Read returned handles with `media_attachment_read`; assemble larger base64 chunks and verify SHA-256 in a capable client before editing. Small complete images also yield MCP image content, but automatic host download/editor attachment is not guaranteed. Send edited files with `discord_send`: by `{ path }` from a local client (temp folder only) or by `{ uploadId }` after the begin/chunk/seal upload tools. No caller URL is read. `discord_prompt` sends correlated buttons/selects or a modal launch button; poll child events and respond using their captured IDs. These controls never approve sensitive operations. See [files and controls](media-and-controls.md) for bounds and examples.

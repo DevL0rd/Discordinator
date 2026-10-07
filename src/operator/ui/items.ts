@@ -51,13 +51,12 @@ const nouns: Record<string, [string, string]> = {
     'policy.servers.blocked': ['server', 'servers'],
     'policy.channels.allowed': ['channel', 'channels'],
     'policy.channels.blocked': ['channel', 'channels'],
-    'policy.proactive': ['channel', 'channels'],
 };
 function listText(field: SettingDefinition, value: unknown[]): string {
     if (field.choices?.length)
         return value.length === field.choices.length ? `All ${value.length}` : `${value.length} of ${field.choices.length}`;
     const [one, many] = nouns[field.id] ?? ['entry', 'entries'];
-    if (field.sensitive || field.kind === 'grants' || value.length > 3) return `${value.length} ${value.length === 1 ? one : many}`;
+    if (field.sensitive || value.length > 3) return `${value.length} ${value.length === 1 ? one : many}`;
     return value.join(', ');
 }
 const changed = (field: SettingDefinition, view: View) =>

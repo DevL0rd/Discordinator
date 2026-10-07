@@ -32,13 +32,13 @@ type SessionState = z.infer<typeof stateSchema>;
 function liveMessage(bridge: Bridge, event: BotEvent): string {
     return [
         requestText(bridge.policy, event),
-        `-> discord_respond with eventId "${event.id}"; post progress there if it takes a while.`,
+        `-> answer with discord_send with eventId "${event.id}"; for long work, send short updates with progress: true.`,
     ].join('\n');
 }
 
 const nudge = 'Please handle the pending Discord message above.';
 const greeting = (owner: string) =>
-    `This is the Discordinator conversation. Discordinator will deliver Discord messages here for you to answer with the discord_respond tool. Each one names its sender with their numeric ID.${owner ? ` ${owner}` : ''} Reply with: Ready.`;
+    `This is the Discordinator conversation. Discordinator will deliver Discord messages here for you to answer with the discord_send tool (pass the eventId you are given). Each one names its sender with their numeric ID.${owner ? ` ${owner}` : ''} Reply with: Ready.`;
 
 async function savedState(workspace: string): Promise<SessionState | undefined> {
     const parsed = stateSchema.safeParse(JSON.parse(await readFile(stateFile, 'utf8').catch(() => '{}')));

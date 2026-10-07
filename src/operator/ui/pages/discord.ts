@@ -61,10 +61,7 @@ export function discordItems(view: View): Item[] {
             settingItem('policy.triggers.matchNames', 'Respond to its name'),
             settingItem('policy.triggers.names', 'Names it answers to'),
         ]),
-        ...section('abilities', 'What it may do', '', [
-            settingItem('policy.scopes', 'Allowed abilities'),
-            settingItem('policy.proactive', 'Channels for standalone messages'),
-        ]),
+        ...section('abilities', 'What it may do', '', [settingItem('policy.scopes', 'Allowed abilities')]),
         ...section('advanced-reach', 'Advanced rules', 'Raw lists, including servers the bot is not in', [
             ...scopeItems(view, 'servers', 'server'),
             ...scopeItems(view, 'channels', 'channel'),

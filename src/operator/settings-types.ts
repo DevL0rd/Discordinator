@@ -1,6 +1,6 @@
 export type SettingsSource = 'operator' | 'policy' | 'environment';
 export type SettingsPage = 'responders' | 'models' | 'discord' | 'context' | 'media' | 'connections' | 'voice';
-type SettingKind = 'boolean' | 'integer' | 'text' | 'list' | 'choice' | 'grants';
+type SettingKind = 'boolean' | 'integer' | 'text' | 'list' | 'choice';
 export interface SettingDefinition {
     id: string;
     source: SettingsSource;

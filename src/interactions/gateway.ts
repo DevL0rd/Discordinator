@@ -10,6 +10,7 @@ import {
 import type { BotEvent, EventContext, EventInput, EventQueue } from '../core/queue.js';
 import type { Policy } from '../core/policy.js';
 import type { Flows } from './flows.js';
+import { fadeLater } from '../core/fade.js';
 import { interactionAuthor } from '../discord/observation.js';
 
 type Respondable = ButtonInteraction | StringSelectMenuInteraction | ModalSubmitInteraction | ChatInputCommandInteraction;
@@ -29,19 +30,27 @@ export async function captureInteraction(interaction: Respondable, input: EventI
             ...(payload.embeds ? { embeds: payload.embeds } : {}),
             ...(payload.files ? { files: payload.files.map((file) => ({ attachment: file.data, name: file.name })), attachments: [] } : {}),
         };
-        const reply = quiet
-            ? await interaction.followUp({
-                  content: payload.content,
-                  allowedMentions: { parse: [], repliedUser: false },
-                  components: payload.components,
-                  embeds: payload.embeds,
-                  files: payload.files?.map((file) => ({ attachment: file.data, name: file.name })),
-                  flags: MessageFlags.Ephemeral,
-              })
-            : await interaction.editReply(options);
+        const fleeting = payload.status === true;
+        const reply =
+            quiet || fleeting
+                ? await interaction.followUp({
+                      content: payload.content,
+                      allowedMentions: { parse: [], repliedUser: false },
+                      components: payload.components,
+                      embeds: payload.embeds,
+                      files: payload.files?.map((file) => ({ attachment: file.data, name: file.name })),
+                      flags: MessageFlags.Ephemeral,
+                  })
+                : await interaction.editReply(options);
+        if (fleeting) fadeLater(() => interaction.deleteReply(reply.id));
         return { id: reply.id, channel_id: reply.channelId };
     };
-    const event = queue.add(`interaction:${interaction.id}`, input, (text) => deliver({ content: text }), deliver);
+    const event = queue.add(
+        `interaction:${interaction.id}`,
+        input,
+        (text, status) => deliver({ content: text, ...(status ? { status } : {}) }),
+        deliver,
+    );
     if (!event) return null;
     eventId = event.id;
     ready = quiet && 'deferUpdate' in interaction ? interaction.deferUpdate() : interaction.deferReply({ flags: MessageFlags.Ephemeral });

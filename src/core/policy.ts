@@ -108,11 +108,22 @@ export class Policy {
         if (channelId !== origin.channelId) throw new Error('Response destination must match its captured event');
     }
 
+    private readonly dms = new Map<string, string>();
+
+    /** Remembers the DM channel with an approved person, so anything that may be sent to them can go there. */
+    noteDm(channelId: string, userId: string): void {
+        this.dms.set(channelId, userId);
+    }
+
+    dmUser(channelId: string): string | undefined {
+        return this.dms.get(channelId);
+    }
+
     assertProactive(channelId: string): void {
         this.assertScope('messages.write');
+        const dmUser = this.dms.get(channelId);
+        if (dmUser) return this.assertUser(dmUser);
         this.assertChannel(channelId);
-        const grant = this.config.proactive.find((item) => item.channelId === channelId);
-        if (!grant?.scopes.includes('message.send')) throw new Error('Proactive destination is not approved');
     }
 
     assertGuildAction(origin: Origin, guildId: string): void {

@@ -36,7 +36,7 @@ export async function checkChannel(directory: string): Promise<void> {
     try {
         const tools = (await localCall({ base, key }, 'tools/list')).tools as { name: string }[];
         assert.ok(
-            tools.some((tool) => tool.name === 'discord_respond'),
+            tools.some((tool) => tool.name === 'discord_send'),
             'the local key grants the owner tool surface',
         );
         await assert.rejects(localCall({ base, key: 'x'.repeat(43) }, 'tools/list'), /401/, 'a wrong key is refused');
@@ -77,7 +77,7 @@ function bridgeClient(child: ChildProcessWithoutNullStreams) {
 }
 
 const listed = (reply: Record<string, unknown>) =>
-    ((reply.result as { tools?: { name: string }[] } | undefined)?.tools ?? []).some((tool) => tool.name === 'discord_respond');
+    ((reply.result as { tools?: { name: string }[] } | undefined)?.tools ?? []).some((tool) => tool.name === 'discord_send');
 
 export async function checkBridgeProcess(directory: string): Promise<void> {
     const { config, http } = await localServer(`${directory}/bridge.json`);

@@ -6,7 +6,7 @@ import { describePerson } from '../core/directory.js';
 import type { Principal } from '../events/security.js';
 import type { VoiceService } from '../voice/service.js';
 import type { CallRecord } from '../voice/transcripts.js';
-import { requireOwner } from './proactive-media.js';
+import { requireOwner } from './owner.js';
 import { resolveUser, userRef } from './people.js';
 import { guarded } from './tools.js';
 

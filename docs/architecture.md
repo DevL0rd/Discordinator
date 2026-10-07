@@ -49,7 +49,7 @@ Every mutation resolves a live server-owned event ID, rechecks the user and capa
 
 Sensitive operations are marked in their definition. Missing approval returns a preview, not a Discord mutation. Approvals are bounded to 100 outstanding entries and expire after two minutes. Only a new whitelisted, triggered Discord event in the same channel from the same actor confirms one. The approval binds operation name, normalized arguments, original event ID and idempotency key; changed input or another origin is rejected. Successful execution consumes the approval. Nothing exposes a tool to mark approval as confirmed.
 
-Configuration is local. The runtime is event-driven: it watches its settings files for saved changes (such as responder settings and approved people) and reacts to Discord events as they arrive, with no polling loop. `blocklist` server/channel modes are an explicit operator choice. They do not change whitelist/trigger checks, capability grants, approval rules or proactive grants. Message visibility remains governed by Discord channel permissions; requester authorization is not message audience isolation.
+Configuration is local. The runtime is event-driven: it watches its settings files for saved changes (such as responder settings and approved people) and reacts to Discord events as they arrive, with no polling loop. `blocklist` server/channel modes are an explicit operator choice. They do not change whitelist/trigger checks, capability grants or approval rules; owner messages follow the same server and channel rules as replies. Message visibility remains governed by Discord channel permissions; requester authorization is not message audience isolation.
 
 ## Bounds and failure handling
 

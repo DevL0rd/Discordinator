@@ -3,7 +3,7 @@ import { createHash } from 'node:crypto';
 import { snowflake } from '../core/config.js';
 import { MediaAccess } from './access.js';
 import { AttachmentIndex, messageSchema, matches, searchSchema, type Entry } from './index.js';
-import { Uploads } from './uploads.js';
+import { fileAccess, Uploads } from './uploads.js';
 import { attachmentUrl, downloader, type Downloader } from './download.js';
 import { inspectFile } from './formats.js';
 
@@ -32,7 +32,7 @@ export class MediaService {
         readonly download: Downloader = downloader(),
     ) {
         this.index = new AttachmentIndex(access);
-        this.uploads = new Uploads(access);
+        this.uploads = new Uploads(fileAccess(access.policy));
     }
     async history(value: z.infer<typeof historySchema>) {
         const input = historySchema.parse(value);

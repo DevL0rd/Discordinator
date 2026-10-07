@@ -4,6 +4,7 @@ import type { Person } from '../core/directory.js';
 import type { Policy } from '../core/policy.js';
 import type { BotEvent, Delivery, EventQueue } from '../core/queue.js';
 import { Triggers } from '../core/triggers.js';
+import { fadeLater } from '../core/fade.js';
 import type { CallSession } from './call.js';
 
 export async function postToCall(api: Api, channelId: string, payload: Delivery): Promise<{ id: string; channel_id: string }> {
@@ -90,6 +91,7 @@ export class VoiceRequests {
         const tell = !quiet && Boolean(payload.content);
         const posted =
             spokenOnly(payload) && this.speaks(session) ? { spoken: tell } : await postToCall(this.api, session.call.channelId, payload);
+        if (quiet && 'id' in posted) fadeLater(() => this.api.delete(`/channels/${posted.channel_id}/messages/${posted.id}`));
         if (tell) this.result(session, eventId, actorId, payload.content);
         return posted;
     }

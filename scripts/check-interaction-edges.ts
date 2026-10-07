@@ -1,3 +1,5 @@
+import { until } from './discord-fakes.js';
+import { fade } from '../src/core/fade.js';
 import assert from 'node:assert/strict';
 import { join } from 'node:path';
 import type { ButtonInteraction } from 'discord.js';
@@ -40,6 +42,7 @@ function fakeInteraction(id: string) {
         deferUpdate: record('deferUpdate'),
         editReply: record('editReply'),
         followUp: record('followUp'),
+        deleteReply: record('deleteReply'),
     };
     return { interaction: interaction as unknown as ButtonInteraction, calls };
 }
@@ -64,6 +67,14 @@ async function checkCapture(directory: string): Promise<void> {
     assert.deepEqual(edited.value?.attachments, [], 'Uploaded files replace earlier attachments');
     assert.deepEqual(edited.value?.files, [{ attachment: payload.files[0]!.data, name: 'result.txt' }]);
     assert.equal(await captureInteraction(loud.interaction, input, f.policy, f.queue), null, 'Duplicate interactions are ignored');
+    fade.ms = 10;
+    try {
+        await f.queue.context(event.id).respond!('Working: reading files', true);
+        assert.equal(loud.calls.at(-1)!.method, 'followUp', 'A progress update is its own private message, not the answer');
+        await until(() => loud.calls.at(-1)!.method === 'deleteReply', 'the progress update disappears');
+    } finally {
+        fade.ms = 6000;
+    }
     const quiet = fakeInteraction('900000000000000002');
     const captured = (await captureInteraction(quiet.interaction, input, f.policy, f.queue, true))!;
     assert.equal(quiet.calls[0]!.method, 'deferUpdate');

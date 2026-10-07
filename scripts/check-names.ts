@@ -156,13 +156,13 @@ async function checkPeopleTool(call: ReturnType<typeof caller>): Promise<void> {
 
 async function checkNamedTools(call: ReturnType<typeof caller>, f: Fixture): Promise<void> {
     const dms = () => f.api.calls.filter((item) => item.route === '/users/@me/channels');
-    const tie = await call('discord_proactive_dm', { userId: 'DevL0rd', content: 'secrets', idempotencyKey: 'names-tie' });
+    const tie = await call('discord_send', { userId: 'DevL0rd', content: 'secrets', idempotencyKey: 'names-tie' });
     assert.equal(tie.failed, true);
     assert.match(tie.text, /matches 2 people/);
-    const spoofed = await call('discord_proactive_dm', { userId: impostor, content: 'secrets', idempotencyKey: 'names-spoof' });
+    const spoofed = await call('discord_send', { userId: impostor, content: 'secrets', idempotencyKey: 'names-spoof' });
     assert.equal(spoofed.failed, true, 'The impostor ID is still not approved');
     assert.equal(dms().length, 0, 'No DM channel was opened for an ambiguous or unapproved name');
-    const named = await call('discord_proactive_dm', { userId: 'Sam', content: 'Build finished', idempotencyKey: 'names-sam' });
+    const named = await call('discord_send', { userId: 'Sam', content: 'Build finished', idempotencyKey: 'names-sam' });
     assert.equal(named.failed, false, named.text);
     assert.deepEqual(dms()[0]?.body, { recipient_id: sam });
     f.policy.config.scopes.push('members.read');

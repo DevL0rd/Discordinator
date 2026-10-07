@@ -15,6 +15,7 @@ export interface Delivery {
     files?: { data: Buffer; name: string; contentType: string }[];
     components?: import('discord.js').APIActionRowComponent<import('discord.js').APIComponentInMessageActionRow>[];
     embeds?: import('discord.js').APIEmbed[];
+    status?: boolean;
 }
 export interface BotEvent extends EventInput {
     id: string;

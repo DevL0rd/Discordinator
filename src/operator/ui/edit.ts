@@ -36,7 +36,6 @@ export function initialInput(field: SettingDefinition, drafts: Documents): strin
     const value = settingValue(drafts[field.source], field);
     if (field.credential) return '';
     if (field.id === 'environment.DISCORDINATOR_RESOURCE_URL') return publicDomain(value);
-    if (field.kind === 'grants') return JSON.stringify(value ?? []);
     if (Array.isArray(value)) return value.join(', ');
     return scalar(value);
 }
@@ -48,7 +47,6 @@ export function editHint(field: SettingDefinition): string {
     if (field.kind === 'integer')
         return `A whole number${field.minimum !== undefined ? ` from ${field.minimum}` : ''}${field.maximum !== undefined ? ` to ${field.maximum}` : ''}.`;
     if (field.kind === 'list') return 'Separate entries with commas.';
-    if (field.kind === 'grants') return 'A JSON list like [{"channelId":"…","scopes":["message.send"]}].';
     return '';
 }
 
@@ -56,13 +54,6 @@ function parseDomain(value: string): string {
     const error = value ? domainError(value) : undefined;
     if (error) throw new Error(error);
     return value;
-}
-function parseJson(value: string): unknown {
-    try {
-        return JSON.parse(value || '[]');
-    } catch {
-        throw new Error('That is not valid JSON.');
-    }
 }
 const parsers: Partial<Record<SettingDefinition['kind'], (value: string) => unknown>> = {
     integer: (value) => {
@@ -75,7 +66,6 @@ const parsers: Partial<Record<SettingDefinition['kind'], (value: string) => unkn
             .split(',')
             .map((item) => item.trim())
             .filter(Boolean),
-    grants: parseJson,
 };
 
 function parse(field: SettingDefinition, input: string): unknown {

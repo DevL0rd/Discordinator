@@ -7,7 +7,8 @@ import { MediaAccess } from '../src/media/access.js';
 import { MediaService } from '../src/media/service.js';
 import { attachmentUrl, collect, downloader } from '../src/media/download.js';
 import { inspectFile } from '../src/media/formats.js';
-import { Uploads } from '../src/media/uploads.js';
+import { fileBucket, Uploads } from '../src/media/uploads.js';
+import { Sender } from '../src/core/sender.js';
 import { AttachmentIndex, searchSchema } from '../src/media/index.js';
 
 export const png = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+j5WQAAAAASUVORK5CYII=', 'base64');
@@ -55,7 +56,7 @@ async function checkUploads(file: string): Promise<void> {
     const f = mediaFixture(file);
     const uploads = f.bridge.media.uploads;
     const input = {
-        eventId: f.event.id,
+        eventId: fileBucket,
         fileName: 'image.png',
         mimeType: 'image/png',
         size: png.length,
@@ -66,23 +67,24 @@ async function checkUploads(file: string): Promise<void> {
     assert.equal(uploads.begin(input).uploadId, started.uploadId);
     assert.throws(() => uploads.begin({ ...input, sha256: 'a'.repeat(64) }));
     assert.throws(() => uploads.begin({ ...input, fileName: '../private.png' }));
-    const chunk = { eventId: f.event.id, uploadId: started.uploadId, offset: 0, base64: png.toString('base64') };
+    const chunk = { eventId: fileBucket, uploadId: started.uploadId, offset: 0, base64: png.toString('base64') };
     assert.throws(() => uploads.chunk({ ...chunk, offset: 1 }));
     assert.throws(() => uploads.chunk({ ...chunk, base64: `${chunk.base64}\n` }));
-    await assert.rejects(() => uploads.seal(f.event.id, started.uploadId));
+    await assert.rejects(() => uploads.seal(fileBucket, started.uploadId));
     uploads.chunk(chunk);
     uploads.chunk(chunk);
     assert.throws(() => uploads.chunk({ ...chunk, base64: Buffer.alloc(png.length).toString('base64') }));
-    await uploads.seal(f.event.id, started.uploadId);
-    const reply = {
-        eventId: f.event.id,
-        content: 'Edited image',
-        uploadIds: [started.uploadId],
-        sourceIds: [],
-        idempotencyKey: 'media-reply-fixture',
-    };
-    await f.bridge.mediaReply(reply);
-    await f.bridge.mediaReply(reply);
+    await uploads.seal(fileBucket, started.uploadId);
+    const sender = new Sender(f.bridge);
+    const reply = () =>
+        sender.send({
+            eventId: f.event.id,
+            content: 'Edited image',
+            files: uploads.ready(fileBucket, [started.uploadId]),
+            idempotencyKey: 'media-reply-fixture',
+        });
+    await reply();
+    await reply();
     assert.equal(f.api.calls.length, 0);
     assert.equal(f.bridge.api instanceof FakeApi, true);
     const call = (f.bridge.api as FakeApi).calls[0]!;
@@ -91,10 +93,20 @@ async function checkUploads(file: string): Promise<void> {
     assert.ok(multipart.files[0]!.data.equals(png));
     assert.deepEqual(multipart.body.allowed_mentions, { parse: [], replied_user: false });
     assert.deepEqual(multipart.body.message_reference, { message_id: ids.message, fail_if_not_exists: true });
+    assert.throws(() => uploads.get(f.event.id, started.uploadId), /bound to another event/);
     const denied = f.queue.add('denied-media', { ...f.event, actorId: ids.denied })!;
-    assert.throws(() => uploads.get(denied.id, started.uploadId));
+    await assert.rejects(
+        () =>
+            sender.send({
+                eventId: denied.id,
+                content: 'Nope',
+                files: uploads.ready(fileBucket, [started.uploadId]),
+                idempotencyKey: 'media-denied',
+            }),
+        /whitelisted/,
+    );
     assert.equal((f.bridge.api as FakeApi).calls.length, 1);
-    checkUploadLimits(f, input);
+    checkUploadLimits(f, { ...input, eventId: f.event.id });
 }
 
 function checkUploadLimits(f: ReturnType<typeof mediaFixture>, input: Parameters<Uploads['begin']>[0]): void {
@@ -210,27 +222,11 @@ async function checkFormats(): Promise<void> {
     await assert.rejects(() => inspectFile(giant, 'test.png', 'image/png'));
 }
 
-async function checkSourceReply(file: string): Promise<void> {
+async function checkRevokedHistory(file: string): Promise<void> {
     const f = mediaFixture(file);
     const record = { ...message(), id: ids.other };
     f.bridge.api.get = () => Promise.resolve(record);
     f.bridge.media.index.ingest(record, ids.guild, false);
-    const found = await f.bridge.media.index.search(searchSchema.parse({ eventId: f.event.id }));
-    const sourceId = found.attachments[0]!.sourceId;
-    const input = {
-        eventId: f.event.id,
-        content: 'Source attached',
-        sourceIds: [sourceId],
-        uploadIds: [],
-        idempotencyKey: 'linked-source-reply',
-    };
-    await f.bridge.mediaReply(input);
-    const sent = (f.bridge.api as FakeApi).calls[0]!.body as { body: { content: string; message_reference: { message_id: string } } };
-    assert.ok(sent.body.content.includes(`https://discord.com/channels/${ids.guild}/${ids.channel}/${ids.other}`));
-    assert.equal(sent.body.message_reference.message_id, ids.message);
-    record.author.id = ids.user;
-    await assert.rejects(() => f.bridge.mediaReply({ ...input, idempotencyKey: 'source-changed-reply' }));
-    assert.equal((f.bridge.api as FakeApi).calls.length, 1);
     const media = new MediaService(f.access, () => {
         f.policy.config.allowedUserIds = [];
         return Promise.resolve(png);
@@ -274,7 +270,7 @@ export async function checkMedia(directory: string): Promise<void> {
     await checkUploads(`${directory}/media-upload.json`);
     await checkLookup(`${directory}/media-lookup.json`);
     await checkRetrieval(`${directory}/media-read.json`);
-    await checkSourceReply(`${directory}/media-source.json`);
+    await checkRevokedHistory(`${directory}/media-source.json`);
     await checkFormats();
     await checkDownload();
 }

@@ -7,7 +7,7 @@ type Entry = { type?: string; message?: { content?: unknown } };
 type Block = Record<string, unknown>;
 export type ActivityHooks = { pickedUp?(eventId: string): void; replied?(eventId: string): void };
 const quiet = /discord|ToolSearch|TodoWrite/i;
-const quoted = /discord_respond with eventId "([^"]+)"/g;
+const quoted = /discord_send with eventId "([^"]+)"/g;
 
 function parse(line: string): Entry | undefined {
     try {
@@ -38,7 +38,8 @@ function steps(entry: Entry): string[] {
 function replies(entry: Entry): string[] {
     return toolUses(entry).flatMap((block) => {
         const input = block.input && typeof block.input === 'object' ? (block.input as Block) : {};
-        return /discord_respond$/.test(block.name as string) && typeof input.eventId === 'string' ? [input.eventId] : [];
+        const final = /discord_send$/.test(block.name as string) && input.progress !== true;
+        return final && typeof input.eventId === 'string' ? [input.eventId] : [];
     });
 }
 

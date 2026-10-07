@@ -10,16 +10,15 @@ import type { ScopeList } from './config.js';
 import type { AccessContext, Delivery, EventContext, EventQueue } from './queue.js';
 import { MediaAccess } from '../media/access.js';
 import { MediaService } from '../media/service.js';
-import { jumpUrl } from '../media/index.js';
 import { Flows } from '../interactions/flows.js';
 import type { Journal } from './journal.js';
 import { ContextIndex } from './context.js';
 import { Directory } from './directory.js';
 import type { Approvals } from './approvals.js';
 import type { ReplyOrigins } from './reply-origins.js';
-import { ProactiveUploads } from '../media/proactive.js';
 import { splitMessage } from '../operator/message-split.js';
 import { peopleRevision } from '../operator/people.js';
+import { fadeLater } from './fade.js';
 
 export type Rich = { content: string; embeds?: import('discord.js').APIEmbed[] };
 export interface MutationInput {
@@ -36,7 +35,6 @@ export class Bridge {
     readonly people: Directory;
     readonly media: MediaService;
     readonly flows: Flows;
-    readonly proactiveUploads: ProactiveUploads;
     readonly replyOrigins: ReplyOrigins | undefined;
     readonly replyJournal: Journal;
     voice?: import('../voice/service.js').VoiceService;
@@ -56,7 +54,6 @@ export class Bridge {
         this.context.directory = this.people = new Directory(policy, api);
         this.media = new MediaService(new MediaAccess(policy, queue, api));
         this.flows = new Flows(policy, queue, api);
-        this.proactiveUploads = new ProactiveUploads(policy);
     }
 
     withOwner<T>(action: () => T): T {
@@ -145,10 +142,12 @@ export class Bridge {
             const context = await this.replyEvent(input.eventId);
             this.policy.assertResponse(context.event, context.event.channelId);
             if ((input.embeds?.length && context.deliver) || context.respond) return this.interactionReply(context, input, input.status);
-            return this.send(context.event.channelId, input, input.idempotencyKey, {
+            const sent = await this.send(context.event.channelId, input, input.idempotencyKey, {
                 ...(input.status ? {} : { replyTo: context.event.messageId }),
                 ...(input.notifyRequester ? { notify: context.event.actorId } : {}),
             });
+            if (input.status) fadeLater(() => this.api.delete(`/channels/${sent.channel_id}/messages/${sent.id}`));
+            return sent;
         });
     }
 
@@ -160,19 +159,6 @@ export class Bridge {
                 : await context.respond!(head, quiet);
         if (rest.length) await this.send(context.event.channelId, { content: rest.join('\n') }, `${input.idempotencyKey}:rest`);
         return project(reply);
-    }
-
-    async mediaReply(input: MutationInput & { content: string; uploadIds: string[]; sourceIds: string[] }): Promise<unknown> {
-        this.media.access.event(input.eventId, true);
-        const files = this.media.uploads.ready(input.eventId, input.uploadIds);
-        const fingerprint = { ...input, operation: 'media_reply', files: files.map((file) => ({ name: file.name, sha256: file.sha256 })) };
-        return this.journal.execute(input.idempotencyKey, fingerprint, async () => {
-            this.media.access.event(input.eventId, true);
-            const sources = await Promise.all(input.sourceIds.map((id) => this.media.fresh(input.eventId, id)));
-            const content = [input.content, ...sources.map((source) => `<${jumpUrl(source)}>`)].filter(Boolean).join('\n');
-            if (content.length > 2000 || (!content && !files.length)) throw new Error('Reply is empty or exceeds Discord content limit');
-            return this.deliver(input.eventId, { content, files }, input.idempotencyKey);
-        });
     }
 
     async prompt(input: MutationInput & import('../interactions/schema.js').Prompt): Promise<unknown> {
@@ -237,24 +223,13 @@ export class Bridge {
         return { id: result.id, channel_id: result.channel_id };
     }
 
-    async dm(input: MutationInput & Rich): Promise<unknown> {
-        await this.replyEvent(input.eventId);
-        this.policy.assertScope('messages.write');
-        return this.journal.execute(input.idempotencyKey, { operation: 'dm', ...input }, async () => {
-            const context = await this.replyEvent(input.eventId);
-            this.policy.assertUser(context.event.actorId);
-            const dm = (await this.api.post('/users/@me/channels', { recipient_id: context.event.actorId })) as { id: string };
-            await this.replyEvent(input.eventId);
-            return this.send(dm.id, input, input.idempotencyKey);
-        });
-    }
-
     async proactiveDm(input: Rich & { userId: string; idempotencyKey: string }): Promise<unknown> {
         this.policy.assertUser(input.userId);
         this.policy.assertScope('messages.write');
         return this.replyJournal.execute(input.idempotencyKey, { operation: 'proactive_dm', ...input }, async () => {
             this.policy.assertUser(input.userId);
             const dm = (await this.api.post('/users/@me/channels', { recipient_id: input.userId })) as { id: string };
+            this.policy.noteDm(dm.id, input.userId);
             return this.send(dm.id, input, input.idempotencyKey);
         });
     }
@@ -271,51 +246,12 @@ export class Bridge {
         });
     }
 
-    async proactiveMedia(input: {
-        channelId: string;
-        scopeId: string;
-        uploadIds: string[];
-        content: string;
-        idempotencyKey: string;
-        notifyUserId?: string;
-    }): Promise<unknown> {
-        this.policy.assertProactive(input.channelId);
-        if (input.notifyUserId) this.policy.assertUser(input.notifyUserId);
-        const files = this.proactiveUploads.ready(input.channelId, input.scopeId, input.uploadIds);
-        if (!files.length && !input.content) throw new Error('Message is empty');
-        const fingerprint = {
-            ...input,
-            operation: 'proactive_media',
-            files: files.map((file) => ({ name: file.name, sha256: file.sha256 })),
-        };
-        return this.replyJournal.execute(input.idempotencyKey, fingerprint, async () => {
-            this.policy.assertProactive(input.channelId);
-            if (input.notifyUserId) this.policy.assertUser(input.notifyUserId);
-            await this.api.channel(input.channelId);
-            this.proactiveUploads.ready(input.channelId, input.scopeId, input.uploadIds);
-            const nonce = createHash('sha256').update(input.idempotencyKey).digest('hex').slice(0, 24);
-            return project(
-                await this.api.postFiles(
-                    `/channels/${input.channelId}/messages`,
-                    {
-                        content: withMention(input.content, { notify: input.notifyUserId }),
-                        allowed_mentions: input.notifyUserId ? { ...mentions, users: [input.notifyUserId] } : mentions,
-                        nonce,
-                        enforce_nonce: true,
-                        attachments: files.map((file, id) => ({ id, filename: file.name })),
-                    },
-                    files,
-                ),
-            );
-        });
-    }
-
     private async send(
         channelId: string,
         message: Rich,
         key: string,
         options: { replyTo?: string; notify?: string } = {},
-    ): Promise<unknown> {
+    ): Promise<{ id: string; channel_id: string; parts?: number }> {
         if (!message.content && !message.embeds?.length) throw new Error('A message needs text or at least one embed');
         const text = withMention(message.content, options);
         const parts = text ? splitMessage(text) : [''];
@@ -340,7 +276,6 @@ export class Bridge {
             approvedPeopleRevision: peopleRevision(this.policy.config.allowedUserIds),
             scopes: this.policy.config.scopes,
             operationCount: operations.length,
-            proactiveDestinationCount: this.policy.config.proactive.length,
             autonomousWake: false,
         };
     }

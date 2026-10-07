@@ -61,11 +61,11 @@ async function checkCalls(): Promise<void> {
     });
     const endpoint = { base: server.base, key: localKey };
     try {
-        assert.deepEqual(await localCall(endpoint, 'stream', { name: 'discord_respond' }), { streamed: true });
+        assert.deepEqual(await localCall(endpoint, 'stream', { name: 'discord_send' }), { streamed: true });
         const sent = server.received[0]!;
         assert.equal(sent.headers.authorization, `Bearer ${localKey}`);
-        assert.equal(sent.headers['mcp-name'], 'discord_respond');
-        assert.equal((JSON.parse(sent.body) as { params: { name: string } }).params.name, 'discord_respond');
+        assert.equal(sent.headers['mcp-name'], 'discord_send');
+        assert.equal((JSON.parse(sent.body) as { params: { name: string } }).params.name, 'discord_send');
         assert.deepEqual(await localCall(endpoint, 'bare'), { bare: true });
         assert.equal(server.received[1]!.headers['mcp-name'], undefined, 'Calls without a tool name omit Mcp-Name');
         assert.equal(await localCall(endpoint, 'silent'), undefined, 'A stream without data has no result');

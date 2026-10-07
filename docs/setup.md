@@ -32,7 +32,7 @@ See [configuration](configuration.md#policy-defaults) for every policy field and
 
 To avoid listing IDs, set `servers.mode` and `channels.mode` to `blocklist`. This allows every current and future server and channel the bot can access, except IDs in `blocked`. Blocked IDs always win, and an empty allowlist allows nothing. The whitelist stays exact and mandatory. Capability scopes stay explicit. Approved event provenance still constrains each mutation. The authenticated `discord_guilds_list` tool can discover guild IDs; `discord_channels_list` can discover channels. Discord permissions can make otherwise approved resources inaccessible.
 
-DM origins bypass server/channel rules because they have no guild, but still require a whitelisted author and an explicit trigger. Guild-only operations do not work on a DM. `discord_dm` targets only the originating author. A configured proactive destination must be a guild channel permitted by both the server and channel rules and have its own grant.
+DM origins bypass server/channel rules because they have no guild, but still require a whitelisted author and an explicit trigger. Guild-only operations do not work on a DM. Owner messages sent with `discord_send` can go to any guild channel permitted by the server and channel rules, or to an approved person's DM; there is no separate list.
 
 In allowlist mode, a newly created channel or thread is **not** automatically added. Add its ID before using it. Blocklist mode includes it if Discord permits access.
 

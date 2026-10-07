@@ -126,15 +126,6 @@ export const policySettings = [
             maxItems: 10,
             defaultValue: [],
         },
-        {
-            path: 'proactive',
-            label: 'Proactive destinations',
-            description: 'Reviewed channel-specific message.send grants; not a replacement for request authorization.',
-            kind: 'grants',
-            maxItems: 100,
-            defaultValue: [],
-            sensitive: true,
-        },
     ]),
     ...group('policy', 'context', 'live', [
         {

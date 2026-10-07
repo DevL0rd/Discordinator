@@ -103,7 +103,7 @@ async function checkRouter(directory: string, sessionId: string, socket: string,
         await router.route(f.event);
         const text = (JSON.parse((await second.received).trim().split('\n').at(-1)!) as { message: { content: string } }).message.content;
         assert.match(text, new RegExp(`eventId "${f.event.id}"`), 'Discord context reaches the session');
-        assert.match(text, /discord_respond/);
+        assert.match(text, /discord_send/);
         await second.close();
         let repeated = false;
         const third = await inbox(socket, () => (repeated = true));
@@ -120,7 +120,7 @@ const tool = (name: string, input: Record<string, unknown>) =>
 const delivered = (eventId: string) =>
     JSON.stringify({
         type: 'user',
-        message: { role: 'user', content: `Discord · DM\nhi\n-> discord_respond with eventId "${eventId}"; post progress` },
+        message: { role: 'user', content: `Discord · DM\nhi\n-> discord_send with eventId "${eventId}"; post progress` },
     });
 const usage = JSON.stringify({ type: 'assistant', message: { model: 'claude-opus-5-5', usage: { input_tokens: 100_000 }, content: [] } });
 
@@ -131,7 +131,7 @@ async function until(predicate: () => boolean): Promise<void> {
 
 export async function checkSessionActivity(directory: string): Promise<void> {
     assert.deepEqual(transcriptSteps(tool('Bash', { command: 'npm test' })), ['-# Running\n```sh\nnpm test\n```']);
-    assert.deepEqual(transcriptSteps(tool('mcp__discordinator__discord_respond', {})), [], 'Discord replies are not echoed as activity');
+    assert.deepEqual(transcriptSteps(tool('mcp__discordinator__discord_send', {})), [], 'Discord replies are not echoed as activity');
     assert.deepEqual(transcriptSteps('not json'), []);
     const path = join(directory, 'activity.jsonl');
     await writeFile(path, `${tool('Bash', { command: 'old' })}\n`);
@@ -159,7 +159,7 @@ export async function checkSessionActivity(directory: string): Promise<void> {
     await appendFile(path, `${delivered('event-2')}\n${tool('Read', { file_path: '/repo/b.ts' })}\n`);
     await until(() => posted.length === 3);
     assert.equal(posted[2], 'event-2:-# Reading b.ts', 'steps follow the message Claude is working on');
-    await appendFile(path, `${tool('mcp__discordinator__discord_respond', { eventId: 'event-1' })}\n${usage}\n`);
+    await appendFile(path, `${tool('mcp__discordinator__discord_send', { eventId: 'event-1' })}\n${usage}\n`);
     await until(() => replied.length === 1);
     assert.deepEqual(picked, ['event-1', 'event-2']);
     assert.deepEqual(replied, ['event-1']);

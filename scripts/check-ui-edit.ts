@@ -17,11 +17,9 @@ const policyOf = (id: string, input: string | string[]) => stage(drafts(), setti
 
 function checkInitialInput(): void {
     const documents = drafts();
-    documents.policy.proactive = [{ channelId: '1', scopes: ['message.send'] }];
     documents.policy.triggers = { ...(documents.policy.triggers as object), names: ['dot', 'bot'] };
     assert.equal(initialInput(setting('environment.DISCORD_BOT_TOKEN'), documents), '', 'credentials start empty');
     assert.equal(initialInput(setting('environment.DISCORDINATOR_RESOURCE_URL'), documents), 'bot.example.com');
-    assert.equal(initialInput(setting('policy.proactive'), documents), '[{"channelId":"1","scopes":["message.send"]}]', 'grants are JSON');
     assert.equal(initialInput(setting('policy.triggers.names'), documents), 'dot, bot', 'lists are comma separated');
     assert.equal(initialInput(setting('policy.context.perChannel'), documents), '50', 'numbers are shown as text');
 }
@@ -33,16 +31,11 @@ function checkHints(): void {
     const open: SettingDefinition = { ...setting('policy.context.perChannel'), minimum: undefined, maximum: undefined };
     assert.equal(editHint(open), 'A whole number.', 'unbounded numbers do not mention limits');
     assert.equal(editHint(setting('policy.triggers.names')), 'Separate entries with commas.');
-    assert.match(editHint(setting('policy.proactive')), /JSON list/);
     assert.equal(editHint(setting('operator.instructions')), '');
 }
 
 function checkParsing(): void {
     assert.deepEqual((policyOf('policy.triggers.names', ' dot , ,bot ').triggers as { names: string[] }).names, ['dot', 'bot']);
-    assert.deepEqual(policyOf('policy.proactive', '').proactive, [], 'an empty grant list is allowed');
-    assert.deepEqual(policyOf('policy.proactive', '[{"channelId":"1","scopes":[]}]').proactive, [{ channelId: '1', scopes: [] }]);
-    assert.throws(() => policyOf('policy.proactive', '[{'), /not valid JSON/);
-    assert.throws(() => policyOf('policy.proactive', 'null'), /Enter a list/, 'JSON that is not a list is refused');
     assert.equal((policyOf('policy.context.perChannel', ' 42 ').context as { perChannel: number }).perChannel, 42, 'numbers are trimmed');
     assert.throws(() => policyOf('policy.context.perChannel', '12.5'), /whole number/);
     assert.throws(() => policyOf('policy.context.perChannel', '500'), /Maximum: 100/);
@@ -86,8 +79,6 @@ function checkValidation(): void {
         [names, Array.from({ length: 11 }, (_, index) => `n${index}`), 'Maximum entries: 10'],
         [names, ['ok', 3], 'List entries must be text'],
         [scopes, ['not-a-scope'], 'List contains an unsupported value'],
-        [{ ...setting('policy.proactive'), choices: ['x'] }, [{}], 'List contains an unsupported value'],
-        [setting('policy.proactive'), [{ channelId: '1' }], undefined],
         [scopes, ['messages.read'], undefined],
         [{ ...names, kind: 'unknown' } as unknown as SettingDefinition, 'anything', undefined],
     ];

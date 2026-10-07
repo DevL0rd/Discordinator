@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
-import { mkdir, writeFile } from 'node:fs/promises';
+import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { localCall } from '../src/mcp/local-client.js';
 import { guarded } from '../src/mcp/tools.js';
@@ -22,41 +23,58 @@ export function caller(base: string) {
 }
 type Call = ReturnType<typeof caller>;
 
-async function checkProactiveMediaTools(call: Call, f: Fixture): Promise<void> {
-    f.policy.config.proactive = [{ channelId: ids.channel, scopes: ['message.send'] }];
+async function checkSendTools(call: Call, f: Fixture): Promise<void> {
     f.policy.config.media.enabled = true;
     f.policy.config.scopes.push('media.write');
-    const begun = await call('media_proactive_upload_begin', {
-        channelId: ids.channel,
+    const begun = await call('media_upload_begin', {
         fileName: 'pixel.png',
         mimeType: 'image/png',
         size: pixel.length,
         sha256: createHash('sha256').update(pixel).digest('hex'),
-        idempotencyKey: 'mcp-proactive-media',
+        idempotencyKey: 'mcp-upload',
     });
     assert.equal(begun.failed, false, begun.text);
-    const { scopeId, uploadId } = begun.value<{ scopeId: string; uploadId: string }>();
-    const chunk = await call('media_proactive_upload_chunk', { scopeId, uploadId, offset: 0, base64: pixel.toString('base64') });
+    const { uploadId } = begun.value<{ uploadId: string }>();
+    const chunk = await call('media_upload_chunk', { uploadId, offset: 0, base64: pixel.toString('base64') });
     assert.equal(chunk.failed, false, chunk.text);
-    const sealed = await call('media_proactive_upload_seal', { scopeId, uploadId });
+    const sealed = await call('media_upload_seal', { uploadId });
     assert.equal(sealed.failed, false, sealed.text);
-    const sent = await call('discord_proactive_media_send', {
+    const sent = await call('discord_send', {
         channelId: ids.channel,
-        scopeId,
-        uploadIds: [uploadId],
         content: 'Rendered result',
-        idempotencyKey: 'mcp-proactive-media-send',
+        files: [{ uploadId }],
+        idempotencyKey: 'mcp-send-upload',
     });
     assert.equal(sent.failed, false, sent.text);
-    const upload = f.api.calls.find((item) => item.method === 'FILES');
-    assert.equal(upload?.route, `/channels/${ids.channel}/messages`, 'Owner media reaches the approved channel through MCP');
+    assert.equal(f.api.calls.findLast((item) => item.method === 'FILES')?.route, `/channels/${ids.channel}/messages`);
+    const folder = await mkdtemp(join(tmpdir(), 'discordinator-send-'));
+    try {
+        await writeFile(join(folder, 'shot.png'), pixel);
+        const local = await call('discord_send', {
+            userId: ids.user,
+            content: 'Screenshot',
+            files: [{ path: join(folder, 'shot.png') }],
+            idempotencyKey: 'mcp-send-path',
+        });
+        assert.equal(local.failed, false, local.text);
+        const posted = f.api.calls.findLast((item) => item.method === 'FILES')!.body as { files: { name: string }[] };
+        assert.equal(posted.files[0]!.name, 'shot.png', 'Local clients can send a temp file by path');
+    } finally {
+        await rm(folder, { recursive: true, force: true });
+    }
+    const outside = await call('discord_send', {
+        channelId: ids.channel,
+        files: [{ path: resolve('package.json') }],
+        idempotencyKey: 'mcp-send-outside',
+    });
+    assert.deepEqual([outside.failed, /Only files inside/.test(outside.text)], [true, true], 'Paths outside the temp folder are refused');
 }
 
 async function checkOwnerMessages(call: Call, f: Fixture): Promise<void> {
-    const dm = await call('discord_proactive_dm', { userId: ids.user, content: 'Build finished', idempotencyKey: 'mcp-proactive-dm' });
+    const dm = await call('discord_send', { userId: ids.user, content: 'Build finished', idempotencyKey: 'mcp-owner-dm' });
     assert.equal(dm.failed, false, dm.text);
     assert.deepEqual(f.api.calls.find((item) => item.route === '/users/@me/channels')?.body, { recipient_id: ids.user });
-    const denied = await call('discord_proactive_dm', { userId: ids.denied, content: 'Nope', idempotencyKey: 'mcp-denied-dm' });
+    const denied = await call('discord_send', { userId: ids.denied, content: 'Nope', idempotencyKey: 'mcp-denied-dm' });
     assert.equal(denied.failed, true, 'Unapproved people cannot be messaged');
     f.policy.config.scopes.push('messages.read', 'reactions.write');
     const read = await call('discord_message_get', { channelId: ids.channel, messageId: ids.message });
@@ -123,7 +141,7 @@ export async function checkMcpTools(directory: string): Promise<void> {
         isError: true,
     });
     try {
-        await checkProactiveMediaTools(call, f);
+        await checkSendTools(call, f);
         await checkOwnerMessages(call, f);
         await checkContextAndPolling(call, f);
         await checkSettingsTool(call, directory);

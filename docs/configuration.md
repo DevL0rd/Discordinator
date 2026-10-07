@@ -52,9 +52,8 @@ The full [public policy example](../policy.example.json) grants no users, scopes
 | `media.maxAttachments`, `media.ttlMinutes` | `500`, `30` | Hard maxima 1000 attachments / 60 minutes |
 | `media.maxFileBytes` | `2097152` | Hard maximum 8388608 bytes |
 | `mcpEvents.allowAllMessages` | `false` | Separate opt-in for all-message delivery |
-| `proactive` | `[]` | Exact channel grants with `scopes: ["message.send"]`; no wildcard or arbitrary DM |
 | `voice.*` | Off | Voice calls: joining, transcripts and live conversation; every field is listed in [Voice calls](voice.md#settings) |
 
 Server and channel modes are independent, blocked IDs always win, and Discord's own permissions still apply. Older policy files are migrated automatically when loaded: `guildScope: "all"` becomes `servers` in `blocklist` mode (old `guildIds` kept as `allowed`, nothing blocked), `"listed"` becomes `allowlist` mode with the old `guildIds` as `allowed`; channels migrate the same way.
 
-Policy objects reject unknown fields. Observation never authorizes a response. `blocklist` mode does not grant capabilities, change the whitelist or enable proactive sends. DM origins still need a whitelisted author and explicit trigger. See [Discord setup](setup.md#policy), [events/context](mcp-events.md), [media](media-and-controls.md) and [authorization](security.md#discord-authorization) for detailed behavior.
+Policy objects reject unknown fields. Observation never authorizes a response. `blocklist` mode does not grant capabilities or change the whitelist. Owner messages follow the same server and channel rules as replies; there is no separate destination list, and an old `proactive` entry in a policy file is ignored. DM origins still need a whitelisted author and explicit trigger. See [Discord setup](setup.md#policy), [events/context](mcp-events.md), [media](media-and-controls.md) and [authorization](security.md#discord-authorization) for detailed behavior.

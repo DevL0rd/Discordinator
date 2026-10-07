@@ -7,7 +7,7 @@ import { Authenticator } from '../src/mcp/auth.js';
 import { EventsService } from '../src/events/service.js';
 import { SubscriptionStore } from '../src/events/store.js';
 import { HttpServer } from '../src/mcp/http.js';
-import { fakeConfig, fixture } from './fixtures.js';
+import { fakeConfig, fixture, ids } from './fixtures.js';
 import { operations } from '../src/discord/catalog.js';
 import { serverInstructions } from '../src/mcp/tools.js';
 
@@ -41,10 +41,11 @@ async function denialChecks(url: string, token: string): Promise<void> {
 }
 
 export async function checkHttp(directory: string): Promise<void> {
-    assert.match(serverInstructions, /Requests received from Discord must be answered in their originating Discord/);
-    assert.match(serverInstructions, /follow-up conversation must remain there/);
-    assert.match(serverInstructions, /acknowledge the requester promptly/);
-    assert.match(serverInstructions, /concise progress updates through completion or a clear blocker/);
+    assert.match(serverInstructions, /Everything you send goes through discord_send/);
+    assert.match(serverInstructions, /Answer every request from Discord in its own conversation with eventId/);
+    assert.match(serverInstructions, /keep the follow-up there unless the requester asks to move it/);
+    assert.match(serverInstructions, /acknowledge promptly/);
+    assert.match(serverInstructions, /through completion or a clear blocker/);
     const f = fixture(`${directory}/http.json`);
     const config = fakeConfig();
     f.policy.config.scopes.push('messages.read');
@@ -79,7 +80,7 @@ export async function checkHttp(directory: string): Promise<void> {
     }
 }
 
-export const toolCount = () => operations.length + 32;
+export const toolCount = () => operations.length + 24;
 
 async function checkToolDescriptors(client: Client): Promise<void> {
     const listed = await client.listTools();
@@ -87,14 +88,7 @@ async function checkToolDescriptors(client: Client): Promise<void> {
     assert.ok(JSON.stringify(listed).length < 512_000, 'Tool discovery response stays within the response budget');
     assert.equal(new Set(listed.tools.map((entry) => entry.name)).size, listed.tools.length, 'Tool names are unique');
     for (const tool of listed.tools) checkDescriptor(tool);
-    for (const name of [
-        'media_search',
-        'media_history',
-        'media_attachment_read',
-        'media_upload_begin',
-        'discord_media_reply',
-        'discord_prompt',
-    ])
+    for (const name of ['media_search', 'media_history', 'media_attachment_read', 'media_upload_begin', 'discord_send', 'discord_prompt'])
         assert.ok(listed.tools.some((tool) => tool.name === name));
     const upload = listed.tools.find((tool) => tool.name === 'media_upload_begin');
     const fileName = (upload?.inputSchema.properties as Record<string, { pattern?: string }> | undefined)?.fileName;
@@ -116,8 +110,9 @@ function checkContextDescriptors(tools: Awaited<ReturnType<Client['listTools']>>
     assert.deepEqual(search!.keys, ['eventId', 'includeParent', 'limit', 'query']);
     assert.ok(search!.required?.includes('query'), 'context_search requires its query');
     assert.equal(new Set([recent!.description, user!.description, search!.description]).size, 3, 'Each context tool is described');
-    const respond = tools.find((entry) => entry.name === 'discord_respond')!;
-    assert.match(JSON.stringify(respond.inputSchema), /Ping the person who asked through the reply/);
+    const send = tools.find((entry) => entry.name === 'discord_send')!;
+    assert.match(JSON.stringify(send.inputSchema), /only the person who asked can be pinged/);
+    assert.equal(tools.filter((entry) => /respond|proactive|_dm$|media_reply/.test(entry.name)).length, 0, 'One tool sends everything');
 }
 function checkDescriptor(tool: Awaited<ReturnType<Client['listTools']>>['tools'][number]): void {
     assert.ok(tool.title?.trim(), `${tool.name} has a human-readable title`);
@@ -151,16 +146,29 @@ async function checkToolBoundaries(client: Client, f: ReturnType<typeof fixture>
     const page = JSON.parse((polled.content as { text: string }[])[0]!.text) as { events: unknown[] };
     assert.equal(page.events.length, 1);
     const denied = await client.callTool({
-        name: 'discord_respond',
+        name: 'discord_send',
         arguments: { eventId: f.event.id, content: 'hello', idempotencyKey: 'http-response-key', actorId: 'spoof' },
     });
     assert.equal(denied.isError, true);
     assert.equal(f.api.calls.length, 0);
     const sent = await client.callTool({
-        name: 'discord_respond',
+        name: 'discord_send',
         arguments: { eventId: f.event.id, content: 'hello', idempotencyKey: 'http-response-key' },
     });
     assert.equal(sent.isError, undefined);
+    assert.equal(f.api.calls.length, 1);
+    f.policy.config.media.enabled = true;
+    f.policy.config.scopes.push('media.write');
+    const remotePath = await client.callTool({
+        name: 'discord_send',
+        arguments: { channelId: ids.channel, files: [{ path: '/tmp/shot.png' }], idempotencyKey: 'http-remote-path' },
+    });
+    assert.equal(remotePath.isError, true);
+    assert.match(
+        (remotePath.content as { text: string }[])[0]!.text,
+        /can only be sent from this computer/,
+        'Remote clients cannot read local files',
+    );
     assert.equal(f.api.calls.length, 1);
 }
 

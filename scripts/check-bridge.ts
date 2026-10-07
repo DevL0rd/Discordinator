@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { Sender } from '../src/core/sender.js';
 import { UncertainOutcome } from '../src/core/errors.js';
 import { Journal } from '../src/core/journal.js';
 import { operations } from '../src/discord/catalog.js';
@@ -24,7 +25,14 @@ async function checkMutations(file: string): Promise<void> {
     await f.bridge.invoke(operation, args, { ...controls, approvalId: preview.approvalId });
     await f.bridge.invoke(operation, args, { ...controls, approvalId: preview.approvalId });
     assert.equal(f.api.calls.length, 1);
-    await assert.rejects(() => f.bridge.proactive({ channelId: ids.channel, content: 'blocked', idempotencyKey: 'proactive-blocked' }));
+    const channels = f.policy.config.channels;
+    f.policy.config.channels = { mode: 'allowlist', allowed: [], blocked: [] };
+    await assert.rejects(
+        () => f.bridge.proactive({ channelId: ids.channel, content: 'blocked', idempotencyKey: 'proactive-blocked' }),
+        /Channel or thread is not approved/,
+        'Standalone messages follow the same channel rules as replies',
+    );
+    f.policy.config.channels = channels;
     await assert.rejects(() => f.bridge.respond({ eventId: 'unknown', content: 'blocked', idempotencyKey: 'respond-blocked' }));
 }
 
@@ -38,10 +46,10 @@ async function checkResponses(file: string): Promise<void> {
     assert.deepEqual(body.allowed_mentions, { parse: [], replied_user: false });
     assert.equal(body.enforce_nonce, true);
     await assert.rejects(() => f.bridge.respond({ ...input, content: 'changed' }));
-    await f.bridge.dm({ ...input, idempotencyKey: 'dm-response-key' });
+    const sender = new Sender(f.bridge);
+    await sender.send({ userId: ids.user, content: 'hello', files: [], idempotencyKey: 'dm-response-key' });
     assert.deepEqual(f.api.calls[1]!.body, { recipient_id: ids.user });
-    const deniedEvent = f.queue.add('denied', { ...f.event, actorId: ids.denied })!;
-    await assert.rejects(() => f.bridge.dm({ ...input, eventId: deniedEvent.id, idempotencyKey: 'denied-dm-key' }));
+    await assert.rejects(() => sender.send({ userId: ids.denied, content: 'hello', files: [], idempotencyKey: 'denied-dm-key' }));
     const saved = new Journal(file);
     await saved.load();
     assert.deepEqual(

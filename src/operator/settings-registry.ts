@@ -53,7 +53,6 @@ export function fieldError(definition: SettingDefinition, value: unknown): strin
         text: () => (typeof value === 'string' ? undefined : 'Enter text'),
         choice: () => (definition.choices?.includes(value as string) ? undefined : 'Choose a supported value'),
         list: () => listError(definition, value),
-        grants: () => listError(definition, value),
     };
     return validators[definition.kind]?.();
 }

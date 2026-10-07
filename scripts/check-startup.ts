@@ -191,7 +191,7 @@ async function checkRunning(root: string): Promise<void> {
         assert.equal(existsSync(lockFile), true);
         const endpoint = { base: `http://127.0.0.1:${port}`, key: (await readFile(join('.data', 'local.key'), 'utf8')).trim() };
         const tools = (await localCall(endpoint, 'tools/list')).tools as { name: string }[];
-        assert.ok(tools.some((tool) => tool.name === 'discord_respond'));
+        assert.ok(tools.some((tool) => tool.name === 'discord_send'));
         const ready = await eventually(async () => ((await readStatusFile()) as { gateway?: string } | null)?.gateway === 'ready');
         assert.ok(ready, 'the status file reflects the gateway');
         const failure = Object.assign(new Error('late'), { code: 'ELATE' });

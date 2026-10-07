@@ -3,7 +3,7 @@ import type { McpServer } from '@modelcontextprotocol/server';
 import type { Principal } from '../events/security.js';
 import { applyDraft, readPanel } from '../operator/panel-store.js';
 import { editSetting, settings, settingValue, type SettingDefinition } from '../operator/settings-registry.js';
-import { requireOwner } from './proactive-media.js';
+import { requireOwner } from './owner.js';
 import { guarded } from './tools.js';
 
 const editable = (definition: SettingDefinition) => !definition.credential && !definition.readOnly;

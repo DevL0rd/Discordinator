@@ -159,7 +159,9 @@ export async function checkPolicy(directory: string): Promise<void> {
     f.policy.assertGuild(ids.other);
     f.policy.assertChannel(ids.other);
     assert.throws(() => f.policy.assertUser(ids.denied));
-    assert.throws(() => f.policy.assertProactive(ids.channel));
+    f.policy.assertProactive(ids.channel);
+    f.policy.noteDm(ids.other, ids.denied);
+    assert.throws(() => f.policy.assertProactive(ids.other), /not whitelisted/, 'A DM is only for approved people');
     assert.throws(() => f.policy.assertResponse(f.event, ids.other));
     assert.throws(() => f.policy.assertGuildAction(f.event, ids.other));
     checkTriggers(f.policy);

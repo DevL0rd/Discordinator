@@ -8,6 +8,20 @@ export interface UploadAccess {
     event(id: string, write: boolean): { expiresAt: number };
 }
 
+/** All uploads share one owner bucket; where a file goes is decided when it is sent. */
+export const fileBucket = '00000000-0000-4000-8000-000000000001';
+
+export function fileAccess(policy: Policy): UploadAccess {
+    return {
+        policy,
+        event: () => {
+            policy.assertScope('media.write');
+            if (!policy.config.media.enabled) throw new Error('Media is disabled in settings');
+            return { expiresAt: Number.POSITIVE_INFINITY };
+        },
+    };
+}
+
 export const uploadSchema = z
     .object({
         eventId: z.uuid(),

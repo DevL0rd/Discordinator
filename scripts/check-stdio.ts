@@ -35,13 +35,13 @@ function client() {
     return { io: { input, output, errors }, rpc, input, replies, logged };
 }
 
-const named = (reply: Reply) => ((reply.result?.tools ?? []) as { name: string }[]).some((tool) => tool.name === 'discord_respond');
+const named = (reply: Reply) => ((reply.result?.tools ?? []) as { name: string }[]).some((tool) => tool.name === 'discord_send');
 
 async function checkProtocol(rpc: ReturnType<typeof client>['rpc']): Promise<void> {
     const chosen = (await rpc('initialize', { protocolVersion: '2025-03-26' })).result!;
     assert.equal(chosen.protocolVersion, '2025-03-26', 'a supported version is accepted');
     assert.deepEqual(chosen.serverInfo, { name: 'discordinator', version: '1.0.0' });
-    assert.match(String(chosen.instructions), /discord_respond/);
+    assert.match(String(chosen.instructions), /discord_send/);
     assert.equal(
         (await rpc('initialize', { protocolVersion: '1999-01-01' })).result!.protocolVersion,
         '2025-06-18',

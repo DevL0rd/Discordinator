@@ -7,7 +7,7 @@ import { key, localServer } from './check-channel.js';
 async function legacyOwnerTools(client: Client, f: ReturnType<typeof fixture>): Promise<void> {
     assert.equal(client.getProtocolEra(), 'legacy');
     const sent = await client.callTool({
-        name: 'discord_proactive_send',
+        name: 'discord_send',
         arguments: { channelId: ids.channel, content: 'Legacy owner update', idempotencyKey: 'legacy-owner-send' },
     });
     assert.equal(sent.isError, undefined, 'Owner-only tools work for authenticated legacy-protocol clients');
@@ -28,7 +28,6 @@ async function separateBudgets(url: string, base: string, client: Client): Promi
 
 export async function checkHttpBudgets(directory: string): Promise<void> {
     const { f, config, http, base } = await localServer(`${directory}/http-budgets.json`);
-    f.policy.config.proactive = [{ channelId: ids.channel, scopes: ['message.send'] }];
     const client = new Client({ name: 'legacy-validation', version: '1.0.0' });
     try {
         await client.connect(

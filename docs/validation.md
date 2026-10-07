@@ -25,7 +25,7 @@ Checked behavior includes:
 - Connected-app registration reconciliation for the `discordinator` entry, including removal of a legacy `dotbot` entry.
 - Whitelist checks before trigger parsing, literal mention/name/alias matching, Unicode/underscore boundaries and escaped alias punctuation.
 - No ordinary-message or non-whitelisted-user response, message dedupe, ephemeral slash deferral/edit gating.
-- Captured-event requirements, suppressed mentions, same-author DMs, and proactive denial without a destination grant.
+- Captured-event requirements, suppressed mentions, same-author DMs, and owner sends refused outside the server and channel rules or to people who are not approved.
 - Exact sensitive-action previews, same-actor/channel confirmation, mismatched input rejection and successful retry replay.
 - Journal reload, changed-key-input denial, ambiguous outcomes, capacity rejection, queue loss/expiry/dedupe.
 - Real v2 SDK MCP discovery/tool listing/poll/reply against mocks, unauthenticated/wrong-credential/Origin denial, body limits and actor-field spoof rejection.

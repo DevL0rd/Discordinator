@@ -1,10 +1,8 @@
-import { z } from 'zod';
 import type { McpServer } from '@modelcontextprotocol/server';
 import type { Bridge } from '../core/bridge.js';
 import { searchSchema } from '../media/index.js';
 import { historySchema, readSchema } from '../media/service.js';
-import { chunkSchema, uploadSchema } from '../media/uploads.js';
-import { guarded, mutation } from './tools.js';
+import { guarded } from './tools.js';
 
 type Guarded = Awaited<ReturnType<typeof guarded>>;
 type Attachment = Awaited<ReturnType<Bridge['media']['read']>>;
@@ -60,65 +58,5 @@ export function registerMedia(server: McpServer, bridge: Bridge, oauth: boolean)
             _meta: meta,
         },
         async (args) => attachmentResult(await guarded(() => bridge.media.read(args))),
-    );
-    registerUploads(server, bridge, meta);
-}
-
-function registerUploads(server: McpServer, bridge: Bridge, meta: Record<string, unknown> | undefined): void {
-    const write = { readOnlyHint: false, destructiveHint: false, openWorldHint: false };
-    server.registerTool(
-        'media_upload_begin',
-        {
-            title: 'Begin media upload',
-            description:
-                'Reserve a bounded in-memory upload bound to a captured request or authenticated owner context. Safe filename/MIME and declared size; SHA-256 is optional and verified when given. No URLs or filesystem paths. Buffer retention does not expire action authorization.',
-            inputSchema: uploadSchema,
-            annotations: write,
-            _meta: meta,
-        },
-        (args) => guarded(() => Promise.resolve(bridge.media.uploads.begin(args))),
-    );
-    server.registerTool(
-        'media_upload_chunk',
-        {
-            title: 'Upload media chunk',
-            description:
-                'Append a canonical base64 chunk of at most 128 KiB at the exact offset. Identical retries accepted; changed bytes and gaps rejected.',
-            inputSchema: chunkSchema,
-            annotations: write,
-            _meta: meta,
-        },
-        (args) => guarded(() => Promise.resolve(bridge.media.uploads.chunk(args))),
-    );
-    server.registerTool(
-        'media_upload_seal',
-        {
-            title: 'Seal media upload',
-            description:
-                'Verify complete size, declared SHA-256 if any, format/extension/MIME and image dimensions before a file can be sent.',
-            inputSchema: z.object({ eventId: mutation.eventId, uploadId: z.uuid() }).strict(),
-            annotations: write,
-            _meta: meta,
-        },
-        (args) => guarded(() => bridge.media.uploads.seal(args.eventId, args.uploadId)),
-    );
-    server.registerTool(
-        'discord_media_reply',
-        {
-            title: 'Reply with Discord media',
-            description:
-                'Reply only to the original authorized request with up to three sealed files/images/GIFs and verified source message links. Mentions suppressed; source links do not authorize writes.',
-            inputSchema: z
-                .object({
-                    ...mutation,
-                    content: z.string().max(2000).default(''),
-                    uploadIds: z.array(z.uuid()).max(3).default([]),
-                    sourceIds: z.array(z.uuid()).max(3).default([]),
-                })
-                .strict(),
-            annotations: write,
-            _meta: meta,
-        },
-        (args) => guarded(() => bridge.mediaReply(args)),
     );
 }
