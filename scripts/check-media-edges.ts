@@ -92,6 +92,7 @@ function checkFileBucket(directory: string): void {
     const upload = { eventId: fileBucket, fileName: 'image.png', mimeType: 'image/png', size: png.length };
     assert.throws(() => uploads.begin({ ...upload, idempotencyKey: 'bucket-scope' }), /Capability is not approved/);
     f.policy.config.scopes.push('media.write');
+    f.policy.config.media.enabled = false;
     assert.throws(() => uploads.begin({ ...upload, idempotencyKey: 'bucket-disabled' }), /Media is disabled/);
     f.policy.config.media.enabled = true;
     const first = uploads.begin({ ...upload, idempotencyKey: 'bucket-0' });

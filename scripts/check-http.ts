@@ -255,6 +255,6 @@ async function checkEventSubscription(url: string, token: string): Promise<void>
     });
     assert.equal(stopped.error, undefined);
     assert.equal(stopped.result?.resultType, 'complete');
-    const invalid = await eventCall(url, token, 'events/subscribe', { ...input, arguments: { delivery: 'all' } });
-    assert.ok(invalid.error);
+    const invalid = await eventCall(url, token, 'events/subscribe', { ...input, arguments: { delivery: 'everything' } });
+    assert.ok(invalid.error, 'Unknown delivery modes are rejected');
 }

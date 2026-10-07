@@ -117,7 +117,7 @@ async function checkServers(): Promise<void> {
     assert.equal(ui.state.sheet, undefined, 'an unknown server opens nothing');
     openServer(ui, guild.id);
     assert.equal(sheetOf(ui, 'confirm').title, 'Guild');
-    assert.match(sheetOf(ui, 'confirm').body[0]!, /answers here in 0 of 2 channels/);
+    assert.match(sheetOf(ui, 'confirm').body[0]!, /answers here in 2 of 2 channels/);
     await press(ui, 'Stop answering here');
     assert.equal(serverState(ui.state.drafts.policy, guild).allowed, false, 'the server is turned off in the draft');
     assert.match(ui.state.toast?.text ?? '', /Guild: turned off/);
@@ -130,7 +130,7 @@ async function checkServers(): Promise<void> {
     const multi = sheetOf(ui, 'multi');
     assert.equal(isServerChannels(multi), true);
     assert.deepEqual(multi.labels, { '555555555555555555': '#general', '666666666666666666': '#random' });
-    assert.deepEqual(multi.chosen, [], 'no channel is on until one is chosen');
+    assert.deepEqual(multi.chosen, ['555555555555555555', '666666666666666666'], 'every channel is on by default');
     commitServerChannels(ui, { ...multi, chosen: ['555555555555555555'] });
     assert.deepEqual(serverState(ui.state.drafts.policy, guild).channels, ['555555555555555555'], 'only chosen channels stay on');
     assert.equal(ui.state.sheet, undefined);

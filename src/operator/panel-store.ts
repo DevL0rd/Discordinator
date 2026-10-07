@@ -4,7 +4,7 @@ import { planReconnect } from './reconnect.js';
 import { ownerReady } from '../oauth/provision.js';
 import { dirname } from 'node:path';
 import { parseEnv } from 'node:util';
-import { policySchema, envSchema, validateAuth } from '../core/config.js';
+import { policySchema, envSchema, validateAuth, type PolicyConfig } from '../core/config.js';
 import { Policy } from '../core/policy.js';
 import { DiscordApi } from '../discord/api.js';
 import { operatorPath, operatorSchema, readOperatorConfig, writeOperatorConfig } from './config.js';
@@ -92,13 +92,17 @@ function assertOwnerApproved(policy: Record<string, unknown>): void {
     if (owner && !((policy.allowedUserIds as unknown[] | undefined) ?? []).includes(owner))
         throw new Error('The owner must be one of the approved people.');
 }
+function assertNamesReadable(snapshot: PanelSnapshot, policy: PolicyConfig, messageContent: string): void {
+    const before = policySchema.safeParse(snapshot.documents.policy).data?.triggers.matchNames === true;
+    if (!before && policy.triggers.matchNames && messageContent !== 'true')
+        throw new Error('Name triggers require Message Content intent.');
+}
 async function validateDraft(snapshot: PanelSnapshot, drafts: Documents, source: SettingsSource): Promise<void> {
     assertOwnerApproved(drafts.policy);
     const env = envSchema.parse(drafts.environment);
     validateAuth(env);
     const policy = policySchema.parse(drafts.policy);
-    if (policy.triggers.matchNames && env.DISCORDINATOR_MESSAGE_CONTENT !== 'true')
-        throw new Error('Name triggers require Message Content intent.');
+    assertNamesReadable(snapshot, policy, env.DISCORDINATOR_MESSAGE_CONTENT);
     if (source === 'policy') await validatePeople(snapshot, policy, env.DISCORD_BOT_TOKEN);
     const blocked = source === 'policy' ? undefined : publicDomainBlock(String(drafts.operator.mode), drafts.environment);
     if (blocked) throw new Error(blocked);

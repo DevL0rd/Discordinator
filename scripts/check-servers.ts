@@ -59,8 +59,14 @@ const server: ServerInfo = {
 };
 
 function checkScopes(): void {
-    assert.deepEqual(serverState({}, server), { allowed: false, channels: [] }, 'nothing is allowed by default');
-    const allowed = withServerChannels(withServerAllowed({}, fake.guild, true), server, [fake.channel]);
+    const closed = { servers: { mode: 'allowlist' }, channels: { mode: 'allowlist' } };
+    assert.deepEqual(
+        serverState({}, server),
+        { allowed: true, channels: [fake.channel, fake.announcements] },
+        'everything is allowed by default',
+    );
+    assert.deepEqual(serverState(closed, server), { allowed: false, channels: [] }, 'an empty allowlist allows nothing');
+    const allowed = withServerChannels(withServerAllowed(closed, fake.guild, true), server, [fake.channel]);
     assert.deepEqual(allowed.servers, { mode: 'allowlist', allowed: [fake.guild], blocked: [] });
     assert.deepEqual(serverState(allowed, server), { allowed: true, channels: [fake.channel] });
     const removed = withServerAllowed(allowed, fake.guild, false);
@@ -87,8 +93,10 @@ function pageText(policy: Record<string, unknown>, servers?: ServerInfo[]): stri
 function checkServerPage(server: ServerInfo): void {
     assert.match(pageText({}), /Loading servers…/);
     assert.match(pageText({}, []), /0 servers · select one[\s\S]*The bot is not in any server yet/);
-    assert.match(pageText({}, [server]), /1 server · [\s\S]*OFF[\s\S]*Not answering here/);
-    const allowed = withServerAllowed({}, server.id, true);
+    assert.match(pageText({}, [server]), /1 server · [\s\S]*ANSWERING[\s\S]*Answers in 2 of 2 channels/, 'a new server answers everywhere');
+    const closed = { servers: { mode: 'allowlist' }, channels: { mode: 'allowlist' } };
+    assert.match(pageText(closed, [server]), /OFF[\s\S]*Not answering here/);
+    const allowed = withServerAllowed(closed, server.id, true);
     assert.match(
         pageText(allowed, [server, { ...server, id: 'other' }]),
         /2 servers[\s\S]*NO CHANNELS[\s\S]*Allowed, but no channels chosen yet/,

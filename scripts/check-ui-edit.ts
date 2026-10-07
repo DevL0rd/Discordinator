@@ -91,7 +91,7 @@ function checkPaths(): void {
     const field = (path: string): SettingDefinition => ({ ...setting('policy.context.reach'), path });
     assert.throws(() => settingValue({}, field('__proto__.polluted')), /Invalid setting path/);
     assert.throws(() => settingValue({}, field('context..reach')), /Invalid setting path/);
-    assert.equal(settingValue({ context: 'flat' }, field('context.reach')), 'channel', 'a non-object parent reads as the default');
+    assert.equal(settingValue({ context: 'flat' }, field('context.reach')), 'server', 'a non-object parent reads as the default');
     assert.equal(settingValue({}, { ...field('missing'), defaultValue: undefined }), undefined);
     assert.throws(() => assignSetting({ context: 'flat' }, field('context.reach'), 'server'), /parent is not an object/);
     assert.throws(() => assignSetting({ context: [] }, field('context.reach'), 'server'), /parent is not an object/);

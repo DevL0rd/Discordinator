@@ -49,7 +49,7 @@ Say the bot's Discord name, or one of its extra names (**Discord → Names it an
 | Setting | Default | Meaning |
 | :-- | :-- | :-- |
 | `GEMINI_API_KEY` (`.env`) | Unset | Google key for transcripts and live conversation |
-| `voice.enabled` | `false` | Use voice calls at all |
+| `voice.enabled` | `true` | Use voice calls at all |
 | `voice.autoJoin` | `true` | Join when an approved person is in an allowed voice channel |
 | `voice.leaveAfterSeconds` | `60` | Stay this long after the last approved person leaves (5–3600) |
 | `voice.transcribe` | `everyone` | `everyone` or `approved` |

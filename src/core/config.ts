@@ -90,7 +90,7 @@ const withoutRetiredVoiceKeys = (value: unknown): unknown => {
 };
 const voiceObject = z
     .object({
-        enabled: z.boolean().default(false),
+        enabled: z.boolean().default(true),
         autoJoin: z.boolean().default(true),
         leaveAfterSeconds: z.number().int().min(5).max(3600).default(60),
         transcribe: z.enum(['everyone', 'approved']).default('everyone'),
@@ -116,25 +116,25 @@ const policyObject = z
         allowedUserIds: z.array(snowflake).max(100).default([]),
         ownerUserId: z.preprocess((value) => (value === '' || value === null ? undefined : value), snowflake.optional()),
         allowedRoleIds: z.array(snowflake).max(100).default([]),
-        servers: scopeList(100).default({ mode: 'allowlist', allowed: [], blocked: [] }),
-        channels: scopeList(1000).default({ mode: 'allowlist', allowed: [], blocked: [] }),
+        servers: scopeList(100).default({ mode: 'blocklist', allowed: [], blocked: [] }),
+        channels: scopeList(1000).default({ mode: 'blocklist', allowed: [], blocked: [] }),
         scopes: z.array(scope).default(() => [...scopeNames]),
         triggers: z
             .object({
                 replyToBot: z.boolean().default(true),
-                matchNames: z.boolean().default(false),
+                matchNames: z.boolean().default(true),
                 names: z.array(z.string().trim().min(2).max(32)).max(10).default([]),
             })
             .strict()
-            .default({ replyToBot: true, matchNames: false, names: [] }),
+            .default({ replyToBot: true, matchNames: true, names: [] }),
         context: z
             .preprocess(
                 withoutRetiredKeys,
                 z
                     .object({
-                        enabled: z.boolean().default(false),
-                        capture: z.enum(['addressed', 'all']).default('addressed'),
-                        reach: z.enum(['channel', 'server']).default('channel'),
+                        enabled: z.boolean().default(true),
+                        capture: z.enum(['addressed', 'all']).default('all'),
+                        reach: z.enum(['channel', 'server']).default('server'),
                         perChannel: z.number().int().min(1).max(100).default(50),
                         includeBots: z.boolean().default(true),
                     })
@@ -143,15 +143,15 @@ const policyObject = z
             .prefault({}),
         mcpEvents: z
             .object({
-                enabled: z.boolean().default(false),
-                allowAllMessages: z.boolean().default(false),
+                enabled: z.boolean().default(true),
+                allowAllMessages: z.boolean().default(true),
             })
             .strict()
             .prefault({}),
         media: z
             .object({
-                enabled: z.boolean().default(false),
-                capture: z.enum(['addressed', 'all']).default('addressed'),
+                enabled: z.boolean().default(true),
+                capture: z.enum(['addressed', 'all']).default('all'),
                 maxAttachments: z.number().int().min(1).max(1000).default(500),
                 ttlMinutes: z.number().int().min(1).max(60).default(30),
                 maxFileBytes: z

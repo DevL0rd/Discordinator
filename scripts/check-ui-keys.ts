@@ -66,7 +66,7 @@ function checkNavigation(): void {
 function checkActivation(): void {
     const ui = uiStore(undefined, { page: 'memory' });
     handleKey(ui, ' ', key());
-    assert.equal((ui.state.drafts.policy.context as { enabled: boolean }).enabled, true, 'Space toggles a switch');
+    assert.equal((ui.state.drafts.policy.context as { enabled: boolean }).enabled, false, 'Space toggles a switch');
     handleKey(ui, 'j', key());
     handleKey(ui, '', key({ return: true }));
     const edit = sheetOf(ui, 'edit');

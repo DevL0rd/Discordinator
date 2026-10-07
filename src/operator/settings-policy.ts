@@ -10,7 +10,7 @@ function scopeSettings(path: 'servers' | 'channels', noun: string, maxItems: num
             description: `Allowlist: only listed ${plural} (an empty list allows none). Blocklist: every ${noun} except blocked ones (an empty list blocks none). Blocked ${plural} always win. Discord permissions still apply.`,
             kind: 'choice' as const,
             choices: ['allowlist', 'blocklist'],
-            defaultValue: 'allowlist',
+            defaultValue: 'blocklist',
         },
         {
             path: `${path}.allowed`,
@@ -86,7 +86,7 @@ export const policySettings = [
             label: 'Name triggers',
             description: 'Requires Message Content access locally and in Discord.',
             kind: 'boolean',
-            defaultValue: false,
+            defaultValue: true,
         },
         {
             path: 'triggers.names',
@@ -104,7 +104,7 @@ export const policySettings = [
             label: 'Capture recent context',
             description: 'Enable the bounded in-memory message index.',
             kind: 'boolean',
-            defaultValue: false,
+            defaultValue: true,
         },
         {
             path: 'context.capture',
@@ -112,7 +112,7 @@ export const policySettings = [
             description: 'Observed context never creates write authorization.',
             kind: 'choice',
             choices: ['addressed', 'all'],
-            defaultValue: 'addressed',
+            defaultValue: 'all',
         },
         {
             path: 'context.reach',
@@ -121,7 +121,7 @@ export const policySettings = [
                 'channel: only the channel it was messaged from. server: every channel in that server, grouped by channel. DMs always use their own conversation.',
             kind: 'choice',
             choices: ['channel', 'server'],
-            defaultValue: 'channel',
+            defaultValue: 'server',
         },
         {
             path: 'context.perChannel',
@@ -147,7 +147,7 @@ export const policySettings = [
             label: 'Enable media',
             description: 'Enable scoped attachment metadata and verified media tools.',
             kind: 'boolean',
-            defaultValue: false,
+            defaultValue: true,
         },
         {
             path: 'media.capture',
@@ -155,7 +155,7 @@ export const policySettings = [
             description: 'Capture addressed or all approved observations.',
             kind: 'choice',
             choices: ['addressed', 'all'],
-            defaultValue: 'addressed',
+            defaultValue: 'all',
         },
         {
             path: 'media.maxAttachments',
@@ -191,14 +191,14 @@ export const policySettings = [
             label: 'Expose MCP Events',
             description: 'Authenticated Events discovery; the host must create a verified subscription.',
             kind: 'boolean',
-            defaultValue: false,
+            defaultValue: true,
         },
         {
             path: 'mcpEvents.allowAllMessages',
             label: 'Allow all-message subscriptions',
             description: 'Separate opt-in; unaddressed messages never authorize replies.',
             kind: 'boolean',
-            defaultValue: false,
+            defaultValue: true,
         },
     ]),
 ];

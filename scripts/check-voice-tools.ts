@@ -173,12 +173,13 @@ function checkVoicePage(): void {
         'Stop talking after (seconds)',
     ])
         assert.ok(off.includes(label), `The voice page shows ${label}`);
-    assert.match(off, /Voice\s+○ Off/);
-    assert.match(render({ voice: { enabled: true } }), /Needs a Google Gemini key/);
+    assert.match(off, /Needs a Google Gemini key/, 'Voice is on by default and only waits for a key');
+    assert.match(render({ voice: { enabled: false } }), /Voice\s+○ Off/);
     const keyed = { GEMINI_API_KEY: 'gemini-fixture' };
     assert.match(render({ voice: { enabled: true }, scopes: [] }, keyed), /Needs the voice.listen ability/);
     assert.match(render({ voice: { enabled: true }, scopes: ['voice.listen'] }, keyed), /Transcribing only/);
     assert.match(render({ voice: { enabled: true }, scopes: ['voice.listen', 'voice.speak'] }, keyed), /Ready/);
+    assert.match(render({}, keyed), /Ready/, 'With a key, voice works out of the box');
 }
 
 export async function checkVoiceTools(directory: string): Promise<void> {

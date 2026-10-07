@@ -31,11 +31,19 @@ function checkTriggers(policy: Policy): void {
 function checkScopeLists(): void {
     const scoped = (value: unknown) => new Policy(policySchema.parse(value));
     const [a, b, c] = ['111111111111111111', '222222222222222222', '333333333333333333'];
-    const emptyAllow = scoped({});
+    const open = scoped({});
+    assert.deepEqual(
+        [open.config.servers, open.config.channels],
+        [
+            { mode: 'blocklist', allowed: [], blocked: [] },
+            { mode: 'blocklist', allowed: [], blocked: [] },
+        ],
+    );
+    assert.equal(open.guildAllowed(a), true, 'every server and channel is in by default');
+    assert.equal(open.channelAllowed(a), true);
+    const emptyAllow = scoped({ servers: { mode: 'allowlist' }, channels: { mode: 'allowlist' } });
     assert.equal(emptyAllow.guildAllowed(a), false, 'empty allowlist allows nothing');
     assert.equal(emptyAllow.channelAllowed(a), false);
-    const emptyBlock = scoped({ servers: { mode: 'blocklist' }, channels: { mode: 'blocklist' } });
-    assert.equal(emptyBlock.guildAllowed(a), true, 'empty blocklist excludes nothing');
     const mixed = scoped({
         servers: { mode: 'allowlist', allowed: [a, b], blocked: [b] },
         channels: { mode: 'blocklist', blocked: [c] },
@@ -151,8 +159,8 @@ export async function checkPolicy(directory: string): Promise<void> {
     await checkDirectMessages(`${directory}/direct-messages.json`);
     checkScopeLists();
     assert.throws(() => empty.assertUser(ids.user));
-    assert.throws(() => empty.assertGuild(ids.guild));
-    assert.throws(() => empty.assertChannel(ids.channel));
+    assert.doesNotThrow(() => empty.assertGuild(ids.guild));
+    assert.doesNotThrow(() => empty.assertChannel(ids.channel));
     assert.doesNotThrow(() => empty.assertScope('messages.write'), 'Every ability is on by default');
     assert.throws(() => new Policy(policySchema.parse({ scopes: [] })).assertScope('messages.write'), 'Abilities can all be turned off');
     assert.equal(policySchema.safeParse({ allowedUserIds: [Number(ids.user)] }).success, false);

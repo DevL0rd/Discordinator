@@ -41,6 +41,7 @@ async function checkReading(): Promise<void> {
 }
 
 async function checkRefusals(): Promise<void> {
+    await writeFile('policy.json', '{"triggers":{"matchNames":false}}\n');
     const snapshot = await readPanel();
     const refuse = (patch: Parameters<typeof edited>[1], error: RegExp) =>
         assert.rejects(applyDraft(snapshot, edited(snapshot, patch), noReconnect), error);
@@ -137,6 +138,7 @@ async function checkStarting(live: LiveFake): Promise<void> {
 async function checkMessages(live: LiveFake): Promise<void> {
     await writeFile('.env', `${environment.replace('not-a-port', '8787')}\nDISCORDINATOR_RESOURCE_URL=https://bot.example.com/mcp\n`);
     await writeOperatorConfig({ ...(await readOperatorConfig()), mode: 'manual-mcp', enabled: false });
+    await writeFile('policy.json', '{"mcpEvents":{"enabled":false}}\n');
     live.online = true;
     const save = async (operator: Record<string, unknown>, reconnect = noReconnect) => {
         const snapshot = await readPanel();

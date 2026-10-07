@@ -1,4 +1,5 @@
 import type { ScopeList } from '../../../core/config.js';
+import { settings, settingValue } from '../../settings-registry.js';
 import { color } from '../theme.js';
 import { note, section, settingItem } from '../items.js';
 import { serverItems } from './servers.js';
@@ -6,8 +7,16 @@ import type { Item, View } from '../model.js';
 
 const plural = (count: number, noun: string) => `${count} ${noun}${count === 1 ? '' : 's'}`;
 
-function scopeSummary(list: ScopeList | undefined, noun: string): { text: string; warn: boolean } {
-    const value = list ?? { mode: 'allowlist', allowed: [], blocked: [] };
+function scopeList(view: View, path: 'servers' | 'channels'): ScopeList {
+    const read = (key: keyof ScopeList) =>
+        settingValue(
+            view.drafts.policy,
+            settings.find((item) => item.id === `policy.${path}.${key}`)!,
+        );
+    return { mode: read('mode'), allowed: read('allowed'), blocked: read('blocked') } as ScopeList;
+}
+
+function scopeSummary(value: ScopeList, noun: string): { text: string; warn: boolean } {
     if (value.mode === 'blocklist')
         return {
             text: `every ${noun}${value.blocked.length ? ` except ${plural(value.blocked.length, 'blocked ' + noun)}` : ''}`,
@@ -19,14 +28,14 @@ function scopeSummary(list: ScopeList | undefined, noun: string): { text: string
 }
 
 function scopeItems(view: View, path: 'servers' | 'channels', noun: string): Item[] {
-    const list = view.drafts.policy[path] as ScopeList | undefined;
+    const list = scopeList(view, path);
     return [
         settingItem(`policy.${path}.mode`),
-        ...(list?.mode === 'blocklist' ? [] : [settingItem(`policy.${path}.allowed`)]),
+        ...(list.mode === 'blocklist' ? [] : [settingItem(`policy.${path}.allowed`)]),
         settingItem(`policy.${path}.blocked`),
         note(
             `${path}-help`,
-            list?.mode === 'blocklist'
+            list.mode === 'blocklist'
                 ? `Works in every ${noun} the bot can see, except blocked ones.`
                 : `Works only in listed ${noun}s. Blocked ${noun}s always win.`,
         ),
@@ -34,8 +43,8 @@ function scopeItems(view: View, path: 'servers' | 'channels', noun: string): Ite
 }
 
 export function discordItems(view: View): Item[] {
-    const servers = scopeSummary(view.drafts.policy.servers as ScopeList, 'server');
-    const channels = scopeSummary(view.drafts.policy.channels as ScopeList, 'channel');
+    const servers = scopeSummary(scopeList(view, 'servers'), 'server');
+    const channels = scopeSummary(scopeList(view, 'channels'), 'channel');
     const warn = servers.warn || channels.warn;
     return [
         ...section('reach', 'Where Discordinator answers', '', [

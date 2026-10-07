@@ -46,9 +46,10 @@ function checkApps(): void {
 function checkDiscord(): void {
     const reach = (policy: Record<string, unknown>) =>
         /Discordinator answers in ([^.]+)\./.exec(pageText(state({ drafts: { policy } }), 'discord'))?.[1];
-    assert.equal(reach({}), 'every server, in no channels (the allowlist is empty)', 'the fixture blocks nothing and lists no channels');
+    assert.equal(reach({}), 'every server, in every channel', 'every server and channel is open by default');
+    assert.equal(reach({ servers: undefined, channels: undefined }), 'every server, in every channel');
     assert.equal(
-        reach({ servers: undefined, channels: undefined }),
+        reach({ servers: { mode: 'allowlist' }, channels: { mode: 'allowlist' } }),
         'no servers (the allowlist is empty), in no channels (the allowlist is empty)',
     );
     assert.equal(
@@ -62,10 +63,7 @@ function checkDiscord(): void {
         reach({ channels: { mode: 'blocklist', allowed: [], blocked: ['5'] } }),
         'every server, in every channel except 1 blocked channel',
     );
-    assert.equal(
-        reach({ servers: { mode: 'allowlist', allowed: ['1', '2'], blocked: [] } }),
-        'only 2 listed servers, in no channels (the allowlist is empty)',
-    );
+    assert.equal(reach({ servers: { mode: 'allowlist', allowed: ['1', '2'], blocked: [] } }), 'only 2 listed servers, in every channel');
     const blocklist = pageText(
         state({
             drafts: {

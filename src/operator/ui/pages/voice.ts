@@ -21,7 +21,7 @@ export function voiceItems(view: View): Item[] {
             settingItem('policy.voice.leaveAfterSeconds', 'Leave after (seconds)'),
             note(
                 'voice-where',
-                'Get a key at aistudio.google.com/apikey. Auto-join follows the server and channel rules on the Discord page. /join, /leave, /mute and /unmute work in Discord. Grant voice.listen and voice.speak under Allowed abilities.',
+                'Get a key at aistudio.google.com/apikey. Auto-join follows the server and channel rules on the Discord page. /join, /leave, /mute and /unmute work in Discord. Listening and talking are the voice.listen and voice.speak abilities on the Discord page.',
             ),
         ]),
         ...section('voice-transcripts', 'Transcripts', 'Always on while it is in a call', [

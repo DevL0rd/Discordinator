@@ -94,9 +94,9 @@ async function checkActions(): Promise<void> {
     dispatch(ui, { type: 'page', page: 'apps' });
     assert.equal(ui.state.page, 'apps');
     dispatch(ui, { type: 'toggle', setting: 'policy.media.enabled' });
-    assert.equal((ui.state.drafts.policy.media as { enabled: boolean }).enabled, true, 'toggle flips a switch');
+    assert.equal((ui.state.drafts.policy.media as { enabled: boolean }).enabled, false, 'toggle flips a switch');
     dispatch(ui, { type: 'toggle', setting: 'policy.media.enabled' });
-    assert.equal((ui.state.drafts.policy.media as { enabled: boolean }).enabled, false, 'and back');
+    assert.equal((ui.state.drafts.policy.media as { enabled: boolean }).enabled, true, 'and back');
     dispatch(ui, { type: 'save' });
     assert.deepEqual(ui.state.toast, { text: 'Nothing to save.', tone: 'idle' });
     dispatch(ui, { type: 'toggle', setting: 'policy.media.enabled' });

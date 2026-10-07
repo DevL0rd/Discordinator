@@ -19,7 +19,7 @@ export const voiceSettings = [
             description:
                 'Lets Discordinator join voice calls, transcribe them and talk. Also needs the voice.listen ability (and voice.speak to talk), a Google Gemini key, and Connect/Speak permission in the channel.',
             kind: 'boolean',
-            defaultValue: false,
+            defaultValue: true,
         },
         {
             path: 'voice.autoJoin',

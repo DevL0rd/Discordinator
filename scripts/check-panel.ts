@@ -95,6 +95,7 @@ async function checkDraft(): Promise<void> {
     const draft = structuredClone(snapshot.documents);
     draft.operator.mode = 'manual-mcp';
     draft.operator.enabled = false;
+    draft.policy = { ...draft.policy, mcpEvents: { enabled: false } };
     const applied = await applyDraft(snapshot, draft, noReconnect);
     assert.equal(applied.snapshot.documents.operator.mode, 'manual-mcp');
     const combined = structuredClone(applied.snapshot.documents);
@@ -165,8 +166,8 @@ async function checkSettingsTools(): Promise<void> {
     assert.equal(listed.find((item) => item.id === 'environment.DISCORD_BOT_TOKEN')?.editable, false);
     await assert.rejects(settingsUpdate([{ id: 'environment.DISCORD_BOT_TOKEN', value: 'x' }]), /setup app/);
     await assert.rejects(settingsUpdate([{ id: 'policy.nope', value: 1 }]), /Unknown setting/);
-    assert.match(await settingsUpdate([{ id: 'policy.context.reach', value: 'server' }]), /saved/i);
-    assert.equal((JSON.parse(await readFile('policy.json', 'utf8')) as { context: { reach: string } }).context.reach, 'server');
+    assert.match(await settingsUpdate([{ id: 'policy.context.reach', value: 'channel' }]), /saved/i);
+    assert.equal((JSON.parse(await readFile('policy.json', 'utf8')) as { context: { reach: string } }).context.reach, 'channel');
 }
 export async function checkPanel(): Promise<void> {
     checkDomain();

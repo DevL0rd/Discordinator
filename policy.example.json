@@ -1,12 +1,12 @@
 {
   "allowedUserIds": [],
   "servers": {
-    "mode": "allowlist",
+    "mode": "blocklist",
     "allowed": [],
     "blocked": []
   },
   "channels": {
-    "mode": "allowlist",
+    "mode": "blocklist",
     "allowed": [],
     "blocked": []
   },
@@ -49,19 +49,19 @@
     "replyToBot": true
   },
   "context": {
-    "enabled": false,
-    "capture": "addressed",
-    "reach": "channel",
+    "enabled": true,
+    "capture": "all",
+    "reach": "server",
     "perChannel": 50,
     "includeBots": true
   },
   "mcpEvents": {
-    "enabled": false,
-    "allowAllMessages": false
+    "enabled": true,
+    "allowAllMessages": true
   },
   "media": {
-    "enabled": false,
-    "capture": "addressed",
+    "enabled": true,
+    "capture": "all",
     "maxAttachments": 500,
     "ttlMinutes": 30,
     "maxFileBytes": 2097152
