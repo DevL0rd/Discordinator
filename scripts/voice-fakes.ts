@@ -59,7 +59,6 @@ class FakeLink implements VoiceLink {
         this.streams.delete(userId);
         return Readable.from(packets);
     }
-    /** Plays packets as one person's speech, all at once or one every gapMs like a real call. */
     talk(userId: string, packets: Buffer[], gapMs = 0): void {
         this.streams.set(userId, gapMs ? paced(packets, gapMs) : packets);
         this.speakingListener?.(userId);

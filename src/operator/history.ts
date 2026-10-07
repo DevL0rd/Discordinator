@@ -54,7 +54,6 @@ function format(policy: Policy, records: ContextRecord[], since: string | undefi
     return [heading, ...groups, '---', ''].join('\n');
 }
 
-/** Fetches history again when the servers, channels or context settings it was loaded under change. */
 function reloadOnScopeChange(policy: Policy, loaded: Map<string, Promise<void>>): void {
     const scope = () => JSON.stringify([policy.config.servers, policy.config.channels, policy.config.context]);
     let loadedFor = scope();

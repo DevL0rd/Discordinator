@@ -107,7 +107,6 @@ export class CallSession {
         if (speech.chunks.length) this.enqueue({ userId, startedAt: speech.startedAt, pcm: concat(speech.chunks) });
     }
 
-    /** Transcribes what someone is still saying every so often, so its name can open the live voice before they finish. */
     private peek(speech: Speech): void {
         const now = this.now();
         if (speech.woke || speech.peeking || now - speech.peekedAt < peekMs || !this.hooks.wakeable(speech.userId)) return;

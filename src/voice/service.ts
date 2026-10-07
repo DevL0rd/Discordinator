@@ -84,7 +84,6 @@ export class VoiceService {
         policy.onChange((previous) => void this.settingsChanged(previous));
     }
 
-    /** Applies saved settings to calls in progress: leaves calls it may no longer be in, rejoins approved people, and refreshes the live voice. */
     private async settingsChanged(previous: PolicyConfig): Promise<void> {
         if (this.available()) {
             for (const guildId of [...this.sessions.keys()]) await this.leave(guildId);
@@ -104,7 +103,6 @@ export class VoiceService {
         await this.rejoin();
     }
 
-    /** A new Gemini key reaches the live voice right away. */
     keyChanged(): void {
         for (const session of this.sessions.values()) this.live.settingsChanged(session, true);
     }
@@ -113,7 +111,6 @@ export class VoiceService {
         for (const state of this.guilds.states()) await this.arrived(state.guildId, state.userId, state.channelId);
     }
 
-    /** Other bots are heard and answered like anyone else; only Discordinator's own voice is skipped. */
     private isSelf(userId: string): boolean {
         return userId === this.guilds.self().id;
     }

@@ -31,7 +31,6 @@ export class ContextIndex {
         policy.onChange(() => this.trim());
     }
 
-    /** Keeps only the newest messages per channel, so a lower limit applies right away. */
     private trim(): void {
         const kept = new Map<string, number>();
         for (const [id, item] of [...this.items].reverse()) {

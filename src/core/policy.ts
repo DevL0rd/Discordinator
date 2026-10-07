@@ -34,7 +34,6 @@ export class Policy {
         }
     }
 
-    /** Runs after saved settings change, with the settings that were in effect before. Returns a function that stops it. */
     onChange(listener: (previous: PolicyConfig) => void): () => void {
         this.listeners.add(listener);
         return () => this.listeners.delete(listener);

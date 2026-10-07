@@ -21,6 +21,7 @@ import { readFile } from 'node:fs/promises';
 import { randomUUID } from 'node:crypto';
 import { requestText } from './request-format.js';
 import { ownerNote } from '../core/directory.js';
+import { desktopGuide, workerBrief } from './manager-guide.js';
 
 const retryMs = 5000;
 const maxAttempts = 3;
@@ -37,6 +38,7 @@ export class OperatorService {
     private appliedConfigAt: string | null = null;
     private blockedReason: string | null = null;
     private controller?: ConversationController;
+    private tasks?: ConversationController;
     private dispatcher?: DiscordApprovalDispatcher;
     private indicator?: ProcessingIndicator;
     private router?: SessionRouter;
@@ -89,7 +91,7 @@ export class OperatorService {
             mode: this.mode,
             appliedConfigAt: this.appliedConfigAt,
             blockedReason: this.blockedReason,
-            controller: this.controller?.status() ?? null,
+            controller: this.tasks?.status() ?? null,
             session: this.router?.status() ?? null,
         };
     }
@@ -104,7 +106,7 @@ export class OperatorService {
         for (const resolve of this.idleWaiters.splice(0)) resolve();
     }
     private working(): boolean {
-        const status = this.controller?.status();
+        const status = this.tasks?.status();
         if (!status) return false;
         const active = status.tasks.some((task) => ['queued', 'running', 'approval', 'recovering'].includes(task.state));
         return active || status.busy + status.approvals + status.queued + status.pendingDelivery > 0;
@@ -141,7 +143,8 @@ export class OperatorService {
     }
 
     private originOf(sessionId: string): string | undefined {
-        return this.controller?.store.snapshot().conversations.find((item) => item.sessionId === sessionId)?.originEventId;
+        const state = this.tasks?.store.snapshot();
+        return [...(state?.conversations ?? []), ...(state?.tasks ?? [])].find((item) => item.sessionId === sessionId)?.originEventId;
     }
     private schedule(): void {
         this.applying = this.applying
@@ -156,12 +159,17 @@ export class OperatorService {
         const config = await readOperatorConfig();
         this.mode = config.enabled ? config.mode : 'disabled';
         this.blockedReason = localBlock(config);
-        if (!config.enabled || !localModes.includes(config.mode) || this.blockedReason) {
+        if (!config.enabled || this.blockedReason) {
             await this.retire();
             this.appliedConfigAt = config.updatedAt;
             return;
         }
-        if (!(await this.prepare(config)) || this.stopped || this.controller || this.router) return;
+        if (!localModes.includes(config.mode)) {
+            await this.retire();
+            this.appliedConfigAt = config.updatedAt;
+            return;
+        }
+        if (!(await this.prepare(config)) || this.stopped || this.tasks || this.router) return;
         await this.build(config);
     }
     private async build(config: OperatorConfig): Promise<void> {
@@ -189,6 +197,7 @@ export class OperatorService {
     }
     private async handle(event: BotEvent): Promise<boolean> {
         if (!this.controller && !this.router) {
+            if (await this.dispatcher?.accept(event).catch(() => false)) return true;
             await this.unavailable(event, this.blockedReason ?? 'the local assistant is not running');
             return true;
         }
@@ -212,8 +221,9 @@ export class OperatorService {
     }
     private async accept(event: BotEvent): Promise<boolean> {
         try {
+            if (await this.dispatcher?.accept(event)) return true;
             if (this.router) await this.router.route(event);
-            else if (!(await this.dispatcher!.accept(event))) await this.controller!.ingest(event);
+            else await this.controller!.ingest(event);
             this.blockedReason = null;
             return true;
         } catch (error) {
@@ -222,7 +232,7 @@ export class OperatorService {
         }
     }
     private async prepare(config: OperatorConfig): Promise<boolean> {
-        const status = this.controller?.status();
+        const status = this.tasks?.status();
         if (status?.failed) {
             await this.retire();
             return true;
@@ -240,8 +250,9 @@ export class OperatorService {
         return true;
     }
     private async retire(): Promise<void> {
-        const controller = this.controller;
+        const controller = this.tasks;
         this.controller = undefined;
+        this.tasks = undefined;
         this.dispatcher = undefined;
         this.router?.stop();
         this.router = undefined;
@@ -260,7 +271,7 @@ export class OperatorService {
                 this.schedule();
                 this.onStatus?.();
             },
-            brief: () => this.standing(config),
+            brief: () => [desktopGuide, this.standing(config)].filter(Boolean).join('\n\n'),
         });
         await this.router.start();
         this.appliedConfigAt = config.updatedAt;
@@ -273,9 +284,9 @@ export class OperatorService {
         const instructions = this.standing(config);
         return instructions ? { ...config, instructions } : config;
     }
-    private async createController(config: OperatorConfig, adapter: ProviderAdapter, shared: boolean): Promise<void> {
+    private async createController(config: OperatorConfig, adapter: ProviderAdapter, shared: boolean, primary = true): Promise<void> {
         const dispatcher = new DiscordApprovalDispatcher(this.bridge, (key, decision, origin) =>
-            this.controller!.resolveApproval(key, decision, origin),
+            this.tasks!.resolveApproval(key, decision, origin),
         );
         const indicator = new ProcessingIndicator((eventId) => this.bridge.typing(eventId));
         const controller = new ConversationController(
@@ -300,14 +311,26 @@ export class OperatorService {
                 ...(shared ? { sharedConversation: 'discordinator' } : {}),
                 history: this.history,
                 describe: (event) => requestText(this.bridge.policy, event),
+                brief: (eventId, title, prompt) => this.brief(eventId, title, prompt),
                 notice: (event) => void this.notice(event).catch((error: unknown) => logFailure('Operator notice failed', error)),
             },
         );
-        this.controller = controller;
+        this.tasks = controller;
+        if (primary) this.controller = controller;
         this.dispatcher = dispatcher;
         this.indicator = indicator;
         await controller.start();
         this.appliedConfigAt = config.updatedAt;
+    }
+    private brief(eventId: string, title: string, prompt: string): string {
+        const origin = (() => {
+            try {
+                return requestText(this.bridge.policy, this.queue.context(eventId).event).split('\n')[0];
+            } catch {
+                return undefined;
+            }
+        })();
+        return workerBrief(title, prompt, eventId, origin);
     }
 }
 function localBlock(config: OperatorConfig): string | null {

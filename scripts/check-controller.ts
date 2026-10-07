@@ -9,9 +9,10 @@ import { ControllerStore, conversationKey } from '../src/operator/controller-sta
 import { posixOnly } from './fixtures.js';
 import type { ApprovalDecision, ProviderAdapter, ProviderHooks } from '../src/operator/provider-adapter.js';
 
-class FakeProvider implements ProviderAdapter {
+export class FakeProvider implements ProviderAdapter {
     hooks!: ProviderHooks;
     sessions: string[] = [];
+    keys: string[] = [];
     resumed: string[] = [];
     turns: { sessionId: string; text: string; turnId: string }[] = [];
     decisions: { key: string; decision: ApprovalDecision }[] = [];
@@ -21,7 +22,8 @@ class FakeProvider implements ProviderAdapter {
         this.hooks = hooks;
         await hooks.onEvent({ type: 'connected', epoch: 'test-epoch' });
     }
-    openSession(input: { sessionId?: string }) {
+    openSession(input: { sessionId?: string; conversationKey?: string }) {
+        if (input.conversationKey) this.keys.push(input.conversationKey);
         if (input.sessionId) {
             this.resumed.push(input.sessionId);
             return Promise.resolve({ id: input.sessionId });
@@ -50,7 +52,7 @@ class FakeProvider implements ProviderAdapter {
     }
     async close() {}
 }
-const controllerEvent = (id: string, text = 'request'): BotEvent => ({
+export const controllerEvent = (id: string, text = 'request'): BotEvent => ({
     id,
     text,
     actorId: 'owner',
@@ -60,7 +62,7 @@ const controllerEvent = (id: string, text = 'request'): BotEvent => ({
     cursor: 1,
     receivedAt: new Date().toISOString(),
 });
-async function settle(predicate: () => boolean) {
+export async function settle(predicate: () => boolean) {
     for (let index = 0; index < 100; index++) {
         if (predicate()) return;
         await new Promise<void>((resolve) => setImmediate(resolve));
@@ -92,8 +94,12 @@ async function checkLifecycle(directory: string): Promise<void> {
     assert.equal(await controller.ingest(event('first')), false);
     await settle(() => adapter.turns.length === 1);
     const tools = adapter.hooks.tools!;
-    assert.equal(tools.length, 4);
-    assert.equal((await tools[0]!.call({ prompt: 'Denied recursive worker' }, 'worker-session')).success, false);
+    const tool = (name: string) => tools.find((item) => item.name === name)!;
+    assert.deepEqual(
+        tools.map((item) => item.name),
+        ['start_task', 'list_tasks', 'get_task_status', 'steer_task', 'cancel_task'],
+    );
+    assert.equal((await tool('start_task').call({ title: 'Nope', prompt: 'Denied recursive worker' }, 'worker-session')).success, false);
     await controller.ingest(event('second', 'follow-up while busy'));
     assert.equal(adapter.turns.length, 1);
     assert.equal(controller.status().queued, 1);
@@ -101,8 +107,8 @@ async function checkLifecycle(directory: string): Promise<void> {
     await settle(() => adapter.turns.length === 2);
     await settle(() => Boolean(controller.getTaskStatus(taskId).turnId));
     assert.equal(adapter.sessions.length, 2);
-    assert.equal((await tools[1]!.call({ taskId }, 'session-1')).success, true);
-    assert.equal((await tools[1]!.call({ taskId }, 'unrelated-session')).success, false);
+    assert.equal((await tool('get_task_status').call({ taskId }, 'session-1')).success, true);
+    assert.equal((await tool('get_task_status').call({ taskId }, 'unrelated-session')).success, false);
     assert.equal(controller.getTaskStatus(taskId).state, 'running');
     await checkApproval(controller, adapter, prompts);
     await adapter.hooks.onEvent({ type: 'progress', sessionId: 'session-1', turnId: 'turn-1', text: 'optional activity', activity: true });

@@ -201,7 +201,6 @@ export class SessionRouter {
         await saveState({ sessionId: this.sessionId!, workspace: this.workspace, seen: this.seen, briefed: this.briefed });
     }
 
-    /** Owner and instruction changes reach the existing conversation with the next message, without starting over. */
     private async withBrief(message: string): Promise<string> {
         await this.bridge.people.approved();
         const brief = this.brief();

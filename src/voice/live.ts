@@ -63,12 +63,10 @@ export class LiveVoices {
         );
     }
 
-    /** Approved people are listened for its name while they are still talking, unless it is already in a conversation. */
     wakeable(session: CallSession, userId: string): boolean {
         return !this.active(session.guildId) && this.host.policy.userAllowed(userId) && this.speaks(session);
     }
 
-    /** Its name heard mid-sentence: opens the live voice now and hands it everything they have said so far (48 kHz stereo). */
     wake(session: CallSession, userId: string, text: string, pcm: Int16Array): boolean {
         if (!this.wakeable(session, userId) || !this.host.requests.named(text)) return false;
         void this.engage(session, userId, undefined, pcm).catch(() => undefined);
@@ -104,7 +102,6 @@ export class LiveVoices {
         return true;
     }
 
-    /** Applies saved settings to an open conversation: it stops if it may no longer talk, and reconnects to pick up a new voice, model or instructions. */
     settingsChanged(session: CallSession, reconnect: boolean): void {
         const conversation = this.conversations.get(session.guildId);
         if (!conversation?.active) return;

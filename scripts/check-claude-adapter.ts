@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { roleInstructions } from '../src/operator/manager-guide.js';
 import { z } from 'zod';
 import { ClaudeAdapter } from '../src/operator/claude-adapter.js';
 import type {
@@ -243,7 +244,7 @@ async function checkReuse(harness: Harness): Promise<string> {
     assert.deepEqual(calls[0]!.options.systemPrompt, {
         type: 'preset',
         preset: 'claude_code',
-        append: 'Keep the controller responsive.',
+        append: roleInstructions('controller', 'Keep the controller responsive.'),
         snapshot: true,
     });
     assert.ok(events.every((event) => event.type !== 'progress' || !event.text.includes('private')));

@@ -26,7 +26,6 @@ export class EventAccess {
         if (!this.ownerAllowed(owner.id)) throw new ProtocolError(-32602, 'Event access denied');
         if (owner.expiresAt !== undefined && owner.expiresAt <= this.now()) throw new ProtocolError(-32602, 'Event credential expired');
     }
-    /** Kept while its owner and lifetime are valid; settings that block it only pause it until they allow it again. */
     retained(subscription: Subscription): boolean {
         try {
             this.assertOwner({ id: subscription.owner, expiresAt: subscription.ownerExpires });

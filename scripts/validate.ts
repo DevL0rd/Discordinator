@@ -20,6 +20,7 @@ import { checkSend } from './check-send.js';
 import { checkEnvironmentRestart, checkPeople } from './check-people.js';
 import { checkPanel } from './check-panel.js';
 import { checkController } from './check-controller.js';
+import { checkControllerTasks } from './check-controller-tasks.js';
 import { checkProviderApproval } from './check-provider-approval.js';
 import { checkCodexAdapter } from './check-codex-adapter.js';
 import { checkClaudeAdapter } from './check-claude-adapter.js';
@@ -170,6 +171,7 @@ try {
             await checkRender();
             await checkDashboard();
             await checkController(directory);
+            await checkControllerTasks(directory);
             await checkProviderApproval(directory);
             await checkCodexAdapter();
             await checkClaudeAdapter();

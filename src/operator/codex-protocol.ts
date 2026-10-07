@@ -1,4 +1,5 @@
 import { spawn } from 'node:child_process';
+import { roleInstructions } from './manager-guide.js';
 import type { CodexCli } from './codex-config.js';
 import { randomUUID } from 'node:crypto';
 import type { Readable, Writable } from 'node:stream';
@@ -140,13 +141,13 @@ export function deferFrame(connection: Connection, message: RecordValue, session
     return true;
 }
 
-export function sessionParams(config: OperatorConfig, sessionId?: string): RecordValue {
+export function sessionParams(config: OperatorConfig, sessionId?: string, role: ProviderRole = 'controller'): RecordValue {
     return {
         cwd: config.workspace,
         approvalPolicy: 'on-request',
         approvalsReviewer: 'user',
         ...(config.codexModel ? { model: config.codexModel } : {}),
-        ...(config.instructions ? { developerInstructions: config.instructions } : {}),
+        developerInstructions: roleInstructions(role, config.instructions),
         ...(sessionId ? { threadId: sessionId } : {}),
     };
 }

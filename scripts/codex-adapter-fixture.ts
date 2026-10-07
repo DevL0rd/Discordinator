@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { roleInstructions } from '../src/operator/manager-guide.js';
 import { PassThrough, Writable } from 'node:stream';
 import { z } from 'zod';
 import { CodexAdapter, type CodexTransport } from '../src/operator/codex-adapter.js';
@@ -102,7 +103,7 @@ export async function session(adapter: CodexAdapter, transport: MockTransport, i
     assert.equal(frame.params?.approvalPolicy, 'on-request');
     assert.equal(frame.params?.approvalsReviewer, 'user');
     assert.equal(frame.params?.model, config.codexModel);
-    assert.equal(frame.params?.developerInstructions, config.instructions);
+    assert.equal(frame.params?.developerInstructions, roleInstructions('controller', config.instructions));
     assert.equal(frame.params?.sandbox, undefined);
     transport.reply(frame, { thread: { id, turns: [] } });
     assert.deepEqual(await opening, { id });

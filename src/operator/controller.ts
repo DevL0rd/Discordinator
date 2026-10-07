@@ -1,6 +1,6 @@
 import { withHistory, type History } from './history.js';
 import { progressPost } from './activity-format.js';
-import { randomUUID } from 'node:crypto';
+import { TaskDesk } from './controller-tasks.js';
 import type { BotEvent } from '../core/queue.js';
 import type { OperatorConfig } from './config.js';
 import { ControllerStore, controllerStatus, conversationKey, type ControllerTask } from './controller-state.js';
@@ -24,6 +24,7 @@ export type ControllerOptions = {
     notice?: (event: ProviderNotice) => void;
     sessionIdleMs?: number;
     describe?: (event: BotEvent) => string;
+    brief?: (eventId: string, title: string, prompt: string) => string;
 };
 type Origin = Pick<BotEvent, 'guildId' | 'channelId' | 'actorId'>;
 
@@ -40,6 +41,7 @@ export class ConversationController {
     private approvalDeliveryError: string | null = null;
     private failed = false;
     private readonly turns: TurnClock;
+    readonly tasks: TaskDesk;
     constructor(
         readonly adapter: ProviderAdapter,
         readonly config: OperatorConfig,
@@ -50,6 +52,13 @@ export class ConversationController {
     ) {
         this.outbox = new ControllerOutbox(store, deliver, () => this.generation);
         this.turns = new TurnClock(adapter, config, () => this.fail(), options.sessionIdleMs ?? 10 * 60_000);
+        this.tasks = new TaskDesk(
+            store,
+            () => this.generation,
+            () => this.schedulePump(),
+            (sessionId, turnId, text) => this.adapter.steer(sessionId, turnId, text),
+            (sessionId, turnId) => this.turns.interrupt(sessionId, turnId, 'cancel'),
+        );
     }
     async start(): Promise<void> {
         await this.store.load();
@@ -107,35 +116,17 @@ export class ConversationController {
         this.schedulePump();
         return added;
     }
-    async startTask(conversation: string, prompt: string): Promise<string> {
-        if (!prompt.trim() || prompt.length > 32000) throw new Error('Task prompt is empty or too large');
+    async startTask(conversation: string, prompt: string, title = 'Task'): Promise<string> {
         const owner = this.store.snapshot().conversations.find((item) => item.key === conversation);
         if (!owner) throw new Error('Task has no verified owning conversation');
-        const id = randomUUID();
-        await this.store.update((state) => {
-            state.tasks.push({ id, conversationKey: conversation, originEventId: owner.originEventId, prompt, state: 'queued' });
-        }, this.generation);
-        this.schedulePump();
-        return id;
+        const brief = this.options.brief?.(owner.originEventId, title, prompt) ?? prompt;
+        return this.tasks.start({ conversationKey: conversation, originEventId: owner.originEventId, title, prompt: brief });
     }
     getTaskStatus(id: string): ControllerTask {
-        const task = this.store.snapshot().tasks.find((item) => item.id === id);
-        if (!task) throw new Error('Task not found');
-        return task;
+        return this.tasks.get(id);
     }
-    async steerTask(id: string, text: string): Promise<void> {
-        const task = this.getTaskStatus(id);
-        if (!task.sessionId || !task.turnId || !['running', 'approval'].includes(task.state)) throw new Error('Task is not active');
-        await this.adapter.steer(task.sessionId, task.turnId, text);
-    }
-    async cancelTask(id: string): Promise<void> {
-        const task = this.getTaskStatus(id);
-        if (task.sessionId && task.turnId && ['running', 'approval'].includes(task.state))
-            await this.turns.interrupt(task.sessionId, task.turnId, 'cancel');
-        await this.store.update((state) => {
-            const current = state.tasks.find((item) => item.id === id)!;
-            current.state = 'cancelled';
-        }, this.generation);
+    cancelTask(id: string): Promise<void> {
+        return this.tasks.cancel(id);
     }
     async resolveApproval(key: string, decision: ApprovalDecision, originEventId: string): Promise<void> {
         const pending = this.approvals.get(key);
@@ -241,7 +232,11 @@ export class ConversationController {
         for (const task of state.tasks
             .filter((item) => item.state === 'queued')
             .slice(0, Math.max(0, (this.options.workerCapacity ?? 2) - active))) {
-            const session = await this.adapter.openSession({ role: 'worker', conversationKey: task.conversationKey });
+            const session = await this.adapter.openSession({
+                role: 'worker',
+                conversationKey: `task:${task.id}`,
+                ...(task.sessionId ? { sessionId: task.sessionId } : {}),
+            });
             await this.store.update((state) => {
                 Object.assign(
                     state.tasks.find((item) => item.id === task.id)!,
@@ -345,6 +340,7 @@ export class ConversationController {
             if (worker && worker.state !== 'cancelled') {
                 worker.state = event.type === 'final' ? 'completed' : 'failed';
                 worker.result = text;
+                worker.updatedAt = new Date().toISOString();
             }
             const controller = current.conversations.find((item) => item.sessionId === event.sessionId);
             if (controller) {
@@ -369,9 +365,10 @@ export class ConversationController {
         this.turns.release(sessionId, turnId);
     }
     private async progress(event: Extract<ProviderEvent, { type: 'progress' }>): Promise<void> {
-        if (event.activity && !this.options.activity) return;
         const owner = this.owner(event.sessionId);
         if (!owner || owner.turnId !== event.turnId) return;
+        if ('prompt' in owner) await this.tasks.progress(event.sessionId, event.text);
+        if (event.activity && !this.options.activity) return;
         const quiet = this.progressAt.get(event.sessionId) ?? Date.now();
         const text = progressPost(Boolean(event.activity), event.text, quiet, this.config.progressSeconds ?? 60);
         if (!text) return;

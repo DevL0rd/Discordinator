@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import type { ApprovalDecision, ProviderApproval, ProviderTool } from './provider-adapter.js';
+import type { ApprovalDecision, ProviderApproval, ProviderRole, ProviderTool } from './provider-adapter.js';
 import {
     approvalKey,
     object,
@@ -133,8 +133,12 @@ function toolSpecs(tools: ProviderTool[]): RecordValue[] {
     });
 }
 
-export function controllerParams(config: OperatorConfig, input: { role: string; sessionId?: string }, tools: ProviderTool[]): RecordValue {
-    const params = sessionParams(config, input.sessionId);
+export function controllerParams(
+    config: OperatorConfig,
+    input: { role: ProviderRole; sessionId?: string },
+    tools: ProviderTool[],
+): RecordValue {
+    const params = sessionParams(config, input.sessionId, input.role);
     if (input.role === 'controller' && !input.sessionId && tools.length) params.dynamicTools = toolSpecs(tools);
     return params;
 }

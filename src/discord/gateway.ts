@@ -256,7 +256,6 @@ export class Gateway {
         return Boolean(this.events) && message.author.id !== this.api.botId && !message.webhookId && this.policy.config.mcpEvents.enabled;
     }
 
-    /** Skips people just looked up without an approved role, until saved settings change. */
     private recentlyUnknown(userId: string): boolean {
         if (this.rolesCheckedFor !== this.policy.config) {
             this.rolesCheckedFor = this.policy.config;

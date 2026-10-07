@@ -61,7 +61,6 @@ export class Conversation {
         return !this.closed;
     }
 
-    /** Opens the live voice, answering a first message if there is one; audio heard before it is ready is sent all at once. */
     async start(first?: string): Promise<void> {
         this.session = await this.open();
         if (first) this.session.text(first, true);
@@ -156,7 +155,6 @@ export class Conversation {
         return true;
     }
 
-    /** Reconnects with the current settings (voice, model, instructions), carrying the conversation over when Gemini allows it. */
     async reopen(): Promise<void> {
         if (this.closed || !this.session) return;
         const previous = this.session;

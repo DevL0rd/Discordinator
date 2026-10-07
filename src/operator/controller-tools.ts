@@ -16,27 +16,37 @@ export function controllerTools(controller: ConversationController, store: Contr
     return [
         tool(
             'start_task',
-            'Start an independent worker for this conversation. Keep the controller responsive for follow-up chat.',
-            { prompt: z.string().min(1).max(32000) },
-            async (args, sessionId) => ({ taskId: await controller.startTask(owner(sessionId).key, args.prompt) }),
+            'Hand big or long work to a worker: a separate assistant conversation on this computer that works on its own and reports its progress and result in this Discord conversation. Give a short title and a complete brief. Check list_tasks first.',
+            { title: z.string().min(1).max(120), prompt: z.string().min(1).max(32000) },
+            async (args, sessionId) => ({ taskId: await controller.startTask(owner(sessionId).key, args.prompt, args.title) }),
         ),
-        tool('get_task_status', 'Read a task owned by this conversation.', { taskId: z.uuid() }, (args, sessionId) => {
-            assertTask(sessionId, args.taskId);
-            return Promise.resolve(controller.getTaskStatus(args.taskId));
-        }),
+        tool(
+            'list_tasks',
+            'List workers, running ones first: title, state, latest progress and a preview of the result. Check it before starting work and whenever someone asks how something is going.',
+            {},
+            (_args, sessionId) => Promise.resolve({ tasks: controller.tasks.list(owner(sessionId).key) }),
+        ),
+        tool(
+            'get_task_status',
+            'Read one task in full, including its brief and complete result.',
+            { taskId: z.uuid() },
+            (args, sessionId) => {
+                assertTask(sessionId, args.taskId);
+                return Promise.resolve(controller.getTaskStatus(args.taskId));
+            },
+        ),
         tool(
             'steer_task',
-            'Send a correction to an active task owned by this conversation.',
+            'Send a worker a message: a correction while it runs, or follow-up work once it finished (it resumes with everything it already knows).',
             { taskId: z.uuid(), text: z.string().min(1).max(8000) },
             async (args, sessionId) => {
                 assertTask(sessionId, args.taskId);
-                await controller.steerTask(args.taskId, args.text);
-                return { steered: true };
+                return { sent: await controller.tasks.message(args.taskId, args.text, owner(sessionId).originEventId) };
             },
         ),
         tool(
             'cancel_task',
-            'Cancel only the selected task; keep the conversational controller and other tasks alive.',
+            'Stop one worker; the conversation and other workers keep going.',
             { taskId: z.uuid() },
             async (args, sessionId) => {
                 assertTask(sessionId, args.taskId);

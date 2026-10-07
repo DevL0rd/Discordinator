@@ -47,7 +47,6 @@ function replace(config: Config, next: Config): void {
     Object.assign(config, next);
 }
 
-/** The bundled sign-in server sets its owner at runtime, so a saved .env without one must not erase it. */
 function withRuntimeOwner(config: Config, next: Config): Config {
     const bundled = next.DISCORDINATOR_AUTH_MODE === 'oauth' && next.DISCORDINATOR_OAUTH_SERVER === 'bundled';
     return bundled && !next.DISCORDINATOR_OAUTH_SUBJECTS
@@ -82,12 +81,10 @@ export async function reconfigure(config: Config, saved: Config, target: Reconfi
     return changed;
 }
 
-/** Identifies one saved version of .env, so the setup app can tell whether that exact version was applied. */
 export function environmentStamp(text: string): string {
     return createHash('sha256').update(text).digest('hex').slice(0, 16);
 }
 
-/** Watches .env and hands every valid change to apply with its stamp; invalid edits are reported and ignored. */
 export function watchEnvironment(
     path: string,
     base: NodeJS.ProcessEnv,

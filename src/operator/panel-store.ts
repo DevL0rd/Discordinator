@@ -205,7 +205,6 @@ async function operatorMessage(activation: Activation, mode: string): Promise<st
         ? `Saved. ${assistantName(mode)} is now the primary responder.`
         : `Saved. ${assistantName(mode)} takes over once Discordinator finishes any current work.`;
 }
-/** Waits for the running bot to report on this exact saved .env, so a failed apply is never shown as applied. */
 async function environmentMessage(path: string, failures: string[]): Promise<string> {
     if (!(await liveSetupStatus())) return 'Settings saved. Discordinator uses them as soon as it is running.';
     const stamp = environmentStamp(await readFile(path, 'utf8').catch(() => ''));

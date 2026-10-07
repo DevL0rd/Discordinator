@@ -36,7 +36,7 @@ When a settings file changes outside the setup app, the app reloads it and keeps
 
 Saving a different responder makes it the primary one, starts it and connects its app if needed; the switch waits for any work in progress to finish. Saving other changes keeps a paused responder paused. Choosing ChatGPT - Dot also allows wake-up events. ChatGPT wake-ups are delivered only while ChatGPT is the selected responder, so connected apps never answer twice. The running Discordinator watches its settings files, so responder and policy settings take effect as soon as they are saved. `.env` changes apply without restarting too: keys and allowed hosts change in place, a new bot token or intent reconnects the bot to Discord, and port or sign-in changes restart only the MCP listener, so conversations and work in progress carry on.
 
-Each request handed to a local assistant starts with a line naming its sender, such as `Discord · #channel · from "DevL0rd" @devl0rd (ID 1022779807186042890) · owner`, and the recent-history lines name their authors the same way. The `owner` tag comes from `ownerUserId` and the ID alone. The owner is also named in the assistant's instructions when its conversation or session starts; the per-request tag stays current if the owner changes later.
+Each request handed to a local assistant starts with a line naming its sender, such as `Discord · #channel · from "DevL0rd" @devl0rd (ID 1022779807186042890) · owner`, and the recent-history lines name their authors the same way. The `owner` tag comes from `ownerUserId` and the ID alone. The owner is also named in the assistant's instructions, along with your custom instructions, and changes to either reach the conversation with the next message; the per-request tag always reflects the current owner.
 
 ## Responders
 
@@ -72,6 +72,15 @@ If your Codex has no shared service, or **Always run in the background** is on, 
 ### ChatGPT - Dot
 
 Its card lists what it needs, each with a check mark: a public domain and a sign-in password (Apps page), the ChatGPT (web) connector, wake-up events allowed, and a ChatGPT chat that turned on wake-ups. **ChatGPT connector guide** walks you through the connector and wake-ups.
+
+## Discordinator as the manager
+
+A local responder is told to act as the manager of the work on your computer, not just a chat. It does quick things itself: questions, lookups, short Discord actions, small edits. Big or long work, such as multi-step coding, research, builds or debugging, it hands to a separate conversation in its own app, with a title and a full brief that includes the Discord request to report back to. That conversation works on its own and posts its progress and result there, while the responder stays free to keep chatting. Before starting one it checks what is already running and sends a follow-up to a conversation already on that work instead. When you ask how something is going, it looks up the other conversations before answering.
+
+| Responder | How it manages work |
+| :-- | :-- |
+| Claude Code in Claude Desktop | With Claude's own tools: Claude Desktop's session tools to start, list and message sessions, and `claude --bg` and `claude agents` for background agents. The Discordinator conversation gets these instructions with its next message. |
+| Claude Code in the background, or Codex | With its built-in `start_task`, `list_tasks`, `steer_task` and `cancel_task`: each worker is its own Claude Code conversation or Codex thread, up to two at a time, with permission requests in Discord as buttons. A finished worker takes follow-up work and keeps what it knew. |
 
 ## Local responders
 
