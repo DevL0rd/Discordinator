@@ -40,7 +40,7 @@ export const policySettings = [
             apply: 'live',
             label: 'Approved people',
             description:
-                'Verified human Discord user IDs allowed to create requests. Applies live through the people watcher; removal revokes stored reply authority.',
+                'Discord people and bots (by ID) allowed to create requests. Applies live through the people watcher; removal revokes stored reply authority.',
             kind: 'list',
             defaultValue: [],
             maxItems: 100,

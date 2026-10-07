@@ -63,12 +63,12 @@ async function checkUndelivered(file: string): Promise<void> {
     assert.deepEqual(
         h.context.ingested.map(([observed, addressed]) => [observed.messageId, observed.authorBot, addressed]),
         [
-            [id('from-bot'), true, false],
+            [id('from-bot'), true, true],
             [id('from-webhook'), false, false],
         ],
-        'bots and webhooks are observed but never trigger',
+        'an approved bot triggers like an approved person; webhooks are observed but never trigger',
     );
-    assert.equal(h.emitted.length, 0, 'bots and webhooks are not delivered as MCP events');
+    assert.equal(h.emitted.length, 1, 'other bots are delivered as MCP events; webhooks are not');
     h.policy.config.channels.blocked.push(ids.other);
     await h.gateway.message(fakeMessage({ id: id('blocked'), author: { id: ids.denied, bot: false }, channelId: ids.other }));
     assert.equal(h.context.ingested.length, 2, 'messages in blocked channels are not observed');

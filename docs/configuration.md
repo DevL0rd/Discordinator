@@ -48,7 +48,7 @@ The full [public policy example](../policy.example.json) grants no users, scopes
 | `context.enabled`, `media.enabled`, `mcpEvents.enabled` | `false` | Independent opt-ins for context, attachments and subscriptions |
 | `context.capture`, `media.capture` | `addressed` | Explicit `all` enables observation beyond triggers |
 | `context.reach`, `context.perChannel` | `channel`, `50` | Whether a responder sees history from only the channel it was messaged from or the whole server (grouped by channel); at most 100 messages per channel, DMs included |
-| `context.includeBots` | `true` | Bot messages are visible as context only; bots never trigger a response |
+| `context.includeBots` | `true` | Keep other bots' messages as context. Other bots are treated like people: an approved bot triggers responses like an approved person |
 | `media.maxAttachments`, `media.ttlMinutes` | `500`, `30` | Hard maxima 1000 attachments / 60 minutes |
 | `media.maxFileBytes` | `2097152` | Hard maximum 8388608 bytes |
 | `mcpEvents.allowAllMessages` | `false` | Separate opt-in for all-message delivery |

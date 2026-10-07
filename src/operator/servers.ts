@@ -2,7 +2,7 @@ import { policySchema, type ScopeList } from '../core/config.js';
 import { Policy } from '../core/policy.js';
 import { DiscordApi } from '../discord/api.js';
 
-type Named = { id: string; name: string };
+type Named = { id: string; name: string; bot?: boolean };
 export interface ServerInfo {
     id: string;
     name: string;
@@ -22,10 +22,14 @@ const textTypes = new Set([0, 5, 15]);
 
 function memberName(member: RawMember): Named {
     const display = member.nick ?? member.user.global_name ?? member.user.username;
-    return { id: member.user.id, name: display === member.user.username ? `@${display}` : `${display} (@${member.user.username})` };
+    return {
+        id: member.user.id,
+        name: display === member.user.username ? `@${display}` : `${display} (@${member.user.username})`,
+        ...(member.user.bot ? { bot: true } : {}),
+    };
 }
 
-async function loadServer(api: DiscordApi, guild: { id: string; name?: string }): Promise<ServerInfo> {
+async function loadServer(api: DiscordApi, guild: { id: string; name?: string }, botId: string): Promise<ServerInfo> {
     const read = <T>(route: string) => api.get(route).catch(() => []) as Promise<T[]>;
     const [channels, members, roles] = await Promise.all([
         read<RawChannel>(`/guilds/${guild.id}/channels`),
@@ -39,7 +43,7 @@ async function loadServer(api: DiscordApi, guild: { id: string; name?: string })
             .filter((channel) => textTypes.has(channel.type ?? -1))
             .map((channel) => ({ id: channel.id, name: channel.name ?? channel.id })),
         members: members
-            .filter((member) => !member.user.bot)
+            .filter((member) => member.user.id !== botId)
             .map(memberName)
             .sort((a, b) => a.name.localeCompare(b.name)),
         roles: roles.filter((role) => role.id !== guild.id && !role.managed).map((role) => ({ id: role.id, name: role.name })),
@@ -51,7 +55,7 @@ export async function listServers(token: string): Promise<BotServers> {
     const bot = (await api.get('/users/@me')) as { id?: string; username?: string; bot?: boolean };
     if (!bot.id || !bot.bot) throw new Error('Token did not resolve to a Discord bot identity.');
     const guilds = (await api.get('/users/@me/guilds').catch(() => [])) as { id: string; name?: string }[];
-    const servers = await Promise.all(guilds.slice(0, 25).map((guild) => loadServer(api, guild)));
+    const servers = await Promise.all(guilds.slice(0, 25).map((guild) => loadServer(api, guild, bot.id!)));
     return { bot: `${bot.username ?? 'bot'} (${bot.id})`, botId: bot.id, servers };
 }
 

@@ -14,7 +14,6 @@ export function discordGuilds(client: Client): VoiceGuilds {
             const channel = client.channels.cache.get(channelId);
             return channel && 'name' in channel && typeof channel.name === 'string' ? channel.name : null;
         },
-        isBot: (userId) => client.users.cache.get(userId)?.bot ?? false,
         person: (guildId, userId) => {
             const member = guild(guildId)?.members.cache.get(userId);
             const user = member?.user ?? client.users.cache.get(userId);

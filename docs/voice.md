@@ -21,7 +21,7 @@ It leaves once no approved person has been in the call for **Leave after** secon
 
 ## Listening: the transcript
 
-While in a call, Discordinator transcribes everyone (or only approved people, under **Who is transcribed**). Discord delivers each person's audio separately, tagged with their user ID, so every line is attributed exactly. Each utterance goes to the **Transcript model** (`gemini-3.5-flash-lite` by default) with a little context to help with names and unclear words: the bot's names, the people in the call and the last five lines. Transcripts are saved privately in `.data/voice/` and deleted after **Keep transcripts** days (30 by default).
+While in a call, Discordinator transcribes everyone, other bots included (or only approved people and bots, under **Who is transcribed**). An approved bot can talk to it by name like an approved person. Discord delivers each person's audio separately, tagged with their user ID, so every line is attributed exactly. Each utterance goes to the **Transcript model** (`gemini-3.5-flash-lite` by default) with a little context to help with names and unclear words: the bot's names, the people in the call and the last five lines. Transcripts are saved privately in `.data/voice/` and deleted after **Keep transcripts** days (30 by default).
 
 `voice_calls` lists calls; `voice_transcript` reads one, oldest first in pages of up to 1,500 lines (follow `page.nextStart`), so the assistant can summarize even a long call in full; `voice_transcript_delete` deletes a finished one.
 

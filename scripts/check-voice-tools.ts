@@ -138,7 +138,6 @@ function checkGuildAdapter(): void {
     assert.equal(guilds.channelOf(ids.guild, ids.user), voiceChannel);
     assert.equal(guilds.channelOf(ids.other, ids.user), null);
     assert.deepEqual([guilds.channelName(voiceChannel), guilds.channelName(ids.other)], ['Hangout', null]);
-    assert.deepEqual([guilds.isBot(stranger), guilds.isBot(ids.user), guilds.isBot(ids.other)], [true, false, false]);
     assert.deepEqual(guilds.person(ids.guild, ids.user), person(ids.user, 'devl0rd', 'DevL0rd', 'Boss'));
     assert.deepEqual(guilds.person(ids.guild, ids.other), person(ids.other));
     assert.equal(guilds.self().username, 'Discordinator');

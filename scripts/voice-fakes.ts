@@ -163,9 +163,6 @@ class FakeGuilds implements VoiceGuilds {
     channelName(channelId: string): string | null {
         return channelId === voiceChannel ? 'Hangout' : null;
     }
-    isBot(userId: string): boolean {
-        return userId === botUser;
-    }
     person(_guildId: string, userId: string): Person {
         return this.people.get(userId) ?? person(userId);
     }

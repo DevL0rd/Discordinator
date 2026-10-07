@@ -315,12 +315,11 @@ function partBody(
 }
 
 function matchesReplySource(source: import('../discord/api.js').Json, event: EventContext['event']): boolean {
-    const author = source.author as { id?: string; bot?: boolean };
+    const author = source.author as { id?: string };
     return (
         source.id === event.messageId &&
         source.channel_id === event.channelId &&
         author?.id === event.actorId &&
-        !author.bot &&
         !source.webhook_id &&
         source.content === event.text
     );

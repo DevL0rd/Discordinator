@@ -137,10 +137,15 @@ async function checkDirectMessages(file: string): Promise<void> {
     await gateway.message(message('approved-dm'));
     assert.equal(f.queue.snapshot(0, 25).events.length, 2);
     await gateway.message(message('unapproved-dm', ids.denied));
-    await gateway.message(message('bot-dm', ids.user, true));
     await gateway.message(message('webhook-dm', ids.user, false, ids.other));
     await gateway.message({ ...message('plain-guild'), guildId: ids.guild } as Message);
     assert.equal(f.queue.snapshot(0, 25).events.length, 2);
+    await gateway.message(message('bot-dm', ids.user, true));
+    assert.equal(f.queue.snapshot(0, 25).events.length, 3, 'an approved bot is answered like an approved person');
+    f.api.botId = ids.bot;
+    f.policy.config.allowedUserIds.push(ids.bot);
+    await gateway.message(message('self-dm', ids.bot, true));
+    assert.equal(f.queue.snapshot(0, 25).events.length, 3, 'its own messages never trigger it');
 }
 
 function checkRoles(): void {

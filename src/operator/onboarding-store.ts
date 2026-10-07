@@ -79,7 +79,7 @@ export async function discoverDiscord(token: string): Promise<DiscordDiscovery> 
         bot,
         botId,
         servers: servers.map((server) => server.name),
-        members: uniqueMembers(servers),
+        members: uniqueMembers(servers).filter((member) => !member.bot),
         intents: { messageContent: (flags & (0b11 << 18)) !== 0, members: (flags & (0b11 << 14)) !== 0 },
         channels: servers.flatMap((server) => server.channels.map((channel) => ({ ...channel, guild: server.name }))),
     };

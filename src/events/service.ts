@@ -59,7 +59,7 @@ export class EventsService {
                 {
                     name: eventName,
                     description:
-                        'New human messages in approved readable scope. Addressed delivery needs an allowed verified trigger. Answer Discord-origin requests and ordinary follow-ups in their originating Discord conversation unless the requester explicitly asks to move them. For work that may take time, acknowledge promptly and keep the requester informed there through completion or a clear blocker. All-message observation is separately opt-in and cannot authorize responses. No replay.',
+                        'New messages from people and other bots in approved readable scope. Addressed delivery needs an allowed verified trigger. Answer Discord-origin requests and ordinary follow-ups in their originating Discord conversation unless the requester explicitly asks to move them. For work that may take time, acknowledge promptly and keep the requester informed there through completion or a clear blocker. All-message observation is separately opt-in and cannot authorize responses. No replay.',
                     delivery: ['webhook'],
                     inputSchema: z.toJSONSchema(filtersSchema),
                     payloadSchema: z.toJSONSchema(payloadSchema),

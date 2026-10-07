@@ -253,7 +253,7 @@ export class Gateway {
     }
 
     private deliverable(message: Message): boolean {
-        return Boolean(this.events) && !message.author.bot && !message.webhookId && this.policy.config.mcpEvents.enabled;
+        return Boolean(this.events) && message.author.id !== this.api.botId && !message.webhookId && this.policy.config.mcpEvents.enabled;
     }
 
     /** Skips people just looked up without an approved role, until saved settings change. */
@@ -288,7 +288,7 @@ export class Gateway {
 
     private async allowedAuthor(message: Message): Promise<boolean> {
         if (message.guildId === null) await this.learnRoles(message.author.id);
-        return this.policy.userAllowed(message.author.id) && !message.author.bot && !message.webhookId;
+        return this.policy.userAllowed(message.author.id) && message.author.id !== this.api.botId && !message.webhookId;
     }
 
     private async authorizedTrigger(message: Message) {

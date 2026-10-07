@@ -15,7 +15,6 @@ export interface VoiceGuilds {
     occupants(guildId: string, channelId: string): string[];
     channelOf(guildId: string, userId: string): string | null;
     channelName(channelId: string): string | null;
-    isBot(userId: string): boolean;
     person(guildId: string, userId: string): Person;
     self(): Person;
     serverMuted(guildId: string): boolean;
@@ -37,7 +36,6 @@ const offline: VoiceGuilds = {
     occupants: () => [],
     channelOf: () => null,
     channelName: () => null,
-    isBot: () => false,
     person: (_guildId, userId) => person(userId),
     self: () => person('0'.repeat(17), 'Discordinator'),
     serverMuted: () => false,
@@ -115,6 +113,11 @@ export class VoiceService {
         for (const state of this.guilds.states()) await this.arrived(state.guildId, state.userId, state.channelId);
     }
 
+    /** Other bots are heard and answered like anyone else; only Discordinator's own voice is skipped. */
+    private isSelf(userId: string): boolean {
+        return userId === this.guilds.self().id;
+    }
+
     attach(connect: Connect, guilds: VoiceGuilds): void {
         this.connect = connect;
         this.guilds = guilds;
@@ -171,7 +174,7 @@ export class VoiceService {
         const session = new CallSession(link, call, this.store, this.providers, {
             settings: () => this.settings,
             shouldTranscribe: (userId) =>
-                Promise.resolve(!this.guilds.isBot(userId) && (this.settings.transcribe === 'everyone' || this.policy.userAllowed(userId))),
+                Promise.resolve(!this.isSelf(userId) && (this.settings.transcribe === 'everyone' || this.policy.userAllowed(userId))),
             speaker: (userId) => Promise.resolve(this.guilds.person(call.guildId, userId)),
             self: () => this.guilds.self(),
             heard: (line) => this.heard(session, line),
@@ -241,7 +244,7 @@ export class VoiceService {
     }
 
     private async arrived(guildId: string, userId: string, channelId: string): Promise<void> {
-        if (!this.settings.autoJoin || this.available() || this.sessions.has(guildId) || this.guilds.isBot(userId)) return;
+        if (!this.settings.autoJoin || this.available() || this.sessions.has(guildId) || this.isSelf(userId)) return;
         if (!this.policy.userAllowed(userId) || !this.policy.guildAllowed(guildId) || !this.policy.channelAllowed(channelId)) return;
         await this.join(guildId, channelId).catch(() => console.error('Voice auto-join failed'));
     }
@@ -251,7 +254,7 @@ export class VoiceService {
         if (!session) return;
         const approved = this.guilds
             .occupants(guildId, session.call.channelId)
-            .some((userId) => !this.guilds.isBot(userId) && this.policy.userAllowed(userId));
+            .some((userId) => !this.isSelf(userId) && this.policy.userAllowed(userId));
         if (approved) {
             clearTimeout(this.leaving.get(guildId));
             this.leaving.delete(guildId);

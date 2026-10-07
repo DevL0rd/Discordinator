@@ -51,7 +51,7 @@ export class EventAccess {
         try {
             this.policy.assertObservation(data);
             if (data.addressed) this.policy.assertOrigin(data);
-            return !data.authorBot;
+            return true;
         } catch {
             return false;
         }

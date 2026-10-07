@@ -55,13 +55,17 @@ async function checkRefusals(): Promise<void> {
     };
     await refuse({ environment: signIn }, /Set a sign-in password first/);
     const routes = { ...discordRoutes(), '/users/222222222222222224': { id: '222222222222222224', bot: true } };
-    await withDiscord(routes, () => refuse({ policy: { allowedUserIds: ['222222222222222224'] } }, /could not be verified as a human/));
     await withDiscord(routes, () => refuse({ policy: { allowedUserIds: ['222222222222222225'] } }, /request failed \(404\)/));
     const added = await withDiscord(routes, () =>
         applyDraft(snapshot, edited(snapshot, { policy: { allowedUserIds: [fake.owner] } }), noReconnect),
     );
     assert.equal(added.message, 'Discord settings saved and applied.', 'a verified person is added');
     assert.deepEqual((JSON.parse(await readFile('policy.json', 'utf8')) as { allowedUserIds: string[] }).allowedUserIds, [fake.owner]);
+    const current = await readPanel();
+    const bot = await withDiscord(routes, () =>
+        applyDraft(current, edited(current, { policy: { allowedUserIds: [fake.owner, '222222222222222224'] } }), noReconnect),
+    );
+    assert.equal(bot.message, 'Discord settings saved and applied.', 'another bot can be approved like a person');
 }
 
 async function checkRollback(): Promise<void> {

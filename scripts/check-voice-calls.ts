@@ -45,11 +45,10 @@ async function checkJoinAndTranscribe(directory: string): Promise<Harness> {
     await until(() => call.lines.length === 1, 'the owner is transcribed');
     h.link().talk(stranger, tone(1));
     await until(() => call.lines.length === 2, 'the stranger is transcribed');
-    h.link().talk(botUser, tone(1));
     h.link().talk(ids.user, tone(0.1));
     h.link().talk(ids.user, tone(1, 10));
     await new Promise((resolve) => setTimeout(resolve, 50));
-    assert.equal(call.lines.length, 2, 'Bots, very short clips and silence are not transcribed');
+    assert.equal(call.lines.length, 2, 'Very short clips and silence are not transcribed');
     assert.deepEqual(
         call.lines.map((line) => [line.speaker.nickname ?? line.speaker.globalName, line.text]),
         [
@@ -317,6 +316,20 @@ async function checkAutoJoin(directory: string): Promise<void> {
     assert.equal(await h.voice.leave(ids.guild), false);
 }
 
+async function checkOtherBots(directory: string): Promise<void> {
+    const h = voiceHarness(directory, 'voice-bots');
+    h.guilds.seats.set(ids.user, voiceChannel);
+    h.guilds.seats.set(botUser, voiceChannel);
+    const call = await h.voice.join(ids.guild, voiceChannel);
+    said(h, botUser, 'beep boop');
+    await until(() => call.lines.length === 1, 'another bot in the call is transcribed like a person');
+    assert.equal(call.lines[0]!.userId, botUser);
+    h.policy.update({ ...h.policy.config, allowedUserIds: [...h.policy.config.allowedUserIds, botUser] });
+    said(h, botUser, 'Discordinator what time is it');
+    await until(() => h.providers.sessions.length === 1, 'an approved bot can talk to it like an approved person');
+    await h.voice.stop();
+}
+
 async function checkEarlyWake(directory: string): Promise<void> {
     const h = voiceHarness(directory, 'voice-early');
     h.guilds.seats.set(ids.user, voiceChannel);
@@ -354,4 +367,5 @@ export async function checkVoiceCalls(directory: string): Promise<void> {
     await checkPresence(h);
     await checkAutoJoin(directory);
     await checkEarlyWake(directory);
+    await checkOtherBots(directory);
 }

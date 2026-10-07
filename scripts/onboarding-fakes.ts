@@ -73,6 +73,7 @@ export function discordRoutes(flags = (1 << 18) | (1 << 14)): DiscordRoutes {
             { user: { id: '222222222222222222', username: 'zed', global_name: 'Zed Global' } },
             { nick: null, user: { id: '222222222222222223', username: 'amy', global_name: null } },
             { user: { id: '222222222222222224', username: 'helper', bot: true } },
+            { user: { id: fake.bot, username: 'fixturebot', bot: true } },
         ],
         [`/guilds/${fake.guild}/roles`]: [
             { id: fake.guild, name: '@everyone' },

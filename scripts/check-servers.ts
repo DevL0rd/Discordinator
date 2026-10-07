@@ -27,13 +27,13 @@ async function checkListing(): Promise<void> {
     );
     assert.deepEqual(
         main!.members.map((member) => member.name),
-        ['@amy', 'Boss (@owner)', 'Zed Global (@zed)'],
-        'bots are hidden and people are sorted by display name',
+        ['@amy', '@helper', 'Boss (@owner)', 'Zed Global (@zed)'],
+        'other bots are listed like people, sorted by display name; the bot itself is not',
     );
     assert.deepEqual(main!.roles, [{ id: fake.role, name: 'Mods' }], '@everyone and managed roles are hidden');
     assert.deepEqual(quiet, { id: fake.quiet, name: fake.quiet, channels: [], members: [], roles: [] }, 'unreadable servers stay empty');
     const duplicated = [main!, { ...main!, id: 'copy', members: [main!.members[0]!] }];
-    assert.equal(uniqueMembers(duplicated).length, 3, 'people in two servers are listed once');
+    assert.equal(uniqueMembers(duplicated).length, 4, 'people in two servers are listed once');
     const anonymous = Object.fromEntries(Object.entries(routes).filter(([route]) => route !== '/users/@me/guilds'));
     anonymous['/users/@me'] = { id: fake.bot, bot: true };
     assert.deepEqual(await withDiscord(anonymous, () => listServers('fixture-token')), {

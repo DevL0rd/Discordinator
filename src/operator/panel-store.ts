@@ -119,8 +119,8 @@ async function validatePeople(snapshot: PanelSnapshot, policy: ReturnType<typeof
     const added = policy.allowedUserIds.filter((id) => !previous.includes(id));
     const api = new DiscordApi(token, new Policy(policy));
     for (const id of added) {
-        const user = (await api.get(`/users/${id}`)) as { id?: string; bot?: boolean };
-        if (user.id !== id || user.bot) throw new Error('Added Discord person could not be verified as a human.');
+        const user = (await api.get(`/users/${id}`)) as { id?: string };
+        if (user.id !== id) throw new Error('Added Discord person or bot could not be found.');
     }
 }
 async function validateOperator(document: Record<string, unknown>): Promise<void> {
