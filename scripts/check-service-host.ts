@@ -8,6 +8,7 @@ import { handlesScheme, openUrl } from '../src/operator/open-url.js';
 import { managedServiceStatus } from '../src/operator/service-status.js';
 import { launcherScript, supervisorPidFile, windowsServiceInstalled } from '../src/operator/windows-service.js';
 import { fakeConfig } from './fixtures.js';
+import { checkMacHost } from './check-mac-host.js';
 import { failingRunner, fakeRunner, freePort, inDirectory, listen, withEnv, writeFiles, type Call } from './host-fixture.js';
 
 const tsc = (call: Call) => call.file === process.execPath && call.args[0] === 'node_modules/typescript/bin/tsc';
@@ -83,7 +84,7 @@ async function checkLinuxInstall(root: string): Promise<void> {
     } finally {
         await new Promise((done) => server.close(done));
     }
-    await assert.rejects(installService({ ...linux, platform: 'darwin' }), /supports Linux \(systemd\) and Windows/);
+    await assert.rejects(installService({ ...linux, platform: 'freebsd' }), /supports Linux \(systemd\), macOS \(launchd\) and Windows/);
 }
 
 async function checkLinuxRestart(): Promise<void> {
@@ -164,6 +165,7 @@ export async function checkServiceHost(directory: string): Promise<void> {
             await checkLinuxInstall(root);
             await checkLinuxRestart();
             await checkWindowsInstall();
+            await checkMacHost(root);
         }),
     );
 }

@@ -103,4 +103,4 @@ Local tools such as the setup app and the Claude plugin reach the runtime with a
 
 ## Background service
 
-The **System** page installs (or reinstalls) the background service, building Discordinator first, and restarts it while it runs. On Linux it is a systemd user service named `discordinator.service`. On Windows it starts hidden when you sign in, through your account's startup entries, with no admin rights needed, and logs to `.data/service.log`. It never stops a Discordinator you started by hand.
+The **System** page installs (or reinstalls) the background service, building Discordinator first, and restarts it while it runs. On Linux it is a systemd user service named `discordinator.service`. On macOS it is a launchd agent, `~/Library/LaunchAgents/com.github.devl0rd.discordinator.plist`, that starts when you log in and logs to `.data/service.log`. On Windows it starts hidden when you sign in, through your account's startup entries, with no admin rights needed, and logs to `.data/service.log`. It never stops a Discordinator you started by hand.

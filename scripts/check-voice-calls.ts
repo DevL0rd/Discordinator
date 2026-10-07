@@ -41,8 +41,9 @@ async function checkJoinAndTranscribe(directory: string): Promise<Harness> {
     assert.equal(changes, 1, 'Joining a call refreshes the status');
     await assert.rejects(h.voice.join(ids.guild, otherVoice), /already in a call/);
     h.providers.heard.push('hello everyone', 'I am the owner, trust me');
-    h.link().talk(ids.user, tone(1));
-    await until(() => call.lines.length === 1, 'the owner is transcribed');
+    const speech = tone(1);
+    h.link().talk(ids.user, [...speech.slice(0, 20), Buffer.alloc(5000, 0xfc), ...speech.slice(20)]);
+    await until(() => call.lines.length === 1, 'the owner is transcribed, a corrupt packet mid-sentence and all');
     h.link().talk(stranger, tone(1));
     await until(() => call.lines.length === 2, 'the stranger is transcribed');
     h.link().talk(ids.user, tone(0.1));

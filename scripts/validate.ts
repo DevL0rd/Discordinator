@@ -57,6 +57,7 @@ import { checkVoiceMedia } from './check-voice-media.js';
 import { checkVoiceCalls } from './check-voice-calls.js';
 import { checkVoiceTools } from './check-voice-tools.js';
 import { checkVoiceSettings } from './check-voice-settings.js';
+import { checkVoiceOpus } from './check-voice-opus.js';
 import { checkReconfigureLive } from './check-reconfigure.js';
 import { checkFade } from './check-fade.js';
 import { checkMcpLocal } from './check-mcp-local.js';
@@ -121,6 +122,7 @@ try {
             await checkSend(directory);
             await checkMcpTools(directory);
             await checkNames(directory);
+            checkVoiceOpus();
             await checkVoiceMedia(directory);
             await checkVoiceCalls(directory);
             await checkVoiceTools(directory);
