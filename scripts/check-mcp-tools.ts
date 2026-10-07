@@ -13,7 +13,7 @@ type Fixture = ReturnType<typeof fixture>;
 const foreignRejection = { then: (_resolve: unknown, reject: (reason: string) => void) => reject('raw') } as unknown as Promise<unknown>;
 const pixel = png;
 
-function caller(base: string) {
+export function caller(base: string) {
     return async (name: string, args: Record<string, unknown>) => {
         const result = await localCall({ base, key }, 'tools/call', { name, arguments: args });
         const text = (result.content as { text: string }[])[0]!.text;
@@ -102,11 +102,14 @@ async function checkSettingsTool(call: Call, directory: string): Promise<void> {
         const unknown = await call('discordinator_settings_update', { changes: [{ id: 'not-a-setting', value: true }] });
         assert.equal(unknown.failed, true);
         assert.equal(unknown.text, 'Unknown setting not-a-setting');
-        const listed = (await call('discordinator_settings', {})).value<{ label: string; value: unknown }[]>();
+        const listed = (await call('discordinator_settings', {})).value<{ label: string; value: unknown; editable: boolean }[]>();
         const shown = (label: string) => listed.find((item) => item.label === label)?.value;
         assert.equal(shown('Discord bot credential'), 'set', 'Credentials only show that they are set');
         assert.equal(shown('Bearer credential'), 'not set');
         assert.ok(!JSON.stringify(listed).includes('fixture-not-a-real-token'), 'Credential values are never returned');
+        assert.equal(listed.find((item) => item.label === 'Owner')?.editable, true, 'The owner is editable through settings');
+        const owner = await call('discordinator_settings_update', { changes: [{ id: 'policy.ownerUserId', value: ids.denied }] });
+        assert.deepEqual([owner.failed, owner.text], [true, 'The owner must be one of the approved people.']);
     } finally {
         process.chdir(previous);
     }

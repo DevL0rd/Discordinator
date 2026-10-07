@@ -13,6 +13,12 @@ The server exposes 87 tools: six bridge/discovery tools, three context tools, se
 | `discord_dm` | DM only the captured event author; same controls, no recipient field |
 | `discord_proactive_send` | Text to an individually granted guild channel; channelId, content, idempotencyKey; requires `messages.write` and a `message.send` destination grant |
 | `discord_proactive_dm` | Owner only: a DM to an approved person at any time, for updates or results; userId, content, idempotencyKey; requires `messages.write` |
+| `voice_speak` | Owner only: have the live voice say something in a call at any time; target by `guildId`, by `userId` (ID or exact name) or the only call; typed only while muted; requires `voice.speak` |
+| `voice_join`, `voice_leave` | Owner only: join an approved voice/stage channel or leave a call; requires `voice.listen` |
+| `voice_calls`, `voice_transcript`, `voice_transcript_delete` | Owner only: list calls, read a transcript by call or current call, delete a finished one. See [Voice calls](voice.md) |
+| `discordinator_people` | Owner only: the owner and approved people with username, display name and ID, plus known server members whose names contain `query`; `guildId` also searches that approved server (`members.read`) |
+
+Every `userId` (member, moderation and thread-member tools, `discord_proactive_dm`), `requesterId` and `notifyUserId` input also accepts an exact username, display name or server nickname. A name is turned into an ID before anything else runs. It must match exactly one known person; an ambiguous or unknown name is refused, with the candidates listed, and nothing reaches Discord. The resolved ID then goes through the same checks as a typed ID, so a name never widens what a tool may do.
 
 All tools must pass the configured MCP access boundary: bearer/OAuth credentials. See [security](security.md). Discord REST reads require their configured scope/resource grants but do not require a Discord trigger. Context reads additionally require a live allowed trigger ID. Writes require a live whitelisted triggering event (except the separately granted proactive send). Every listed mutation additionally requires `eventId` and `idempotencyKey`. Tools marked **Confirm** return a preview when `approvalId` is absent; only a fresh same-user Discord confirmation permits execution. `approvalId` is not a credential or a way to set confirmation from MCP.
 

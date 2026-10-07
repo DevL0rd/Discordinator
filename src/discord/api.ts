@@ -21,6 +21,7 @@ export interface Api {
     delete(route: string, reason?: string): Promise<unknown>;
     channel(id: string): Promise<Json>;
     message(channelId: string, messageId: string): Promise<Json>;
+    setToken?(token: string): void;
 }
 
 const threadTypes = new Set([10, 11, 12]);
@@ -42,6 +43,11 @@ export class DiscordApi implements Api {
         readonly policy: Policy,
     ) {
         this.rest = new REST({ version: '10', retries: 0, timeout: 15_000 }).setToken(token);
+    }
+
+    setToken(token: string): void {
+        this.rest.setToken(token);
+        this.invalid = false;
     }
 
     private async request(

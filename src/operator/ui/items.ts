@@ -83,13 +83,12 @@ export function settingItem(id: string, label?: string): Item {
             const value = display(field, view.drafts);
             const dirty = changed(field, view);
             const fg = dirty ? color.amber : value.muted ? color.muted : color.soft;
-            const hint = dirty && field.apply === 'restart' ? [span('after restart  ', color.dim)] : [];
             return [
                 row(
                     size,
                     selected,
                     [span(label ?? field.label, selected ? color.text : color.soft, { bold: selected })],
-                    [...hint, span(`${dirty ? `${glyph.on} ` : ''}${value.text}`, fg)],
+                    [span(`${dirty ? `${glyph.on} ` : ''}${value.text}`, fg)],
                     id,
                 ),
             ];

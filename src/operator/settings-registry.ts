@@ -1,11 +1,12 @@
 import { operatorSettings } from './settings-operator.js';
 import { policySettings } from './settings-policy.js';
 import { environmentSettings } from './settings-environment.js';
+import { voiceSettings } from './settings-voice.js';
 import type { SettingDefinition, SettingsSource } from './settings-types.js';
 import { editPublicDomain } from './connection-domain.js';
 export type { SettingDefinition, SettingsSource } from './settings-types.js';
 export const settings: readonly SettingDefinition[] = Object.freeze(
-    [...operatorSettings, ...policySettings, ...environmentSettings].map((setting) =>
+    [...operatorSettings, ...policySettings, ...environmentSettings, ...voiceSettings].map((setting) =>
         Object.freeze({ ...setting, choices: setting.choices ? Object.freeze([...setting.choices]) : undefined }),
     ),
 );

@@ -4,7 +4,8 @@ import { card, setting, settingItem, statusItem } from '../src/operator/ui/items
 import { frame } from '../src/operator/ui/frame.js';
 import { viewOf, type UiState } from '../src/operator/ui/state.js';
 import type { Line } from '../src/operator/ui/canvas.js';
-import type { PageId, View } from '../src/operator/ui/model.js';
+import { pages, type PageId, type View } from '../src/operator/ui/model.js';
+import stringWidth from 'string-width';
 import type { LiveSetupStatus } from '../src/operator/setup-model.js';
 import { observed, uiStore } from './ui-fixtures.js';
 
@@ -185,7 +186,11 @@ function checkItems(): void {
     assert.match(scopes(setting('policy.scopes').choices!), /All \d+/);
     assert.match(shown('policy.media.maxFileBytes'), /2 MB/, 'byte sizes are shown in megabytes');
     const restart = viewOf(state({ drafts: { environment: { DISCORDINATOR_PORT: 9000 } } }));
-    assert.match(text(settingItem('environment.DISCORDINATOR_PORT').lines(100, false, restart)), /after restart/);
+    assert.doesNotMatch(
+        text(settingItem('environment.DISCORDINATOR_PORT').lines(100, false, restart)),
+        /restart/,
+        'Changed settings never say they wait for a restart',
+    );
     assert.throws(() => settingItem('policy.nothing'), /Unknown setting policy.nothing/);
     const status = statusItem('s', 'Label', 'Value', 'good', { type: 'save' });
     assert.deepEqual(status.intent, { type: 'save' }, 'a status row can be actionable');
@@ -194,7 +199,17 @@ function checkItems(): void {
     assert.ok(text(plain.lines(60, false, view)).includes('Plain card'), 'a card needs no badge');
 }
 
+function checkIconWidths(): void {
+    for (const page of pages)
+        assert.equal(
+            stringWidth(page.icon, { ambiguousIsNarrow: false }),
+            1,
+            `The ${page.label} menu icon is one column wide in every terminal, so rows never wrap and clicks stay aligned`,
+        );
+}
+
 export function checkUiPages(): void {
+    checkIconWidths();
     checkApps();
     checkDiscord();
     checkHome();

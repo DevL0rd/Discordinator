@@ -121,6 +121,7 @@ function mergedPolicy(original: string, draft: DiscordDraft, identity: DiscordId
     return policySchema.parse({
         ...policy,
         allowedUserIds: [...new Set([...policy.allowedUserIds, draft.ownerId])],
+        ownerUserId: policy.ownerUserId ?? draft.ownerId,
         servers: admit(policy.servers, identity.guildId),
         channels: admit(policy.channels, draft.channelId),
         scopes: [...new Set([...policy.scopes, 'messages.read', 'messages.write'])],

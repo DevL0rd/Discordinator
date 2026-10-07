@@ -23,7 +23,7 @@ const multiField = { ...setting('policy.scopes'), choices: ['messages.read', 'me
 
 function checkNavigation(): void {
     const ui = uiStore();
-    handleKey(ui, '5', key());
+    handleKey(ui, '6', key());
     assert.equal(ui.state.page, 'memory', 'number keys jump to pages');
     assert.equal(selectedIndex(ui.state), 1, 'the first setting is selected by default');
     const moves: [string, Partial<Key>, number][] = [

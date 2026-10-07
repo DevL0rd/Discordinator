@@ -4,6 +4,7 @@ import { replaceFile } from '../core/replace-file.js';
 import { dirname } from 'node:path';
 import { z } from 'zod';
 import type { BotEvent } from '../core/queue.js';
+import { personSchema } from '../core/directory.js';
 
 const inputSchema = z.object({
     id: z.string(),
@@ -13,10 +14,12 @@ const inputSchema = z.object({
     channelId: z.string(),
     guildId: z.string().nullable(),
     messageId: z.string().optional(),
-    kind: z.enum(['message', 'interaction']),
+    kind: z.enum(['message', 'interaction', 'voice']),
     text: z.string(),
     name: z.string().optional(),
     sourceEventId: z.string().optional(),
+    author: personSchema.optional(),
+    mentions: z.array(personSchema).max(20).optional(),
 });
 const conversationSchema = z.object({
     key: z.string(),

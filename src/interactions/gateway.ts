@@ -10,6 +10,7 @@ import {
 import type { BotEvent, EventContext, EventInput, EventQueue } from '../core/queue.js';
 import type { Policy } from '../core/policy.js';
 import type { Flows } from './flows.js';
+import { interactionAuthor } from '../discord/observation.js';
 
 type Respondable = ButtonInteraction | StringSelectMenuInteraction | ModalSubmitInteraction | ChatInputCommandInteraction;
 
@@ -84,6 +85,7 @@ export async function handleControl(
             guildId: source.guildId,
             kind: 'interaction',
             name: modal ? 'discordinator.modal' : 'discordinator.control',
+            author: interactionAuthor(interaction),
             ...(source.kind !== 'owner' ? { sourceEventId: source.id } : {}),
             text: accepted.text!,
         },

@@ -2,6 +2,7 @@ import { z } from 'zod';
 import { snowflake } from '../core/config.js';
 import type { ObservedMessage } from '../core/context.js';
 import type { BotEvent } from '../core/queue.js';
+import { person, personSchema, readableText } from '../core/directory.js';
 
 export const eventName = 'discord.message.created';
 export const interactionEventName = 'discord.interaction.created';
@@ -36,6 +37,8 @@ export type UnsubscribeInput = z.infer<typeof unsubscribeSchema>;
 export const payloadSchema = z
     .object({
         actorId: snowflake,
+        author: personSchema,
+        mentions: z.array(personSchema).max(20),
         channelId: snowflake,
         guildId: snowflake.nullable(),
         messageId: snowflake,
@@ -52,21 +55,23 @@ export const payloadSchema = z
 export type Payload = z.infer<typeof payloadSchema>;
 export const interactionPayloadSchema = payloadSchema.omit({ messageId: true, parentId: true, replyToId: true }).extend({
     text: z.string().max(4000),
-    interactionId: snowflake,
-    interactionName: z.enum(['discordinator', 'discordinator.control', 'discordinator.modal']),
+    interactionId: snowflake.nullable(),
+    interactionName: z.enum(['discordinator', 'discordinator.control', 'discordinator.modal', 'discordinator.voice']),
     sourceEventId: z.uuid().nullable(),
 });
 export type InteractionPayload = z.infer<typeof interactionPayloadSchema>;
 export type EventPayload = Payload | InteractionPayload;
-export function interactionPayload(input: BotEvent, interactionId: string): InteractionPayload {
+export function interactionPayload(input: BotEvent, interactionId: string | null): InteractionPayload {
     return interactionPayloadSchema.parse({
         actorId: input.actorId,
+        author: input.author ?? person(input.actorId),
+        mentions: input.mentions ?? [],
         channelId: input.channelId,
         guildId: input.guildId,
         interactionId,
         interactionName: input.name,
         sourceEventId: input.sourceEventId ?? null,
-        text: input.text,
+        text: readableText(input.text, input.mentions),
         contentAvailable: true,
         authorBot: false,
         timestamp: input.receivedAt,
@@ -75,7 +80,12 @@ export function interactionPayload(input: BotEvent, interactionId: string): Inte
     });
 }
 export function payload(input: ObservedMessage, triggerId: string | null): Payload {
-    return payloadSchema.parse({ ...input, text: input.text.slice(0, 1000), addressed: triggerId !== null, trigger_event_id: triggerId });
+    return payloadSchema.parse({
+        ...input,
+        text: readableText(input.text, input.mentions).slice(0, 1000),
+        addressed: triggerId !== null,
+        trigger_event_id: triggerId,
+    });
 }
 
 export function matches(filters: Filters, data: EventPayload): boolean {

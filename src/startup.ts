@@ -21,6 +21,12 @@ import { restartOnChange, restartRequestFile } from './operator/environment-watc
 import { migrateEnvironment } from './core/env-migration.js';
 import { ReplyOrigins } from './core/reply-origins.js';
 import { PolicyWatcher } from './operator/policy-watcher.js';
+import { VoiceService } from './voice/service.js';
+import { TranscriptStore } from './voice/transcripts.js';
+import { Gemini } from './voice/gemini.js';
+import { interactionEventName, interactionPayload } from './events/schema.js';
+import { baseEnvironment, reconfigure, watchEnvironment, type Reconfigurable } from './reconfigure.js';
+import { readFile } from 'node:fs/promises';
 
 export interface Host {
     env: NodeJS.ProcessEnv;
@@ -54,6 +60,7 @@ export async function launch(options: Partial<Startup> = {}): Promise<void> {
 
 async function main(startup: Startup): Promise<void> {
     await migrateEnvironment('.env', startup.host.env);
+    const base = baseEnvironment(startup.host.env, await readFile('.env', 'utf8').catch(() => ''));
     const { config, policy: policyConfig } = await loadConfig(startup.host.env);
     const release = await acquireRuntime();
     let stage = 'oauth';
@@ -64,7 +71,7 @@ async function main(startup: Startup): Promise<void> {
                 : undefined;
         try {
             stage = 'server';
-            await run(startup, config, policyConfig, release, oauth);
+            await run(startup, config, policyConfig, release, oauth, base);
         } catch (error) {
             await oauth?.close();
             throw error;
@@ -81,29 +88,33 @@ async function run(
     config: Config,
     policyConfig: PolicyConfig,
     release: () => Promise<void>,
-    oauth?: BundledOAuth,
+    oauth: BundledOAuth | undefined,
+    base: NodeJS.ProcessEnv,
 ): Promise<void> {
     const runtime = await createRuntime(startup, config, policyConfig, oauth);
-    const { gateway, http, events, operator, people, presence } = runtime;
+    const { events, operator, people, presence } = runtime;
     const stop = shutdownOnce(runtime, release);
     registerSignals(startup.host, stop);
     let stage = 'gateway';
     try {
-        await gateway.start();
+        await runtime.gateway.start();
         stage = 'http';
-        await http.start();
+        await runtime.http.start();
         stage = 'events';
         events.start();
         operator.start();
         people.start();
         await presence.start(events.status().subscriptions);
-        restartOnChange(
-            ['.env', restartRequestFile],
-            () => operator.whenIdle(),
-            async () => {
-                await stop();
-                startup.host.exit(75);
-            },
+        runtime.watching.push(
+            restartOnChange(
+                [restartRequestFile],
+                () => operator.whenIdle(),
+                async () => {
+                    await stop();
+                    startup.host.exit(75);
+                },
+            ),
+            watchEnvironment('.env', base, (next) => applySettings(runtime, config, next)),
         );
         console.log(`Discordinator MCP listening on http://127.0.0.1:${config.DISCORDINATOR_PORT}/mcp`);
     } catch (error) {
@@ -113,7 +124,7 @@ async function run(
     }
 }
 
-async function createRuntime(startup: Startup, config: Config, policyConfig: PolicyConfig, oauth?: BundledOAuth) {
+async function createCore(startup: Startup, config: Config, policyConfig: PolicyConfig) {
     const policy = new Policy(policyConfig);
     const queue = new EventQueue();
     const journal = new Journal('.data/idempotency.json');
@@ -125,46 +136,139 @@ async function createRuntime(startup: Startup, config: Config, policyConfig: Pol
     const approvals = new Approvals(policy);
     const api = startup.api(config.DISCORD_BOT_TOKEN, policy);
     const bridge = new Bridge(policy, queue, journal, approvals, api, replyOrigins, replyJournal);
+    const voice = (bridge.voice = createVoice(config, bridge));
     const store = new SubscriptionStore('.data/subscriptions.json');
     await store.load();
+    return { policy, queue, approvals, api, bridge, voice, store, replyOrigins };
+}
+
+async function createRuntime(startup: Startup, config: Config, policyConfig: PolicyConfig, oauth?: BundledOAuth) {
+    const core = await createCore(startup, config, policyConfig);
+    const { policy, queue, approvals, api, bridge, voice, store, replyOrigins } = core;
+    const access = { auth: new Authenticator(config, oauth?.verifyKey) };
     const events = new EventsService(
         store,
         policy,
-        new Authenticator(config, oauth?.verifyKey).ownerAllowed,
+        (id) => access.auth.ownerAllowed(id),
         undefined,
         undefined,
         () => operator.status().mode === 'chatgpt-events',
     );
-    const gateway = startup.gateway(config, policy, queue, approvals, api, {
+    const services = {
         context: bridge.context,
         events,
         media: bridge.media,
         flows: bridge.flows,
         replyOrigins,
-        commands: (name, options, origin) => commands.run(name, options, origin),
-    });
+        people: bridge.people,
+        voice,
+        commands: (name: string, options: Record<string, string | undefined>, origin: Parameters<CommandService['run']>[2]) =>
+            commands.run(name, options, origin),
+    };
+    voice.requests.publish = (event) => events.emit(interactionPayload(event, null), interactionEventName);
     const operator = new OperatorService(queue, bridge);
     const commands = new CommandService(operator);
     const people = new PolicyWatcher(config.DISCORDINATOR_POLICY_FILE, policy, replyOrigins);
-    const runtimeStatus = () => ({ ...gateway.status(), events: events.status(), operator: operator.status() });
-    const http = new HttpServer(config, bridge, runtimeStatus, events, undefined, oauth);
-    http.attachLocal(await loadLocalKey());
     const presence = new PresenceWriter();
-    const statusFile = new StatusWriter(() => ({ ...bridge.status(), ...runtimeStatus() }));
-    const touch = () => statusFile.touch();
-    gateway.onState = touch;
-    operator.onStatus = touch;
+    const localKey = await loadLocalKey();
+    const runtime = {
+        gateway: startup.gateway(config, policy, queue, approvals, api, services),
+        http: undefined as unknown as HttpServer,
+        oauth,
+        access,
+        events,
+        operator,
+        people,
+        presence,
+        voice,
+        watching: [] as (() => void)[],
+        touch: () => undefined as void,
+        status: () => ({ ...runtime.gateway.status(), events: events.status(), operator: operator.status(), voice: voice.status() }),
+        listen: (): HttpServer => listener(config, bridge, runtime, localKey),
+        connect: () => startup.gateway(config, policy, queue, approvals, api, services),
+        api,
+    };
+    runtime.http = runtime.listen();
+    const statusFile = new StatusWriter(() => ({ ...bridge.status(), ...runtime.status() }));
+    runtime.touch = () => statusFile.touch();
+    runtime.gateway.onState = runtime.touch;
+    operator.onStatus = runtime.touch;
+    voice.onChange = runtime.touch;
     store.onChange = (state) => {
         presence.update({ subscriptions: state.subscriptions.length });
-        touch();
+        runtime.touch();
     };
-    touch();
-    http.onRemote = () => presence.remoteSignedIn();
-    return { gateway, http, events, operator, people, presence };
+    runtime.touch();
+    return runtime;
 }
-function shutdownOnce(runtime: Awaited<ReturnType<typeof createRuntime>>, release: () => Promise<void>): () => Promise<void> {
+
+type Runtime = Awaited<ReturnType<typeof createRuntime>>;
+
+function listener(
+    config: Config,
+    bridge: Bridge,
+    runtime: { status: () => unknown; events: EventsService; oauth?: BundledOAuth | undefined; presence: PresenceWriter },
+    localKey: string,
+): HttpServer {
+    const http = new HttpServer(config, bridge, runtime.status, runtime.events, undefined, runtime.oauth);
+    http.attachLocal(localKey);
+    http.onRemote = () => runtime.presence.remoteSignedIn();
+    return http;
+}
+
+/** Rebuilds only what a settings change affects, inside the running process. */
+function liveTargets(runtime: Runtime, config: Config): Reconfigurable {
+    return {
+        movePolicy: (path) => runtime.people.move(path),
+        restartListener: async () => {
+            await runtime.http.stop();
+            await runtime.oauth?.close();
+            runtime.oauth =
+                config.DISCORDINATOR_AUTH_MODE === 'oauth' && config.DISCORDINATOR_OAUTH_SERVER === 'bundled'
+                    ? await BundledOAuth.open(config)
+                    : undefined;
+            runtime.access.auth = new Authenticator(config, runtime.oauth?.verifyKey);
+            runtime.http = runtime.listen();
+            await runtime.http.start();
+            console.log(`Discordinator MCP listening on http://127.0.0.1:${config.DISCORDINATOR_PORT}/mcp`);
+        },
+        reconnectGateway: async () => {
+            runtime.api.setToken?.(config.DISCORD_BOT_TOKEN);
+            await runtime.voice.stop();
+            const previous = runtime.gateway;
+            previous.onState = undefined;
+            previous.stop();
+            runtime.gateway = runtime.connect();
+            runtime.gateway.onState = runtime.touch;
+            await runtime.gateway.start();
+        },
+    };
+}
+
+async function applySettings(runtime: Runtime, config: Config, next: Config): Promise<void> {
+    try {
+        const changed = await reconfigure(config, next, liveTargets(runtime, config));
+        if (changed.length) console.error(`Applied new settings without restarting: ${changed.join(', ')}`);
+    } catch (error) {
+        failure('Settings change could not be applied; the previous settings were restored', 'reconfigure', error);
+    }
+    runtime.touch();
+}
+
+function createVoice(config: Config, bridge: Bridge): VoiceService {
+    const gemini = new Gemini(() => config.GEMINI_API_KEY);
+    return new VoiceService(bridge.policy, bridge.queue, bridge.api, bridge.people, new TranscriptStore(), gemini);
+}
+function shutdownOnce(runtime: Runtime, release: () => Promise<void>): () => Promise<void> {
     let stopping: Promise<void> | undefined;
-    return () => (stopping ??= shutdown(runtime.gateway, runtime.http, runtime.events, runtime.operator, release, runtime.people));
+    return () =>
+        (stopping ??= Promise.resolve()
+            .then(() => {
+                for (const stop of runtime.watching) stop();
+                return runtime.voice.stop();
+            })
+            .catch(() => undefined)
+            .then(() => shutdown(runtime.gateway, runtime.http, runtime.events, runtime.operator, release, runtime.people)));
 }
 function registerSignals(host: Host, stop: () => Promise<void>): void {
     host.on('unhandledRejection', (error) => failure('Discordinator unhandled rejection', 'runtime', error));

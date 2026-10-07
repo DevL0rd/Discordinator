@@ -7,7 +7,11 @@ import type { EventQueue } from '../core/queue.js';
 import type { Approvals } from '../core/approvals.js';
 import { Triggers } from '../core/triggers.js';
 import type { ContextIndex } from '../core/context.js';
-import { observe } from './observation.js';
+import { author, botNames, interactionAuthor, mentioned, observe } from './observation.js';
+import type { Directory } from '../core/directory.js';
+import type { VoiceService } from '../voice/service.js';
+import { discordConnect } from '../voice/link.js';
+import { discordGuilds } from '../voice/guilds.js';
 import { replyToBot } from './replies.js';
 import { payload, interactionPayload, interactionEventName } from '../events/schema.js';
 import type { EventsService } from '../events/service.js';
@@ -18,7 +22,12 @@ import { captureInteraction, handleControl } from '../interactions/gateway.js';
 import type { ReplyOrigins } from '../core/reply-origins.js';
 
 export function gatewayIntents(config: Config): number[] {
-    const intents = [GatewayIntentBits.Guilds, GatewayIntentBits.GuildMessages, GatewayIntentBits.DirectMessages];
+    const intents = [
+        GatewayIntentBits.Guilds,
+        GatewayIntentBits.GuildMessages,
+        GatewayIntentBits.DirectMessages,
+        GatewayIntentBits.GuildVoiceStates,
+    ];
     if (config.DISCORDINATOR_MESSAGE_CONTENT === 'true') intents.push(GatewayIntentBits.MessageContent);
     if (config.DISCORDINATOR_GUILD_MEMBERS === 'true') intents.push(GatewayIntentBits.GuildMembers);
     return intents;
@@ -39,6 +48,8 @@ export class Gateway {
     readonly flows?: Flows;
     readonly replyOrigins?: ReplyOrigins;
     readonly commands?: CommandHandler;
+    readonly people?: Directory;
+    readonly voice?: VoiceService;
 
     constructor(
         readonly config: Config,
@@ -53,6 +64,8 @@ export class Gateway {
             flows?: Flows;
             replyOrigins?: ReplyOrigins;
             commands?: CommandHandler;
+            people?: Directory;
+            voice?: VoiceService;
         } = {},
     ) {
         this.context = services.context;
@@ -61,6 +74,8 @@ export class Gateway {
         this.flows = services.flows;
         this.replyOrigins = services.replyOrigins;
         this.commands = services.commands;
+        this.people = services.people;
+        this.voice = services.voice;
         this.triggers = new Triggers(policy);
         this.client = new Client({
             intents: gatewayIntents(config),
@@ -69,13 +84,19 @@ export class Gateway {
             rest: { retries: 0, timeout: 15_000 },
         });
         this.bindEvents();
+        this.voice?.attach(discordConnect(this.client), discordGuilds(this.client));
     }
 
     private bindMembers(): void {
-        this.client.on(Events.GuildMemberUpdate, (_old, member) =>
-            this.policy.noteRoles(member.id, member.guild.id, member.roles.cache.keys()),
-        );
+        this.client.on(Events.GuildMemberUpdate, (_old, member) => {
+            if (member.id === this.client.user?.id) this.nameBot();
+            this.policy.noteRoles(member.id, member.guild.id, member.roles.cache.keys());
+            this.people?.learnVisible(author({ author: member.user, member }), member.guild.id, true);
+        });
         this.client.on(Events.GuildMemberRemove, (member) => this.policy.noteRoles(member.id, member.guild.id, []));
+        this.client.on(Events.VoiceStateUpdate, (old, state) =>
+            this.safely(() => this.voice?.stateChanged(state.guild.id, state.id, old.channelId, state.channelId) ?? Promise.resolve()),
+        );
     }
 
     private bindEvents(): void {
@@ -106,15 +127,7 @@ export class Gateway {
                 );
             }
         });
-        this.client.once(Events.ClientReady, (client) => {
-            this.api.botId = client.user.id;
-            this.api.applicationId = client.application.id;
-            this.setState('ready');
-            if (this.commands)
-                this.safely(async () => {
-                    await this.api.put(`/applications/${client.application.id}/commands`, commandDefinitions);
-                });
-        });
+        this.client.once(Events.ClientReady, (client) => this.ready(client));
         this.client.on(Events.ShardReconnecting, () => {
             this.setState('reconnecting');
         });
@@ -171,6 +184,26 @@ export class Gateway {
         }
     }
 
+    private ready(client: Client<true>): void {
+        this.api.botId = client.user.id;
+        this.nameBot();
+        this.safely(async () => {
+            await client.application.fetch();
+            this.nameBot();
+        });
+        this.api.applicationId = client.application.id;
+        this.setState('ready');
+        if (this.voice) this.safely(() => this.voice!.ready());
+        if (this.commands)
+            this.safely(async () => {
+                await this.api.put(`/applications/${client.application.id}/commands`, commandDefinitions);
+            });
+    }
+
+    private nameBot(): void {
+        this.policy.botNames = botNames(this.client);
+    }
+
     private safely(action: () => Promise<void>): void {
         void action().catch(() => undefined);
     }
@@ -179,6 +212,8 @@ export class Gateway {
         if (!this.claimMessage(message.id)) return;
         if (message.channel?.isThread() && message.channel.parentId) this.policy.noteThread(message.channelId, message.channel.parentId);
         if (message.member && message.guildId) this.policy.noteRoles(message.author.id, message.guildId, message.member.roles.cache.keys());
+        for (const who of [author(message), ...mentioned(message)])
+            this.people?.learnVisible(who, message.guildId, who.id === message.author.id && Boolean(message.member));
         this.activeMessages++;
         try {
             await this.capture(message);
@@ -255,6 +290,8 @@ export class Gateway {
             messageId: message.id,
             kind: 'message' as const,
             text: message.content,
+            author: author(message),
+            mentions: mentioned(message),
         };
         this.policy.assertOrigin(event);
         if (!(await this.addressed(message))) return null;
@@ -298,6 +335,7 @@ export class Gateway {
             kind: 'interaction' as const,
             name: 'discordinator',
             text: interaction.options.getString('text') ?? '',
+            author: interactionAuthor(interaction),
         };
         this.policy.assertScope('messages.write');
         const queued = await captureInteraction(interaction, event, this.policy, this.queue);

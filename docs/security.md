@@ -20,8 +20,18 @@ Content-producing channel tools stay in the originating channel/thread. Guild ad
 
 Proactive sends use a separate tool and explicit per-channel grants; `all` scope never enables them automatically. They cannot DM arbitrary people. A channel reply remains visible to other members who can see that channel: the requester whitelist is not an audience privacy boundary. Moderation may target unlisted members after confirmation, but sends them no automatic notification.
 
+## Names and the owner
+
+Every message, context record, polled event, webhook payload and request handed to a local assistant carries its author's username, global display name and server nickname next to the numeric ID, and `<@id>` mentions are shown as `@name` with the IDs listed alongside. Names are display data only. The whitelist, owner status, approvals, reply origins and every authorization check compare numeric IDs; nothing reads a name to decide what is allowed. Names are quoted and stripped of quotes, line breaks and control characters before an assistant sees them, so a nickname cannot pose as the ID or owner tag Discordinator adds.
+
+`ownerUserId` marks one approved person as the owner. The MCP server instructions, the Claude plugin instructions, the Claude Code conversation and background assistant prompts name the owner by name and ID, and requests from that ID are tagged `owner`. A member whose nickname copies the owner's name keeps their own ID: they are not approved, get no owner tag, and the copied name makes name lookups ambiguous rather than resolving to them.
+
+## Voice calls
+
+Voice requests follow the same rules as text: only approved user IDs can start a conversation by name, in approved servers and channels, and the speaker's ID comes from Discord's per-user audio stream, not from anything said. The live voice only hears approved people; others reach it as transcript notes that never count as instructions, and tasks it hands to the responder run as the approved person who started the conversation. Speech never confirms a sensitive action. Transcripts include everyone in the call by default and are stored privately for the retention period; Discordinator does not announce itself, so tell people the call is transcribed. See [Voice calls](voice.md).
+
 ## Credentials and local state
 
 Keep `.env`, `policy.json` and `.data/` private and ignored. Never put tokens in URLs, chat, committed client configuration or logs. Discord credentials are used only for Discord; MCP bearer/OAuth credentials are never forwarded there. Protected-resource metadata is read-only discovery in OAuth mode. Outputs and errors are bounded and sanitized, but permitted reads can contain private messages and invite codes.
 
-Policy changes, including approved people, are picked up live. Intent and credential changes in `.env` make the background service restart itself once idle. Use [configuration](configuration.md) for defaults, [setup](setup.md) for Discord permissions and [architecture](architecture.md#idempotency-and-recovery) for uncertain mutations and journal recovery.
+Policy changes, including approved people, are picked up live. Intent and credential changes in `.env` are applied by the running process too, by reconnecting only the affected part; nothing needs a restart. Use [configuration](configuration.md) for defaults, [setup](setup.md) for Discord permissions and [architecture](architecture.md#idempotency-and-recovery) for uncertain mutations and journal recovery.

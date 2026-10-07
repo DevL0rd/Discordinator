@@ -1,9 +1,12 @@
 import type { Policy } from './policy.js';
 import type { EventQueue } from './queue.js';
 import type { Origin } from './policy.js';
+import { displayName, readableText, type Directory, type Person } from './directory.js';
 
 export interface ObservedMessage extends Origin {
     messageId: string;
+    author: Person;
+    mentions: Person[];
     timestamp: string;
     text: string;
     contentAvailable: boolean;
@@ -19,6 +22,7 @@ export interface ContextRecord extends ObservedMessage {
 export class ContextIndex {
     private items = new Map<string, { record: ContextRecord }>();
     private evicted = 0;
+    directory?: Directory;
     constructor(
         readonly policy: Policy,
         readonly queue: EventQueue,
@@ -30,6 +34,7 @@ export class ContextIndex {
         if (!config.enabled || (!addressed && config.capture !== 'all')) return;
         if (input.authorBot && !config.includeBots) return;
         this.policy.assertObservation(input);
+        for (const who of [input.author, ...input.mentions]) this.directory?.learn(who, input.guildId);
         const record = { ...input, observedAt: new Date(this.now()).toISOString() };
         this.items.delete(input.messageId);
         this.items.set(input.messageId, { record });
@@ -77,12 +82,24 @@ export class ContextIndex {
             this.matches(record, origin, mode, query, includeParent ? anchor?.parentId : undefined),
         );
         return {
-            records: selected.reverse().slice(0, Math.min(50, limit)),
+            records: selected
+                .reverse()
+                .slice(0, Math.min(50, limit))
+                .map((record) => this.present(record)),
             retained: records.length,
             evicted: this.evicted,
             incomplete: true,
             search: 'case-insensitive literal substring; retained text only',
             persistent: false,
+        };
+    }
+
+    private present(record: ContextRecord) {
+        return {
+            ...record,
+            text: readableText(record.text, record.mentions),
+            authorName: displayName(record.author),
+            fromOwner: this.policy.isOwner(record.actorId),
         };
     }
 

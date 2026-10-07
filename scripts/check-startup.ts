@@ -228,6 +228,47 @@ async function checkRestart(root: string): Promise<void> {
     );
 }
 
+async function checkLiveSettings(root: string): Promise<void> {
+    await prepared(root, 'live', async () => {
+        const [port, moved] = [await freePort(), await freePort()];
+        const started = await start(settings(port));
+        const first = started.gateway!;
+        const key = (await readFile(join('.data', 'local.key'), 'utf8')).trim();
+        const reachable = (at: number) =>
+            localCall({ base: `http://127.0.0.1:${at}`, key }, 'tools/list').then(
+                () => true,
+                () => false,
+            );
+        const lines = await captured(async () => {
+            await writeFile(
+                '.env',
+                `DISCORDINATOR_PORT=${moved}\nDISCORD_BOT_TOKEN=another-fake-token\nGEMINI_API_KEY=gemini-fixture-key\n`,
+            );
+            await until(() => started.gateway !== first && first.stopped === 1, 15_000);
+            assert.ok(await eventually(() => reachable(moved)), 'the listener moved to the new port without a restart');
+            assert.equal(await reachable(port), false, 'the old port is closed');
+            await writeFile('.env', 'DISCORDINATOR_PORT=1\n');
+            await eventually(() => Promise.resolve(existsSync('.env')));
+            await new Promise((done) => setTimeout(done, 300));
+        });
+        assert.ok(
+            lines.some(
+                (line) => /Applied new settings without restarting: .*DISCORD_BOT_TOKEN/.test(line) && line.includes('GEMINI_API_KEY'),
+            ),
+            lines.join('\n'),
+        );
+        assert.ok(lines.includes(`Discordinator MCP listening on http://127.0.0.1:${moved}/mcp`));
+        assert.ok(
+            lines.some((line) => line.includes('.env changed but could not be applied')),
+            'an invalid edit is ignored',
+        );
+        assert.ok(await reachable(moved), 'it keeps serving after an invalid edit');
+        assert.deepEqual(started.host.exits, [], 'nothing restarted the process');
+        started.host.emit('SIGTERM');
+        await lockReleased();
+    });
+}
+
 async function checkFailedShutdown(root: string): Promise<void> {
     await prepared(root, 'failed-stop', async () => {
         const started = await start(settings(await freePort()));
@@ -245,6 +286,7 @@ export async function checkStartup(directory: string): Promise<void> {
         await checkStartupFailures(root);
         await checkRunning(root);
         await checkRestart(root);
+        await checkLiveSettings(root);
         await checkFailedShutdown(root);
     });
 }

@@ -79,7 +79,7 @@ export async function checkHttp(directory: string): Promise<void> {
     }
 }
 
-export const toolCount = () => operations.length + 25;
+export const toolCount = () => operations.length + 32;
 
 async function checkToolDescriptors(client: Client): Promise<void> {
     const listed = await client.listTools();

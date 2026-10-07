@@ -46,6 +46,10 @@ export const commandDefinitions = [
         ],
     },
     { name: 'model', description: 'Change the responder’s model', options: [text('name', 'Model id, or default')] },
+    { name: 'join', description: 'Join your voice call and transcribe it' },
+    { name: 'leave', description: 'Leave the voice call in this server' },
+    { name: 'mute', description: 'Stop the bot talking in the call; it keeps typing in the call chat' },
+    { name: 'unmute', description: 'Let the bot talk in the call again' },
 ].map((definition) => ({ ...definition, ...everywhere }));
 
 export const builtInCommands = new Set(commandDefinitions.map((definition) => definition.name));

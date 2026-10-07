@@ -9,7 +9,7 @@ import { planReconnect } from '../src/operator/reconnect.js';
 import type { SettingChange } from '../src/operator/settings-registry.js';
 
 const endpoint = { base: 'http://127.0.0.1:8788', key: 'k'.repeat(43) };
-const change = (id: string): SettingChange => ({ id: `environment.${id}`, label: id, before: 'a', after: 'b', apply: 'restart' });
+const change = (id: string): SettingChange => ({ id: `environment.${id}`, label: id, before: 'a', after: 'b', apply: 'live' });
 
 function servers(toml: string): { name: string; transport: { url: string } }[] {
     return [...toml.matchAll(/^\[mcp_servers\.([\w-]+)\]\nurl = "([^"]+)"/gm)].map((match) => ({

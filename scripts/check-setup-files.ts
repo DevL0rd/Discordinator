@@ -50,7 +50,7 @@ async function checkWebState(): Promise<void> {
     await writeFile(join('.data', 'web-connectors.json'), JSON.stringify({ claude: 5 }));
     assert.deepEqual(await webConnectors(), {}, 'a damaged connector file reads as nothing added');
     await writeFile(join('.data', 'web-connectors.json'), JSON.stringify({ claude: 'https://bot.example.com/mcp' }));
-    const change = { id: 'environment.DISCORDINATOR_OAUTH_SERVER', label: 'Sign-in', before: 'a', after: 'b', apply: 'restart' as const };
+    const change = { id: 'environment.DISCORDINATOR_OAUTH_SERVER', label: 'Sign-in', before: 'a', after: 'b', apply: 'live' as const };
     const finish = await planReconnect([change], { DISCORDINATOR_RESOURCE_URL: 'https://bot.example.com/mcp' });
     assert.match(await finish(), /Because how apps sign in changed, add Claude \(web\) and ChatGPT \(web\) again/);
     assert.deepEqual(await webConnectors(), {}, 'and the old connectors are forgotten');

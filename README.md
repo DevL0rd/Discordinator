@@ -213,6 +213,7 @@ Connecting only ever touches the entry named <code>discordinator</code>. Your ot
 | Every tool and its grant | [Capabilities](docs/capabilities.md) |
 | Wake-ups and recent context | [Events and context](docs/mcp-events.md) |
 | Files and interactive controls | [Files and controls](docs/media-and-controls.md) |
+| Joining, transcribing and talking in calls | [Voice calls](docs/voice.md) |
 | How it fits together | [Architecture](docs/architecture.md) |
 | Checks and CI | [Validation](docs/validation.md) · [Quality](docs/quality.md) |
 

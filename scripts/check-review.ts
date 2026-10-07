@@ -28,10 +28,7 @@ async function checkReview(): Promise<void> {
     drafted(ui, {}, { DISCORDINATOR_RESOURCE_URL: 'https://other.example.com/mcp' });
     review(ui);
     assert.equal(sheetOf(ui, 'confirm').title, 'Save 2 changes?');
-    assert.ok(
-        sheetOf(ui, 'confirm').body.some((row) => row.endsWith('(after restart)')),
-        'restart-only settings are marked',
-    );
+    assert.ok(!sheetOf(ui, 'confirm').body.some((row) => row.includes('restart')), 'No setting waits for a restart');
     await press(ui, 'Discard all');
     assert.deepEqual(ui.state.drafts, ui.state.snapshot.documents, 'discarding restores the saved files');
     assert.equal(ui.state.toast?.text, 'Changes discarded.');

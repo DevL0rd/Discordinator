@@ -14,6 +14,7 @@ import { jumpUrl } from '../media/index.js';
 import { Flows } from '../interactions/flows.js';
 import type { Journal } from './journal.js';
 import { ContextIndex } from './context.js';
+import { Directory } from './directory.js';
 import type { Approvals } from './approvals.js';
 import type { ReplyOrigins } from './reply-origins.js';
 import { ProactiveUploads } from '../media/proactive.js';
@@ -32,11 +33,13 @@ const warningColor = 0xf0b232;
 export class Bridge {
     private readonly ownerContexts: OwnerContexts;
     readonly context: ContextIndex;
+    readonly people: Directory;
     readonly media: MediaService;
     readonly flows: Flows;
     readonly proactiveUploads: ProactiveUploads;
     readonly replyOrigins: ReplyOrigins | undefined;
     readonly replyJournal: Journal;
+    voice?: import('../voice/service.js').VoiceService;
     constructor(
         readonly policy: Policy,
         readonly queue: EventQueue,
@@ -50,6 +53,7 @@ export class Bridge {
         this.ownerContexts = new OwnerContexts(policy, api);
         queue.ownerContext = (id) => this.ownerContexts.get(id);
         this.context = new ContextIndex(policy, queue);
+        this.context.directory = this.people = new Directory(policy, api);
         this.media = new MediaService(new MediaAccess(policy, queue, api));
         this.flows = new Flows(policy, queue, api);
         this.proactiveUploads = new ProactiveUploads(policy);
@@ -122,7 +126,7 @@ export class Bridge {
         } catch {
             live = undefined;
         }
-        if (live?.event.kind === 'interaction') return this.event(id);
+        if (live && live.event.kind !== 'message') return this.event(id);
         const event = this.replyOrigins.context(id);
         this.policy.assertOrigin(event);
         const source = await this.api.message(event.channelId, event.messageId!);
@@ -140,7 +144,7 @@ export class Bridge {
         return this.replyJournal.execute(input.idempotencyKey, { operation: 'respond', ...input }, async () => {
             const context = await this.replyEvent(input.eventId);
             this.policy.assertResponse(context.event, context.event.channelId);
-            if ((input.embeds?.length && context.deliver) || context.respond) return this.interactionReply(context, input);
+            if ((input.embeds?.length && context.deliver) || context.respond) return this.interactionReply(context, input, input.status);
             return this.send(context.event.channelId, input, input.idempotencyKey, {
                 ...(input.status ? {} : { replyTo: context.event.messageId }),
                 ...(input.notifyRequester ? { notify: context.event.actorId } : {}),
@@ -148,12 +152,12 @@ export class Bridge {
         });
     }
 
-    private async interactionReply(context: AccessContext, input: MutationInput & Rich): Promise<unknown> {
+    private async interactionReply(context: AccessContext, input: MutationInput & Rich, quiet?: boolean): Promise<unknown> {
         const [head = '', ...rest] = input.content ? splitMessage(input.content) : [''];
         const reply =
             input.embeds?.length && context.deliver
                 ? await context.deliver({ content: head, embeds: input.embeds })
-                : await context.respond!(head);
+                : await context.respond!(head, quiet);
         if (rest.length) await this.send(context.event.channelId, { content: rest.join('\n') }, `${input.idempotencyKey}:rest`);
         return project(reply);
     }

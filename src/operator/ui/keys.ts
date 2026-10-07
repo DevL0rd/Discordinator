@@ -55,7 +55,7 @@ function shortcut(store: Store, input: string, key: Key): boolean {
         p: toggleActive,
     };
     if (key.ctrl && input === 'c') quit(store);
-    else if (/^[1-6]$/.test(input)) store.set((state) => goPage(state, pages[Number(input) - 1]!.id));
+    else if (/^[1-7]$/.test(input)) store.set((state) => goPage(state, pages[Number(input) - 1]!.id));
     else if (!key.ctrl && actions[input]) actions[input]();
     else return false;
     return true;

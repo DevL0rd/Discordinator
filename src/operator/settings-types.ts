@@ -1,5 +1,5 @@
 export type SettingsSource = 'operator' | 'policy' | 'environment';
-export type SettingsPage = 'responders' | 'models' | 'discord' | 'context' | 'media' | 'connections';
+export type SettingsPage = 'responders' | 'models' | 'discord' | 'context' | 'media' | 'connections' | 'voice';
 type SettingKind = 'boolean' | 'integer' | 'text' | 'list' | 'choice' | 'grants';
 export interface SettingDefinition {
     id: string;
@@ -17,7 +17,7 @@ export interface SettingDefinition {
     sensitive?: boolean;
     credential?: boolean;
     readOnly?: boolean;
-    apply: 'live' | 'next-request' | 'restart' | 'reference' | 'external' | 'read-only';
+    apply: 'live' | 'next-request' | 'reference' | 'external' | 'read-only';
 }
 type Spec = Omit<SettingDefinition, 'id' | 'source' | 'page' | 'apply'> & { apply?: SettingDefinition['apply'] };
 export function group(

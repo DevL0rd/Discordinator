@@ -20,7 +20,7 @@ async function checkDashboardKeys(): Promise<void> {
         await screen.waitFor('Keys');
         screen.send('\x1b');
         await screen.waitFor('Discord, answered by your AI');
-        screen.send('6');
+        screen.send('7');
         await screen.waitFor('Background service');
         for (let step = 0; step < 30; step++) {
             screen.send('j');

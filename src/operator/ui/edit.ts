@@ -12,6 +12,7 @@ export function editOptions(field: SettingDefinition, drafts: Documents, observe
     if (field.path === 'claudeModel') return ['', ...observed.claude.models.map((model) => model.id)];
     if (field.path === 'codexEffort') return ['', ...effortOptions(observed.codex, drafts.operator.codexModel as string | undefined)];
     if (field.path === 'claudeEffort') return ['', ...effortOptions(observed.claude, drafts.operator.claudeModel as string | undefined)];
+    if (field.id === 'policy.ownerUserId') return ['', ...((drafts.policy.allowedUserIds as string[] | undefined) ?? [])];
     if (field.kind === 'choice') return [...(field.choices ?? [])];
     return [];
 }

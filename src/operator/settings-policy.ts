@@ -26,6 +26,8 @@ const scopes = [
     'media.read',
     'media.write',
     'interactions.write',
+    'voice.listen',
+    'voice.speak',
 ] as const;
 
 function scopeSettings(path: 'servers' | 'channels', noun: string, maxItems: number) {
@@ -74,6 +76,15 @@ export const policySettings = [
             sensitive: true,
         },
         {
+            path: 'ownerUserId',
+            apply: 'live',
+            label: 'Owner',
+            description:
+                'Discord user ID of the one approved person who owns this Discordinator. The assistant is told who the owner is, by name and ID. Must be one of the approved people; leave empty for none. Only the ID counts: names never grant authority.',
+            kind: 'text',
+            sensitive: true,
+        },
+        {
             path: 'allowedRoleIds',
             apply: 'live',
             label: 'Approved roles',
@@ -95,7 +106,7 @@ export const policySettings = [
         {
             path: 'triggers.replyToBot',
             label: 'Replies address the bot',
-            description: 'Only references verified as this bot’s messages qualify.',
+            description: 'Only references verified as messages from this bot qualify.',
             kind: 'boolean',
             defaultValue: true,
         },
@@ -109,7 +120,8 @@ export const policySettings = [
         {
             path: 'triggers.names',
             label: 'Bot aliases',
-            description: 'Up to ten trimmed names, each 2–32 characters.',
+            description:
+                'Extra names the bot answers to, in chat and in voice calls. Its own Discord names (app name, server nickname, display name, username) always work, and the app name is what it calls itself; add up to ten more, each 2–32 characters.',
             kind: 'list',
             maxItems: 10,
             defaultValue: [],
@@ -161,7 +173,8 @@ export const policySettings = [
         {
             path: 'context.includeBots',
             label: 'Include bot messages in context',
-            description: 'Lets the assistant see other bots’ messages (and its own earlier replies) as context. Bots can never trigger it.',
+            description:
+                'Lets the assistant see messages from other bots (and its own earlier replies) as context. Bots can never trigger it.',
             kind: 'boolean',
             defaultValue: true,
         },

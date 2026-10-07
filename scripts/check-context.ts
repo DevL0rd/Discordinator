@@ -5,6 +5,7 @@ import { ContextIndex, type ObservedMessage } from '../src/core/context.js';
 import { fixture, fakeConfig, ids } from './fixtures.js';
 import { channelHistory } from '../src/operator/history.js';
 import { observeRaw, type RawMessage } from '../src/discord/observation.js';
+import { person } from '../src/core/directory.js';
 
 export function observed(overrides: Partial<ObservedMessage> = {}): ObservedMessage {
     return {
@@ -18,6 +19,8 @@ export function observed(overrides: Partial<ObservedMessage> = {}): ObservedMess
         contentAvailable: true,
         parentId: null,
         replyToId: null,
+        author: person(overrides.actorId ?? ids.user),
+        mentions: [],
         ...overrides,
     };
 }

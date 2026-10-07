@@ -14,6 +14,7 @@ Start with [Get started](getting-started.md). The setup app (`npm run setup`) ed
 | `DISCORDINATOR_RESOURCE_URL` | `http://127.0.0.1:PORT/mcp` | Derived only in bearer mode; OAuth requires an explicit canonical HTTPS identifier |
 | `DISCORDINATOR_MESSAGE_CONTENT` | `true` | Requests Message Content intent; enable it in the Discord portal too |
 | `DISCORDINATOR_GUILD_MEMBERS` | `true` | Lets the bot see server members; also enable Server Members Intent in the portal |
+| `GEMINI_API_KEY` | Unset | Google Gemini key for [voice calls](voice.md): transcripts and live conversation |
 | `DISCORDINATOR_MCP_TOKEN` | Unset | Bearer mode only: independent secret of at least 32 characters |
 | `DISCORDINATOR_ALLOWED_HOSTS` | Empty | Extra exact Host headers; the public domain is always allowed automatically |
 | `DISCORDINATOR_ALLOWED_ORIGINS` | Empty | Extra exact Origins; the public domain is always allowed automatically |
@@ -25,7 +26,7 @@ A missing Origin is allowed; a supplied Origin must be explicitly listed. Defaul
 
 An existing `.env` with `DISCORDINATOR_AUTH_MODE=bearer` or `oauth` retains that mode. Empty optional OAuth URLs are treated as unset. Missing bearer/OAuth credentials, unsupported auth modes, non-loopback binds and invalid ports fail startup. Preserve existing bot credentials and policy; configure authentication as described in [connection](connection.md).
 
-Node's `--env-file=.env` loads the file; existing process environment takes precedence. Run from the project root. When Discordinator runs as the background service, it restarts itself once idle after `.env` changes; otherwise restart it after editing `.env`. Files containing credentials and personal IDs are ignored by git.
+Node's `--env-file=.env` loads the file; existing process environment takes precedence. Run from the project root. A running Discordinator applies `.env` changes without restarting: keys, credentials and allowed hosts change in place, the bot token and intents reconnect only the Discord connection (rejoining any voice call), the port and sign-in settings restart only the MCP listener, and a new policy file path is loaded at once. An invalid edit is reported and ignored, and a change that fails to apply (such as a port already in use) is rolled back. Files containing credentials and personal IDs are ignored by git.
 
 Older `DOTBOT_*` keys in `.env` are renamed to `DISCORDINATOR_*` automatically, one time, with a private backup in `.data/setup-backups`, the next time Discordinator or the setup app starts.
 
@@ -36,13 +37,14 @@ The full [public policy example](../policy.example.json) grants no users, scopes
 | Field | Default | Purpose |
 | :-- | :-- | :-- |
 | `allowedUserIds` | `[]` | Up to 100 quoted 17–20 digit Discord IDs; empty rejects every requester |
+| `ownerUserId` | Unset | One ID from `allowedUserIds` that owns this Discordinator; the assistant is told the owner's name and ID. Display only, see [names](security.md#names-and-the-owner) |
 | `servers.mode`, `channels.mode` | `allowlist` | `allowlist`: only IDs in `allowed`. `blocklist`: everything the bot can access except IDs in `blocked` |
 | `servers.allowed`, `channels.allowed` | `[]` | Up to 100 servers / 1000 channels; an empty allowlist allows nothing; threads follow their parent channel, and can also be listed or blocked on their own |
 | `servers.blocked`, `channels.blocked` | `[]` | Always excluded, in both modes; an empty blocklist excludes nothing |
 | `scopes` | `[]` | Explicit capabilities from [the tool reference](capabilities.md) |
 | `triggers.replyToBot` | `true` | Fetch and verify a same-channel reply target authored by this bot |
 | `triggers.matchNames` | `false` | Literal alias matching; requires Message Content intent locally and in Discord |
-| `triggers.names` | `[]` | Up to ten aliases of 2–32 characters |
+| `triggers.names` | `[]` | Up to ten extra names of 2–32 characters; the bot's own Discord names always count and come first: its app name, its server nicknames, then its display name and username |
 | `context.enabled`, `media.enabled`, `mcpEvents.enabled` | `false` | Independent opt-ins for context, attachments and subscriptions |
 | `context.capture`, `media.capture` | `addressed` | Explicit `all` enables observation beyond triggers |
 | `context.reach`, `context.perChannel` | `channel`, `50` | Whether a responder sees history from only the channel it was messaged from or the whole server (grouped by channel); at most 100 messages per channel, DMs included |
@@ -51,6 +53,7 @@ The full [public policy example](../policy.example.json) grants no users, scopes
 | `media.maxFileBytes` | `2097152` | Hard maximum 8388608 bytes |
 | `mcpEvents.allowAllMessages` | `false` | Separate opt-in for all-message delivery |
 | `proactive` | `[]` | Exact channel grants with `scopes: ["message.send"]`; no wildcard or arbitrary DM |
+| `voice.*` | Off | Voice calls: joining, transcripts and live conversation; every field is listed in [Voice calls](voice.md#settings) |
 
 Server and channel modes are independent, blocked IDs always win, and Discord's own permissions still apply. Older policy files are migrated automatically when loaded: `guildScope: "all"` becomes `servers` in `blocklist` mode (old `guildIds` kept as `allowed`, nothing blocked), `"listed"` becomes `allowlist` mode with the old `guildIds` as `allowed`; channels migrate the same way.
 

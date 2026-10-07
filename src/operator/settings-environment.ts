@@ -1,7 +1,7 @@
 import { group } from './settings-types.js';
 
 export const environmentSettings = [
-    ...group('environment', 'connections', 'restart', [
+    ...group('environment', 'connections', 'live', [
         {
             path: 'DISCORD_BOT_TOKEN',
             label: 'Discord bot credential',

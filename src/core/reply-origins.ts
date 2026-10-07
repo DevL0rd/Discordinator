@@ -4,6 +4,7 @@ import { dirname } from 'node:path';
 import { z } from 'zod';
 import type { BotEvent } from './queue.js';
 import { snowflake } from './config.js';
+import { personSchema } from './directory.js';
 
 const eventSchema = z
     .object({
@@ -16,6 +17,8 @@ const eventSchema = z
         guildId: snowflake.nullable(),
         messageId: snowflake,
         text: z.string().max(4000),
+        author: personSchema.optional(),
+        mentions: z.array(personSchema).max(20).optional(),
     })
     .strict();
 const recordSchema = z.object({ event: eventSchema, revoked: z.boolean().default(false) }).strict();

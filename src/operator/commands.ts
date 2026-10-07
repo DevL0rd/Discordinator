@@ -47,6 +47,10 @@ export class CommandService {
             activity: () => this.change('Activity updates', 'operator.activityVisibility', options.mode === 'on'),
             responder: () => this.change('Responder', 'operator.mode', options.name),
             model: () => this.model(options.name ?? ''),
+            join: () => this.join(origin),
+            leave: () => this.leave(origin),
+            mute: () => this.mute(origin, true),
+            unmute: () => this.mute(origin, false),
         };
         const handler = handlers[name];
         if (!handler) return Promise.reject(new Error('Unknown command'));
@@ -112,6 +116,31 @@ export class CommandService {
     private async change(label: string, id: string, value: unknown): Promise<CommandReply> {
         const message = await settingsUpdate([{ id, value }]);
         return { title: label, tone: 'good', lines: [message] };
+    }
+
+    private async join(origin: CommandOrigin): Promise<CommandReply> {
+        const voice = this.operator.bridge.voice;
+        const channelId = voice && origin?.guildId ? voice.channelOf(origin.guildId, origin.actorId) : null;
+        if (!voice || !origin?.guildId || !channelId) throw new Error('Join a voice channel in this server first, then use /join.');
+        const call = await voice.join(origin.guildId, channelId);
+        return { title: 'Joined the call', tone: 'good', lines: [`Transcribing <#${call.channelId}>. Use /leave to stop.`] };
+    }
+
+    private async leave(origin: CommandOrigin): Promise<CommandReply> {
+        const voice = this.operator.bridge.voice;
+        if (!voice || !origin?.guildId || !(await voice.leave(origin.guildId)))
+            return { title: 'Not in a call', tone: 'info', lines: ['Discordinator is not in a voice call in this server.'] };
+        return { title: 'Left the call', tone: 'good', lines: ['The transcript was saved.'] };
+    }
+
+    private mute(origin: CommandOrigin, muted: boolean): Promise<CommandReply> {
+        const voice = this.operator.bridge.voice;
+        if (!voice || !origin?.guildId) throw new Error('Discordinator is not in a voice call in this server.');
+        voice.mute(origin.guildId, muted);
+        const lines = [
+            muted ? 'It stays in the call and keeps typing in the call chat, without making any audio.' : 'It will talk in the call again.',
+        ];
+        return Promise.resolve({ title: muted ? 'Muted' : 'Unmuted', tone: 'good', lines });
     }
 
     private async model(name: string): Promise<CommandReply> {

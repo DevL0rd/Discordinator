@@ -27,6 +27,7 @@ const elsewhere = new Set([
     'environment.DISCORD_BOT_TOKEN',
     'environment.DISCORDINATOR_MESSAGE_CONTENT',
     'environment.DISCORDINATOR_GUILD_MEMBERS',
+    'environment.GEMINI_API_KEY',
 ]);
 const advanced = settings.filter((field) => field.source === 'environment' && !elsewhere.has(field.id)).map((field) => field.id);
 

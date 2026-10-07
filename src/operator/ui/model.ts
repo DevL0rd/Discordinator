@@ -14,8 +14,9 @@ export const pages = [
     { id: 'home', label: 'Home', icon: '⌂' },
     { id: 'assistant', label: 'Responder', icon: '✦' },
     { id: 'discord', label: 'Discord', icon: '#' },
+    { id: 'voice', label: 'Voice', icon: '◉' },
     { id: 'apps', label: 'Apps', icon: '⇄' },
-    { id: 'memory', label: 'Memory & media', icon: '≡' },
+    { id: 'memory', label: 'Memory & media', icon: '⊞' },
     { id: 'system', label: 'System', icon: '◫' },
 ] as const;
 export type PageId = (typeof pages)[number]['id'];

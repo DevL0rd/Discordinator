@@ -8,7 +8,7 @@ export class PolicyWatcher {
     private unwatch?: () => void;
     private work: Promise<void> = Promise.resolve();
     constructor(
-        readonly path: string,
+        public path: string,
         readonly policy: Policy,
         readonly origins: ReplyOrigins,
     ) {}
@@ -21,6 +21,14 @@ export class PolicyWatcher {
             );
         });
     }
+    /** Switches to another policy file and loads it now. */
+    async move(path: string): Promise<void> {
+        await this.stop();
+        this.path = path;
+        await this.reload();
+        this.start();
+    }
+
     async stop(): Promise<void> {
         this.unwatch?.();
         await this.work;

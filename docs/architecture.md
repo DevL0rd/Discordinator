@@ -33,8 +33,10 @@ flowchart LR
 | `src/core/bridge.ts` | Shared authorization before every mutation and outbound response |
 | `src/discord/` | Gateway capture, safe output projection, fixed typed operation families |
 | `src/core/context.ts` | Bounded context ingestion/search, separate from action origins |
+| `src/core/directory.ts` | Bounded display-name directory, readable mentions and exact name-to-ID resolution; never consulted for authorization |
 | `src/events/` | Durable owner/filter/expiry state, verified SSRF-safe HTTPS callbacks, signatures and retry outbox |
 | `src/media/` | Bounded upload memory, safe format checks, scoped attachment index/handles, refreshed CDN-only retrieval |
+| `src/voice/` | Voice calls: Discord voice link, per-speaker capture, Gemini transcripts, Gemini Live conversations, call context and spoken tasks |
 | `src/interactions/` | Typed prompts, single-use actor/message/application bindings, immediate modal launch and child event capture |
 | `src/mcp/` | Loopback listener, bearer/OAuth validation and tool registration |
 | `scripts/` | Practical offline validation with disposable fixtures |

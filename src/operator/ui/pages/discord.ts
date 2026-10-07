@@ -47,6 +47,7 @@ export function discordItems(view: View): Item[] {
         ]),
         ...section('people', 'Who can ask', 'Pick people and roles from your servers', [
             settingItem('policy.allowedUserIds', 'People who can ask'),
+            settingItem('policy.ownerUserId', 'Owner'),
             settingItem('policy.allowedRoleIds', 'Roles that can ask'),
         ]),
         ...serverItems(view),

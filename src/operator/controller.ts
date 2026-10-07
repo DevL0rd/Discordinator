@@ -23,6 +23,7 @@ export type ControllerOptions = {
     history?: History;
     notice?: (event: ProviderNotice) => void;
     sessionIdleMs?: number;
+    describe?: (event: BotEvent) => string;
 };
 type Origin = Pick<BotEvent, 'guildId' | 'channelId' | 'actorId'>;
 
@@ -205,7 +206,7 @@ export class ConversationController {
         try {
             sessionId = await this.openConversation(key, sessionId);
             submitted = true;
-            const text = await withHistory(this.store, this.generation, key, event, this.options.history);
+            const text = await withHistory(this.store, this.generation, key, event, this.options.history, this.options.describe);
             const turn = await this.adapter.startTurn(sessionId, { text, originEventId: event.id });
             this.turns.arm(sessionId, turn.turnId);
             this.progressAt.set(sessionId, Date.now());

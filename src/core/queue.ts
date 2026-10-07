@@ -1,11 +1,14 @@
 import { randomUUID } from 'node:crypto';
 import type { Origin } from './policy.js';
+import type { Person } from './directory.js';
 
 export interface EventInput extends Origin {
-    kind: 'message' | 'interaction';
+    kind: 'message' | 'interaction' | 'voice';
     text: string;
     name?: string;
     sourceEventId?: string;
+    author?: Person;
+    mentions?: Person[];
 }
 export interface Delivery {
     content: string;
@@ -21,7 +24,7 @@ export interface BotEvent extends EventInput {
 export interface EventContext {
     event: BotEvent;
     expiresAt: number;
-    respond?: (text: string) => Promise<unknown>;
+    respond?: (text: string, quiet?: boolean) => Promise<unknown>;
     deliver?: (payload: Delivery) => Promise<unknown>;
 }
 export interface AccessContext {

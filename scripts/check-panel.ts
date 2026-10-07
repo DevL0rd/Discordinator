@@ -109,7 +109,11 @@ async function checkDraft(): Promise<void> {
         true,
         'choosing ChatGPT - Dot allows wake-up events',
     );
-    assert.match(multi.message, /Restart Discordinator|restarts itself/, 'every saved source is reported');
+    assert.match(
+        multi.message,
+        /applies them right away, without restarting|uses them as soon as it is running/,
+        'every saved source is reported',
+    );
     assert.match(multi.message, /wake-up/);
     assert.match(multi.message, /Wake-up events are now allowed/);
     const policyField = settings.find((field) => field.id === 'policy.context.perChannel')!;

@@ -163,8 +163,8 @@ export async function checkPolicy(directory: string): Promise<void> {
     assert.throws(() => f.policy.assertResponse(f.event, ids.other));
     assert.throws(() => f.policy.assertGuildAction(f.event, ids.other));
     checkTriggers(f.policy);
-    assert.equal(gatewayIntents(fakeConfig()).length, 4);
-    assert.equal(gatewayIntents({ ...fakeConfig(), DISCORDINATOR_MESSAGE_CONTENT: 'false' }).length, 3);
+    assert.equal(gatewayIntents(fakeConfig()).length, 5, 'Voice states are always requested so the bot can follow calls');
+    assert.equal(gatewayIntents({ ...fakeConfig(), DISCORDINATOR_MESSAGE_CONTENT: 'false' }).length, 4);
     await checkGateway(`${directory}/gateway.json`);
     await checkConfig(`${directory}/config.json`);
 }

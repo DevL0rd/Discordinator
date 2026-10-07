@@ -34,7 +34,9 @@ Every save shows a review of the exact before → after values, with secrets red
 
 When a settings file changes outside the setup app, the app reloads it and keeps your unsaved edits on top. Press `r` to reload by hand.
 
-Saving a different responder makes it the primary one, starts it and connects its app if needed; the switch waits for any work in progress to finish. Saving other changes keeps a paused responder paused. Choosing ChatGPT - Dot also allows wake-up events. ChatGPT wake-ups are delivered only while ChatGPT is the selected responder, so connected apps never answer twice. The running Discordinator watches its settings files, so responder and policy settings take effect as soon as they are saved. When it runs as the background service, `.env` changes make it restart itself once any work in progress has finished.
+Saving a different responder makes it the primary one, starts it and connects its app if needed; the switch waits for any work in progress to finish. Saving other changes keeps a paused responder paused. Choosing ChatGPT - Dot also allows wake-up events. ChatGPT wake-ups are delivered only while ChatGPT is the selected responder, so connected apps never answer twice. The running Discordinator watches its settings files, so responder and policy settings take effect as soon as they are saved. `.env` changes apply without restarting too: keys and allowed hosts change in place, a new bot token or intent reconnects the bot to Discord, and port or sign-in changes restart only the MCP listener, so conversations and work in progress carry on.
+
+Each request handed to a local assistant starts with a line naming its sender, such as `Discord · #channel · from "DevL0rd" @devl0rd (ID 1022779807186042890) · owner`, and the recent-history lines name their authors the same way. The `owner` tag comes from `ownerUserId` and the ID alone. The owner is also named in the assistant's instructions when its conversation or session starts; the per-request tag stays current if the owner changes later.
 
 ## Responders
 

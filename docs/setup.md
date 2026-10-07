@@ -50,7 +50,7 @@ For the default Message Content intent and name/alias triggers:
 
 Mention-only mode uses `triggers.matchNames=false` and can use `DISCORDINATOR_MESSAGE_CONTENT=false`. The explicit mention must occur in message text; an inherited reply mention is not enough. A reply-to-bot trigger independently fetches and verifies the referenced author/message/channel/guild after whitelist checks; missing/deleted targets fail closed. Even DMs must address the bot through text or a verified reply. Message edits are not triggers. Name matching can match quoted/code text because it is literal text detection. [Discord’s Gateway reference](https://docs.discord.com/developers/events/gateway) explains intent filtering and privileged access.
 
-Also enable **Server Members Intent** on the same portal page: Discordinator sees server members by default (`DISCORDINATOR_GUILD_MEMBERS=true`). Set it to `false` if you leave that intent off; request approval when Discord requires it. Keep **Presence Intent** off. Administrator does not grant privileged intents.
+Also enable **Server Members Intent** on the same portal page: Discordinator sees server members by default (`DISCORDINATOR_GUILD_MEMBERS=true`). Set it to `false` if you leave that intent off; request approval when Discord requires it. Keep **Presence Intent** off. Administrator does not grant privileged intents. Discordinator also requests the non-privileged Guild Voice States intent so it can follow who is in voice calls; nothing needs enabling in the portal for it.
 
 ## Administrator installation guidance
 
@@ -60,7 +60,7 @@ When you separately decide to install the bot, use the application’s **Install
 
 Administrator gives broad Discord permissions and bypasses channel overwrites, but not bot role hierarchy, guild ownership, managed-role restrictions, timeout exemptions, user-install differences, privileged intents, endpoint restrictions, rate limits or platform policy. The bot role must outrank roles/members it is allowed to manage. The bot cannot transfer ownership, use user-only APIs or act as a selfbot. Elevated permissions can also depend on Discord’s server-wide 2FA requirements. [Permission hierarchy](https://docs.discord.com/developers/topics/permissions#permission-hierarchy) remains authoritative.
 
-For a smaller installation, start with View Channel, Send Messages, Read Message History and Send Messages in Threads as needed. Add Pin Messages/Add Reactions/Create Threads for those operations; management/moderation/event/expression capabilities need the corresponding permissions. Administrator does not override Discordinator’s whitelist, scopes or approval gate.
+For a smaller installation, start with View Channel, Send Messages, Read Message History and Send Messages in Threads as needed. Add Pin Messages/Add Reactions/Create Threads for those operations, and Connect/Speak for [voice calls](voice.md); management/moderation/event/expression capabilities need the corresponding permissions. Administrator does not override Discordinator’s whitelist, scopes or approval gate.
 
 `discord_command_register` is an approved, confirmed operation, not startup behavior. It creates/updates this bot’s guild `/discordinator` command with default member permissions `"0"`, so it is admin-only until you explicitly configure a Discord command permission overwrite for a whitelisted user. Discord command permissions and Discordinator’s whitelist are separate checks. See [application command permissions](https://docs.discord.com/developers/interactions/application-commands#permissions).
 
@@ -70,7 +70,7 @@ For a smaller installation, start with View Channel, Send Messages, Read Message
 
 A runtime lock prevents a second instance from using the same journal. A crash can leave a stale lock. Confirm the previous process is gone before manually removing **only this project’s** `.data/runtime.lock`. Do not delete the journal to fix a connection problem. Never share one data directory across concurrent instances.
 
-Gateway heartbeat/resume/reconnect and REST bucket/global rate-limit waits come from discord.js. REST network timeouts are 15 seconds; automatic 5xx retries are disabled to avoid blindly replaying mutations. A REST 401 blocks further bridge REST calls until restart. Failures return a sanitized status, not credential-bearing Discord error objects. Invalid intents or login credentials fail startup; the background service is optional and installed only from the setup app's **System** page.
+Gateway heartbeat/resume/reconnect and REST bucket/global rate-limit waits come from discord.js. REST network timeouts are 15 seconds; automatic 5xx retries are disabled to avoid blindly replaying mutations. A REST 401 blocks further bridge REST calls until the bot token is replaced, which applies without a restart. Failures return a sanitized status, not credential-bearing Discord error objects. Invalid intents or login credentials fail startup; the background service is optional and installed only from the setup app's **System** page.
 
 `discordinator_status` reports Gateway readiness/reconnection state, scope modes and counts without credentials or whitelist IDs. For unknown mutation outcomes, follow [journal recovery](architecture.md#idempotency-and-recovery).
 

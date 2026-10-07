@@ -20,26 +20,25 @@ import { watchDirectory } from './file-watch.js';
 import { claudeProgram } from './executables.js';
 import { SessionActivity } from './session-activity.js';
 import { ProcessingIndicator } from './processing-indicator.js';
-import type { History } from './history.js';
+import { marks, type History } from './history.js';
+import { requestText } from './request-format.js';
+import { ownerNote } from '../core/directory.js';
 
 const exec = promisify(execFile);
 const stateFile = '.data/claude-session.json';
 const stateSchema = z.object({ sessionId: z.uuid(), workspace: z.string(), seen: z.record(z.string(), z.string()).default({}) });
 type SessionState = z.infer<typeof stateSchema>;
 
-function liveMessage(event: BotEvent): string {
-    const place = event.guildId ? `#${event.channelId}` : 'DM';
-    const kind = event.kind === 'interaction' ? 'Discord answer' : 'Discord';
+function liveMessage(bridge: Bridge, event: BotEvent): string {
     return [
-        `${kind} · ${place} · user ${event.actorId}`,
-        event.text,
+        requestText(bridge.policy, event),
         `-> discord_respond with eventId "${event.id}"; post progress there if it takes a while.`,
     ].join('\n');
 }
 
 const nudge = 'Please handle the pending Discord message above.';
-const greeting =
-    'This is the Discordinator conversation. Discordinator will deliver Discord messages here for you to answer with the discord_respond tool. Reply with: Ready.';
+const greeting = (owner: string) =>
+    `This is the Discordinator conversation. Discordinator will deliver Discord messages here for you to answer with the discord_respond tool. Each one names its sender with their numeric ID.${owner ? ` ${owner}` : ''} Reply with: Ready.`;
 
 async function savedState(workspace: string): Promise<SessionState | undefined> {
     const parsed = stateSchema.safeParse(JSON.parse(await readFile(stateFile, 'utf8').catch(() => '{}')));
@@ -137,7 +136,7 @@ export class SessionRouter {
             this.live = live;
             const transcript = await transcriptPath(sessionId);
             if (transcript) await this.activity.follow(transcript, event.id);
-            await deliver(live, await this.withHistory(event, liveMessage(event)));
+            await deliver(live, await this.withHistory(event, liveMessage(this.bridge, event)));
         } catch (error) {
             this.settle(event.id);
             throw error;
@@ -166,10 +165,24 @@ export class SessionRouter {
             ...(this.launch.effort ? ['--effort', this.launch.effort] : []),
         ];
         const claude = await claudeProgram();
-        await exec(claude.command, [...claude.args, '-p', '--session-id', sessionId, '--name', 'Discordinator', ...options, greeting], {
-            cwd: this.workspace,
-            timeout: 180_000,
-        });
+        await this.bridge.people.approved();
+        await exec(
+            claude.command,
+            [
+                ...claude.args,
+                '-p',
+                '--session-id',
+                sessionId,
+                '--name',
+                'Discordinator',
+                ...options,
+                greeting(ownerNote(this.bridge.policy, this.bridge.people)),
+            ],
+            {
+                cwd: this.workspace,
+                timeout: 180_000,
+            },
+        );
         if (!(await conversationExists(sessionId))) throw new Error('Claude Code did not create the Discordinator conversation');
         await saveState({ sessionId, workspace: this.workspace, seen: {} });
         this.sessionId = sessionId;
@@ -179,12 +192,13 @@ export class SessionRouter {
 
     private async withHistory(event: BotEvent, message: string): Promise<string> {
         if (!this.launch.history) return message;
-        const { text, key, latest } = await this.launch.history(event, this.seen);
-        if (latest) {
-            this.seen[key] = latest;
+        const result = await this.launch.history(event, this.seen);
+        const seen = marks(result);
+        if (Object.keys(seen).length) {
+            Object.assign(this.seen, seen);
             await saveState({ sessionId: this.sessionId!, workspace: this.workspace, seen: this.seen });
         }
-        return `${text}${message}`;
+        return `${result.text}${message}`;
     }
 
     private async refresh(): Promise<void> {

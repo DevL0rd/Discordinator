@@ -31,6 +31,8 @@ const scope = z.enum([
     'media.read',
     'media.write',
     'interactions.write',
+    'voice.listen',
+    'voice.speak',
 ]);
 export type Scope = z.infer<typeof scope>;
 const withoutRetiredKeys = (value: unknown): unknown => {
@@ -61,9 +63,56 @@ function migratePolicy(value: unknown): unknown {
     migrateScope(raw, 'channelScope', 'channelIds', 'channels');
     return raw;
 }
+const modelSlug = z
+    .string()
+    .trim()
+    .regex(/^[\w.:/-]{1,100}$/);
+const retiredVoiceKeys = [
+    'followUpSeconds',
+    'jumpInModel',
+    'sttModel',
+    'speakReplies',
+    'conversation',
+    'conversationModel',
+    'listening',
+    'ttsModel',
+    'ttsVoice',
+    'ttsSpeed',
+    'maxSpokenCharacters',
+    'jumpIn',
+    'jumpInMinutes',
+];
+const withoutRetiredVoiceKeys = (value: unknown): unknown => {
+    if (!value || typeof value !== 'object' || Array.isArray(value)) return value;
+    return Object.fromEntries(Object.entries(value).filter(([key]) => !retiredVoiceKeys.includes(key)));
+};
+const voiceObject = z
+    .object({
+        enabled: z.boolean().default(false),
+        autoJoin: z.boolean().default(true),
+        leaveAfterSeconds: z.number().int().min(5).max(3600).default(60),
+        transcribe: z.enum(['everyone', 'approved']).default('everyone'),
+        retentionDays: z.number().int().min(1).max(365).default(30),
+        contextMinutes: z.number().int().min(1).max(120).default(10),
+        transcribeModel: modelSlug.default('gemini-3.5-flash-lite'),
+        language: z
+            .string()
+            .trim()
+            .regex(/^([a-z]{2})?$/)
+            .default(''),
+        liveModel: modelSlug.default('gemini-3.8-live'),
+        liveVoice: z.string().trim().max(60).default(''),
+        idleSeconds: z.number().int().min(10).max(600).default(60),
+        resultTiming: z.enum(['pause', 'immediately']).default('pause'),
+        pauseMs: z.number().int().min(0).max(3000).default(0),
+    })
+    .strict();
+const voiceSchema = z.preprocess(withoutRetiredVoiceKeys, voiceObject);
+export type VoiceConfig = z.infer<typeof voiceObject>;
 const policyObject = z
     .object({
         allowedUserIds: z.array(snowflake).max(100).default([]),
+        ownerUserId: z.preprocess((value) => (value === '' || value === null ? undefined : value), snowflake.optional()),
         allowedRoleIds: z.array(snowflake).max(100).default([]),
         servers: scopeList(100).default({ mode: 'allowlist', allowed: [], blocked: [] }),
         channels: scopeList(1000).default({ mode: 'allowlist', allowed: [], blocked: [] }),
@@ -112,6 +161,7 @@ const policyObject = z
             })
             .strict()
             .prefault({}),
+        voice: voiceSchema.prefault({}),
         proactive: z
             .array(
                 z
@@ -124,7 +174,11 @@ const policyObject = z
             .max(100)
             .default([]),
     })
-    .strict();
+    .strict()
+    .refine((policy) => !policy.ownerUserId || policy.allowedUserIds.includes(policy.ownerUserId), {
+        message: 'The owner must be one of the approved people',
+        path: ['ownerUserId'],
+    });
 export const policySchema = z.preprocess(migratePolicy, policyObject);
 export type PolicyConfig = z.infer<typeof policyObject>;
 
@@ -156,6 +210,7 @@ export const envSchema = z.object({
     DISCORDINATOR_ALLOWED_ORIGINS: z.string().default(''),
     DISCORDINATOR_MESSAGE_CONTENT: z.enum(['true', 'false']).default('true'),
     DISCORDINATOR_GUILD_MEMBERS: z.enum(['true', 'false']).default('true'),
+    GEMINI_API_KEY: z.preprocess((value) => (value === '' ? undefined : value), z.string().min(8).max(500).optional()),
 });
 export type Config = z.infer<typeof envSchema>;
 

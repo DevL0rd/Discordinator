@@ -5,6 +5,7 @@ import type { Principal } from '../events/security.js';
 import { snowflake } from '../core/config.js';
 import { chunkSchema, uploadSchema } from '../media/uploads.js';
 import { guarded, mutation, notifyUserId } from './tools.js';
+import { resolveNotify } from './people.js';
 
 const beginSchema = uploadSchema.omit({ eventId: true }).extend({
     channelId: snowflake,
@@ -69,7 +70,7 @@ export function registerProactiveMedia(server: McpServer, bridge: Bridge, princi
             annotations,
             _meta: meta,
         },
-        (args) => owner(() => bridge.proactiveMedia(args)),
+        (args) => owner(async () => bridge.proactiveMedia(await resolveNotify(bridge, args))),
     );
 }
 function registerSeal(server: McpServer, bridge: Bridge, principal: Principal | undefined, oauth: boolean): void {

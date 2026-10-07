@@ -216,7 +216,9 @@ function service(store: Store, install: boolean): void {
                   'Discordinator is built, checked, and installed as a user service that starts when you log in.',
                   'A Discordinator you started by hand keeps running and is never stopped.',
               ]
-            : ['Restarting applies settings marked restart. Work in progress is paused and resumes after the restart.'],
+            : [
+                  'Settings already apply without a restart; use this only if something seems stuck. Work in progress is paused and resumes after the restart.',
+              ],
         [
             {
                 label: install ? 'Install' : 'Restart',
@@ -316,11 +318,7 @@ export function review(store: Store): void {
     confirm(
         store,
         `Save ${changes.length} change${changes.length === 1 ? '' : 's'}?`,
-        [
-            ...changes.map(
-                (change) => `${change.label}: ${change.before} → ${change.after}${change.apply === 'restart' ? '  (after restart)' : ''}`,
-            ),
-        ],
+        [...changes.map((change) => `${change.label}: ${change.before} → ${change.after}`)],
         [
             { label: 'Save', tone: 'good', run: () => void commit(store) },
             { label: 'Keep editing', tone: 'idle', run: () => close(store) },

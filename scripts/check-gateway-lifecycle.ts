@@ -168,6 +168,8 @@ function checkObservation(): void {
     };
     assert.deepEqual(observeRaw(raw, ids.guild, thread), {
         actorId: ids.bot,
+        author: { id: ids.bot, username: null, globalName: null, nickname: null },
+        mentions: [],
         authorBot: true,
         channelId: ids.channel,
         guildId: ids.guild,

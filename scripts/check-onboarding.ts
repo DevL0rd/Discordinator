@@ -49,11 +49,16 @@ export async function checkOnboarding(): Promise<void> {
             context: { enabled: boolean };
             scopes: string[];
             allowedUserIds: string[];
+            ownerUserId?: string;
         };
         assert.equal(savedPolicy.context.enabled, true);
         assert.ok(savedPolicy.scopes.includes('reactions.write'));
         assert.ok(savedPolicy.scopes.includes('messages.read'));
-        assert.deepEqual(savedPolicy.allowedUserIds, ['1022779807186042890']);
+        assert.deepEqual(
+            [savedPolicy.allowedUserIds, savedPolicy.ownerUserId],
+            [['1022779807186042890'], '1022779807186042890'],
+            'The person who sets Discordinator up is approved and becomes its owner',
+        );
         assert.equal(await onboardingPhase({ DISCORD_BOT_TOKEN: 'fixture-token' }, marker), 'ai');
         assert.match(
             await validateAi('manual-mcp', '', { environment }),

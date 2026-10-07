@@ -4,6 +4,7 @@ import { assistantItems } from './assistant.js';
 import { discordItems } from './discord.js';
 import { appsItems } from './apps.js';
 import { memoryItems, systemItems } from './system.js';
+import { voiceItems } from './voice.js';
 
 const builders: Record<PageId, (view: View) => Item[]> = {
     home: homeItems,
@@ -11,6 +12,7 @@ const builders: Record<PageId, (view: View) => Item[]> = {
     discord: discordItems,
     apps: appsItems,
     memory: memoryItems,
+    voice: voiceItems,
     system: systemItems,
 };
 

@@ -87,7 +87,13 @@ function envText(original: string, before: Record<string, unknown>, after: Recor
     }
     return text;
 }
+function assertOwnerApproved(policy: Record<string, unknown>): void {
+    const owner = policy.ownerUserId;
+    if (owner && !((policy.allowedUserIds as unknown[] | undefined) ?? []).includes(owner))
+        throw new Error('The owner must be one of the approved people.');
+}
 async function validateDraft(snapshot: PanelSnapshot, drafts: Documents, source: SettingsSource): Promise<void> {
+    assertOwnerApproved(drafts.policy);
     const env = envSchema.parse(drafts.environment);
     validateAuth(env);
     const policy = policySchema.parse(drafts.policy);
@@ -197,8 +203,8 @@ async function operatorMessage(activation: Activation, mode: string): Promise<st
 }
 async function environmentMessage(): Promise<string> {
     return (await managedServiceStatus()).active
-        ? 'Settings saved. Discordinator restarts itself to apply them once it is idle.'
-        : 'Settings saved. Restart Discordinator to apply them.';
+        ? 'Settings saved. Discordinator applies them right away, without restarting.'
+        : 'Settings saved. Discordinator uses them as soon as it is running.';
 }
 function withEvents(snapshot: PanelSnapshot, drafts: Documents): Documents {
     const choosing = drafts.operator.mode === 'chatgpt-events' && snapshot.documents.operator.mode !== 'chatgpt-events';

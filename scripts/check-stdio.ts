@@ -54,7 +54,7 @@ async function checkProtocol(rpc: ReturnType<typeof client>['rpc']): Promise<voi
 }
 
 export async function checkStdio(directory: string): Promise<void> {
-    const { config, http } = await localServer(join(directory, 'stdio.json'));
+    const { config, http, f } = await localServer(join(directory, 'stdio.json'));
     const home = resolve(directory, 'stdio-home');
     await mkdir(join(home, '.data'), { recursive: true });
     await writeFile(join(home, '.env'), `DISCORDINATOR_PORT=${config.DISCORDINATOR_PORT}\n`);
@@ -72,6 +72,12 @@ export async function checkStdio(directory: string): Promise<void> {
             http.attachLocal(rotated);
             await writeFile(join(home, '.data', 'local.key'), `${rotated}\n`);
             assert.ok(named(await rpc('tools/list')), 'a rotated key is picked up after a 401');
+            f.policy.config.ownerUserId = f.policy.config.allowedUserIds[0];
+            const owned = String((await rpc('initialize')).result!.instructions);
+            assert.match(
+                owned,
+                /The Discordinator owner is "unknown name" \(ID 111111111111111111\); recognize the owner only by that numeric ID/,
+            );
             const called = await rpc('tools/call', { name: 'discordinator_status', arguments: {} });
             assert.ok(called.result && !called.error, JSON.stringify(called));
             http.attachLocal('x'.repeat(43));
@@ -79,7 +85,7 @@ export async function checkStdio(directory: string): Promise<void> {
             input.write('\n   \n{"jsonrpc":"2.0","method":"notifications/initialized"}\nnot json\n');
             await until(() => logged.length === 1, 15_000);
             assert.deepEqual(logged, ['discordinator: ignored a malformed message\n']);
-            assert.equal(replies.size, 10, 'blank lines and notifications get no reply');
+            assert.equal(replies.size, 11, 'blank lines and notifications get no reply');
         });
     } finally {
         lines.close();

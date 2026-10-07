@@ -25,6 +25,18 @@ export class Policy {
     }
 
     private readonly threadParents = new Map<string, string>();
+    botNames: string[] = [];
+
+    /** What the bot answers to: its own Discord name first, then any extra names from settings. */
+    names(): string[] {
+        const seen = new Set<string>();
+        return [...this.botNames, ...this.config.triggers.names].filter((name) => {
+            const key = name.trim().toLocaleLowerCase();
+            if (key.length < 2 || seen.has(key)) return false;
+            seen.add(key);
+            return true;
+        });
+    }
 
     noteRoles(userId: string, guildId: string, roleIds: Iterable<string>): void {
         const guilds = this.memberRoles.get(userId) ?? new Map<string, Set<string>>();
@@ -36,6 +48,10 @@ export class Policy {
         if (this.config.allowedUserIds.includes(userId)) return true;
         const guilds = [...(this.memberRoles.get(userId)?.values() ?? [])];
         return this.config.allowedRoleIds.some((role) => guilds.some((roles) => roles.has(role)));
+    }
+
+    isOwner(userId: string): boolean {
+        return this.config.ownerUserId !== undefined && this.config.ownerUserId === userId;
     }
 
     assertUser(userId: string): void {

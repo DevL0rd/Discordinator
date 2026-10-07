@@ -1,4 +1,4 @@
-import { channelHistory, type History } from './history.js';
+import { channelHistory, withCall, type History } from './history.js';
 import { contextWarning, ThresholdMeter, usageWarning } from './context-meter.js';
 import type { Bridge } from '../core/bridge.js';
 import type { BotEvent, EventQueue } from '../core/queue.js';
@@ -19,6 +19,8 @@ import type { ProviderAdapter, ProviderNotice, UsageWindow } from './provider-ad
 import { claudeUsage } from './providers.js';
 import { readFile } from 'node:fs/promises';
 import { randomUUID } from 'node:crypto';
+import { requestText } from './request-format.js';
+import { ownerNote } from '../core/directory.js';
 
 const retryMs = 5000;
 const maxAttempts = 3;
@@ -52,7 +54,9 @@ export class OperatorService {
         readonly queue: EventQueue,
         readonly bridge: Bridge,
     ) {
-        this.history = channelHistory(bridge.context, bridge.policy, bridge.api);
+        this.history = withCall(channelHistory(bridge.context, bridge.policy, bridge.api), () =>
+            bridge.voice ? (guildId, actorId, seen) => bridge.voice!.context(guildId, actorId, seen) : undefined,
+        );
         this.meter = new ThresholdMeter((eventId, content, idempotencyKey) => this.bridge.respond({ eventId, content, idempotencyKey }));
     }
 
@@ -248,6 +252,11 @@ export class OperatorService {
         await this.router.start();
         this.appliedConfigAt = config.updatedAt;
     }
+    private async withOwner(config: OperatorConfig): Promise<OperatorConfig> {
+        await this.bridge.people.approved();
+        const instructions = [ownerNote(this.bridge.policy, this.bridge.people), config.instructions].filter(Boolean).join('\n\n');
+        return instructions ? { ...config, instructions } : config;
+    }
     private async createController(config: OperatorConfig, adapter: ProviderAdapter, shared: boolean): Promise<void> {
         const dispatcher = new DiscordApprovalDispatcher(this.bridge, (key, decision, origin) =>
             this.controller!.resolveApproval(key, decision, origin),
@@ -255,7 +264,7 @@ export class OperatorService {
         const indicator = new ProcessingIndicator((eventId) => this.bridge.typing(eventId));
         const controller = new ConversationController(
             adapter,
-            config,
+            await this.withOwner(config),
             new ControllerStore(`.data/controller-${config.mode}.json`),
             (eventId, content, idempotencyKey, loose) => this.bridge.respond({ eventId, content, idempotencyKey, status: loose }),
             (request, origin) => dispatcher.request(request, origin),
@@ -274,6 +283,7 @@ export class OperatorService {
                 },
                 ...(shared ? { sharedConversation: 'discordinator' } : {}),
                 history: this.history,
+                describe: (event) => requestText(this.bridge.policy, event),
                 notice: (event) => void this.notice(event).catch((error: unknown) => logFailure('Operator notice failed', error)),
             },
         );
