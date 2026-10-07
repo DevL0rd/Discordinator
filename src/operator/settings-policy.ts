@@ -1,34 +1,5 @@
+import { scopeNames } from '../core/config.js';
 import { group } from './settings-types.js';
-const scopes = [
-    'guild.read',
-    'messages.read',
-    'messages.write',
-    'reactions.write',
-    'threads.write',
-    'channels.write',
-    'members.read',
-    'members.write',
-    'roles.read',
-    'roles.write',
-    'moderation.write',
-    'events.read',
-    'events.write',
-    'commands.write',
-    'invites.read',
-    'invites.write',
-    'guild.write',
-    'audit.read',
-    'automod.read',
-    'automod.write',
-    'expressions.read',
-    'expressions.write',
-    'voice.write',
-    'media.read',
-    'media.write',
-    'interactions.write',
-    'voice.listen',
-    'voice.speak',
-] as const;
 
 function scopeSettings(path: 'servers' | 'channels', noun: string, maxItems: number) {
     const plural = `${noun}s`;
@@ -100,8 +71,8 @@ export const policySettings = [
             label: 'Capability grants',
             description: 'Explicit granted operation families; Discord permissions are checked independently.',
             kind: 'list',
-            choices: scopes,
-            defaultValue: [],
+            choices: scopeNames,
+            defaultValue: [...scopeNames],
         },
         {
             path: 'triggers.replyToBot',

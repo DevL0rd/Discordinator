@@ -179,9 +179,10 @@ function checkItems(): void {
     assert.match(shown('policy.allowedUserIds'), /4 people/, 'long or private lists are counted');
     assert.match(shown('policy.allowedRoleIds'), /9/, 'short lists are listed');
     assert.match(shown('policy.triggers.names'), /dot, bot/);
-    assert.match(shown('policy.scopes'), /None/);
+    assert.match(shown('policy.scopes'), /All \d+/, 'every ability is on by default');
     const scopes = (chosen: readonly string[]) =>
         text(settingItem('policy.scopes').lines(100, false, viewOf(state({ drafts: { policy: { scopes: [...chosen] } } }))));
+    assert.match(scopes([]), /None/);
     assert.match(scopes(['messages.read']), /1 of \d+/, 'checklists show how many are chosen');
     assert.match(scopes(setting('policy.scopes').choices!), /All \d+/);
     assert.match(shown('policy.media.maxFileBytes'), /2 MB/, 'byte sizes are shown in megabytes');

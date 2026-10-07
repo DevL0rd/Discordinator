@@ -153,7 +153,8 @@ export async function checkPolicy(directory: string): Promise<void> {
     assert.throws(() => empty.assertUser(ids.user));
     assert.throws(() => empty.assertGuild(ids.guild));
     assert.throws(() => empty.assertChannel(ids.channel));
-    assert.throws(() => empty.assertScope('messages.write'));
+    assert.doesNotThrow(() => empty.assertScope('messages.write'), 'Every ability is on by default');
+    assert.throws(() => new Policy(policySchema.parse({ scopes: [] })).assertScope('messages.write'), 'Abilities can all be turned off');
     assert.equal(policySchema.safeParse({ allowedUserIds: [Number(ids.user)] }).success, false);
     const f = fixture(`${directory}/policy.json`);
     f.policy.assertGuild(ids.other);

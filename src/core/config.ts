@@ -35,6 +35,7 @@ const scope = z.enum([
     'voice.speak',
 ]);
 export type Scope = z.infer<typeof scope>;
+export const scopeNames = scope.options;
 const withoutRetiredKeys = (value: unknown): unknown => {
     if (!value || typeof value !== 'object' || Array.isArray(value)) return value;
     const { ttlMinutes: _ttl, maxMessages: _total, contentLimit: _characters, ...rest } = value as Record<string, unknown>;
@@ -117,7 +118,7 @@ const policyObject = z
         allowedRoleIds: z.array(snowflake).max(100).default([]),
         servers: scopeList(100).default({ mode: 'allowlist', allowed: [], blocked: [] }),
         channels: scopeList(1000).default({ mode: 'allowlist', allowed: [], blocked: [] }),
-        scopes: z.array(scope).default([]),
+        scopes: z.array(scope).default(() => [...scopeNames]),
         triggers: z
             .object({
                 replyToBot: z.boolean().default(true),

@@ -102,7 +102,7 @@ Replies, files and images, reactions, threads, polls, buttons, menus and forms, 
 
 ### 🛠️ Helps run your server
 
-Channels, threads, roles, members, moderation, scheduled events, AutoMod, invites, emoji and stickers — over 90 tools, each behind a capability you grant on purpose.
+Channels, threads, roles, members, moderation, scheduled events, AutoMod, invites, emoji and stickers — over 90 tools, all switched on by default and each one something you can turn off.
 
 ### 🖥️ A setup app you will actually enjoy
 
@@ -185,7 +185,7 @@ Connecting only ever touches the entry named <code>discordinator</code>. Your ot
   <tr>
     <td width="33%" valign="top">👥 <b>People</b><br>Only people and roles you approve can ask for anything. Everyone else is ignored.</td>
     <td width="33%" valign="top">🗺️ <b>Places</b><br>Turn each server on or off and choose its channels. Blocked always wins.</td>
-    <td width="33%" valign="top">🔑 <b>Abilities</b><br>Every kind of action is a grant you switch on yourself. Discord permissions still apply.</td>
+    <td width="33%" valign="top">🔑 <b>Abilities</b><br>Every kind of action is on by default, and you can switch any of them off. Discord permissions still apply.</td>
   </tr>
   <tr>
     <td valign="top">✅ <b>Approvals</b><br>Sensitive actions and the AI's own permission prompts wait for a Discord button press from the person who asked.</td>

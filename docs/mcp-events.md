@@ -4,7 +4,7 @@ Discordinator implements the webhook contract from the **full [official OpenAI M
 
 ## Opt in
 
-Public defaults disable context capture and subscriptions, and allow no Discord users or API scopes. For a private policy, explicitly grant `messages.read`, keep a nonempty `allowedUserIds`, and merge the desired fields:
+Public defaults disable context capture and subscriptions and allow no Discord users; every API scope, including `messages.read`, is granted by default. For a private policy, keep `messages.read` granted, keep a nonempty `allowedUserIds`, and merge the desired fields:
 
 ```json
 {
