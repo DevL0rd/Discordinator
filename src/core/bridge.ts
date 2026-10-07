@@ -18,7 +18,7 @@ import type { Approvals } from './approvals.js';
 import type { ReplyOrigins } from './reply-origins.js';
 import { splitMessage } from '../operator/message-split.js';
 import { peopleRevision } from '../operator/people.js';
-import { fadeLater } from './fade.js';
+import { StatusBoard } from './status-board.js';
 
 export type Rich = { content: string; embeds?: import('discord.js').APIEmbed[] };
 export interface MutationInput {
@@ -114,6 +114,7 @@ export class Bridge {
     }
 
     private readonly typingChecks = new Map<string, { context: AccessContext; until: number }>();
+    private readonly statuses = new StatusBoard((message) => this.api.delete(`/channels/${message.channel_id}/messages/${message.id}`));
     private async replyEvent(id: string): Promise<AccessContext> {
         if (this.ownerContexts.has(id)) return this.event(id);
         if (!this.replyOrigins) return this.event(id);
@@ -142,11 +143,22 @@ export class Bridge {
             const context = await this.replyEvent(input.eventId);
             this.policy.assertResponse(context.event, context.event.channelId);
             if ((input.embeds?.length && context.deliver) || context.respond) return this.interactionReply(context, input, input.status);
+            if (input.status)
+                return this.statuses.show(
+                    input.eventId,
+                    () => this.send(context.event.channelId, input, input.idempotencyKey),
+                    (message) =>
+                        this.api.patch(`/channels/${message.channel_id}/messages/${message.id}`, {
+                            content: input.content.slice(0, 2000),
+                            embeds: input.embeds ?? [],
+                            allowed_mentions: mentions,
+                        }),
+                );
             const sent = await this.send(context.event.channelId, input, input.idempotencyKey, {
-                ...(input.status ? {} : { replyTo: context.event.messageId }),
+                replyTo: context.event.messageId,
                 ...(input.notifyRequester ? { notify: context.event.actorId } : {}),
             });
-            if (input.status) fadeLater(() => this.api.delete(`/channels/${sent.channel_id}/messages/${sent.id}`));
+            await this.statuses.clear(input.eventId);
             return sent;
         });
     }
@@ -220,6 +232,7 @@ export class Bridge {
             },
             delivery.files,
         )) as { id: string; channel_id: string };
+        await this.statuses.clear(eventId);
         return { id: result.id, channel_id: result.channel_id };
     }
 

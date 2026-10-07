@@ -17,12 +17,30 @@ async function checkTimer(): Promise<void> {
 
 async function checkMessageOrigin(directory: string): Promise<void> {
     const f = fixture(join(directory, 'fade.json'));
-    await f.bridge.respond({ eventId: f.event.id, content: 'Working: reading files', idempotencyKey: 'fade-status', status: true });
+    const route = `/channels/${ids.channel}/messages`;
+    const sent = (method: string, path = route) => f.api.calls.filter((call) => call.method === method && call.route === path);
+    const status = (content: string, key: string) => f.bridge.respond({ eventId: f.event.id, content, idempotencyKey: key, status: true });
+    fade.ms = 300;
+    await status('On it, reading files', 'fade-status-1');
+    await status('Running the tests', 'fade-status-2');
+    assert.equal(sent('POST').length, 1, 'status updates share one message');
+    const edits = sent('PATCH', `${route}/${ids.message}`);
+    assert.deepEqual(
+        edits.map((call) => (call.body as { content: string }).content),
+        ['Running the tests'],
+        'later updates edit it in place',
+    );
     await f.bridge.respond({ eventId: f.event.id, content: 'Here is the answer.', idempotencyKey: 'fade-answer' });
-    await until(() => deletes(f.api.calls).length === 1, 'the progress update is deleted');
-    assert.deepEqual(deletes(f.api.calls)[0]!.route, `/channels/${ids.channel}/messages/${ids.message}`);
-    await new Promise((resolve) => setTimeout(resolve, 60));
+    assert.deepEqual(
+        deletes(f.api.calls).map((call) => call.route),
+        [`${route}/${ids.message}`],
+        'the status message goes as soon as the answer arrives',
+    );
+    await new Promise((resolve) => setTimeout(resolve, 400));
     assert.equal(deletes(f.api.calls).length, 1, 'Real answers stay');
+    fade.ms = 20;
+    await status('Still working', 'fade-status-3');
+    await until(() => deletes(f.api.calls).length === 2, 'a status message with no further updates is removed');
 }
 
 async function checkMutedCall(directory: string): Promise<void> {

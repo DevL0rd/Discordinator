@@ -44,7 +44,7 @@ export async function checkHttp(directory: string): Promise<void> {
     assert.match(serverInstructions, /Everything you send goes through discord_send/);
     assert.match(serverInstructions, /Answer every request from Discord in its own conversation with eventId/);
     assert.match(serverInstructions, /keep the follow-up there unless the requester asks to move it/);
-    assert.match(serverInstructions, /acknowledge promptly/);
+    assert.match(serverInstructions, /Before using any tool, acknowledge in one short line/);
     assert.match(serverInstructions, /through completion or a clear blocker/);
     const f = fixture(`${directory}/http.json`);
     const config = fakeConfig();

@@ -37,7 +37,7 @@ type SessionState = z.infer<typeof stateSchema>;
 function liveMessage(bridge: Bridge, event: BotEvent): string {
     return [
         requestText(bridge.policy, event),
-        `-> answer with discord_send with eventId "${event.id}"; for long work, send short updates with progress: true.`,
+        `-> Before using any tool, first acknowledge in one short line with discord_send (eventId "${event.id}", progress: true), unless you can answer right away without tools. Then answer with discord_send with eventId "${event.id}". While you work, send short status updates with progress: true; they replace each other in one status message that disappears when you answer.`,
     ].join('\n');
 }
 

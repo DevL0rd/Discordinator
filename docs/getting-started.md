@@ -57,7 +57,7 @@ The responder you pick in the wizard starts when you choose **Finish**. Later, s
 
 In your approved channel, mention the bot: `@Discordinator say hello`. You can also use a name trigger such as `disco, say hello` if name triggers are on. Your AI should reply in the same channel.
 
-Requests from Discord are always answered in the channel, thread or DM they came from. If work takes a while, the AI acknowledges first and posts short progress updates there. Progress and activity updates (such as "Using a tool…") are removed after about 6 seconds, so only the answers stay; for `/discordinator` requests they are also private to you.
+Requests from Discord are always answered in the channel, thread or DM they came from. Before it uses any tool, the AI acknowledges in one short line. While it works, that line becomes a single status message that is edited in place with progress and activity (such as "Using a tool…"), and it is removed as soon as the answer arrives, or about 6 seconds after its last update, so only the answers stay; for `/discordinator` requests it is also private to you.
 
 If you use **Another MCP app** or a client that polls, give it the [instructions for your AI](connection.md#instructions-for-your-ai).
 

@@ -42,7 +42,9 @@ const sendSchema = z
         progress: z
             .boolean()
             .optional()
-            .describe('A short progress update for a request ("Working on it..."): shown, then removed after about 6 seconds.'),
+            .describe(
+                'A short status update for a request ("On it, checking the logs..."). Updates replace each other in one status message, which is removed when you send the answer or about 6 seconds after the last update.',
+            ),
         idempotencyKey: mutation.idempotencyKey,
     })
     .strict();
