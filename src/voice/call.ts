@@ -35,6 +35,7 @@ export class CallSession {
     private closed = false;
     dropped = 0;
     failures = 0;
+    badPackets = 0;
 
     constructor(
         readonly link: VoiceLink,
@@ -70,7 +71,14 @@ export class CallSession {
         let startedAt = this.now();
         try {
             for await (const packet of this.link.listen(userId, silenceMs)) {
-                const pcm = decoder.decode(packet);
+                let pcm: Int16Array;
+                try {
+                    pcm = decoder.decode(packet);
+                } catch {
+                    // One corrupt packet costs 20 ms of audio, not the speaker's whole utterance.
+                    this.badPackets++;
+                    continue;
+                }
                 this.hooks.live(userId, pcm);
                 chunks.push(pcm);
                 length += pcm.length;

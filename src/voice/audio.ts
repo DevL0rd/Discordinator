@@ -1,4 +1,4 @@
-import OpusScript from 'opusscript';
+import { Opus } from './opus.js';
 
 const discordRate = 48_000;
 export const speechRate = 16_000;
@@ -11,14 +11,16 @@ export interface OpusCodec {
 }
 
 export function opusCodec(): OpusCodec {
-    const codec = new OpusScript(discordRate, 2, OpusScript.Application.AUDIO);
+    let codec = new Opus(discordRate, 2);
+    // A codec whose shared module aborted is replaced, so one bad moment cannot silence the call for good.
+    const live = () => {
+        if (codec.stale) codec = new Opus(discordRate, 2);
+        return codec;
+    };
     return {
-        decode: (packet) => {
-            const pcm = codec.decode(packet);
-            return new Int16Array(pcm.buffer, pcm.byteOffset, pcm.byteLength / 2);
-        },
-        encode: (pcm) => codec.encode(Buffer.from(pcm.buffer, pcm.byteOffset, pcm.byteLength), frameSamples),
-        free: () => codec.delete(),
+        decode: (packet) => live().decode(packet),
+        encode: (pcm) => live().encode(pcm, frameSamples),
+        free: () => codec.free(),
     };
 }
 
