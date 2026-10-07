@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto';
 import { readFile } from 'node:fs/promises';
 import { parseEnv } from 'node:util';
 import { envSchema, validateAuth, type Config } from './core/config.js';
@@ -81,16 +82,30 @@ export async function reconfigure(config: Config, saved: Config, target: Reconfi
     return changed;
 }
 
-/** Watches .env and hands every valid change to apply; invalid edits are reported and ignored. */
-export function watchEnvironment(path: string, base: NodeJS.ProcessEnv, apply: (next: Config) => Promise<void>): () => void {
+/** Identifies one saved version of .env, so the setup app can tell whether that exact version was applied. */
+export function environmentStamp(text: string): string {
+    return createHash('sha256').update(text).digest('hex').slice(0, 16);
+}
+
+/** Watches .env and hands every valid change to apply with its stamp; invalid edits are reported and ignored. */
+export function watchEnvironment(
+    path: string,
+    base: NodeJS.ProcessEnv,
+    apply: (next: Config, stamp: string) => Promise<void>,
+    invalid: (stamp: string) => void = () => undefined,
+): () => void {
     let work = Promise.resolve();
     return watchFile(path, () => {
         work = work.then(async () => {
+            const text = await readFile(path, 'utf8').catch(() => '');
+            let next: Config;
             try {
-                await apply(parseEnvironment(base, await readFile(path, 'utf8').catch(() => '')));
+                next = parseEnvironment(base, text);
             } catch {
                 console.error(`${path} changed but could not be applied; the current settings stay in effect`);
+                return invalid(environmentStamp(text));
             }
+            await apply(next, environmentStamp(text));
         });
     });
 }

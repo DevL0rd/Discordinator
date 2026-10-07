@@ -3,6 +3,7 @@ import { statusFile } from '../src/operator/status-file.js';
 import { watchFile } from '../src/operator/file-watch.js';
 import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { join, resolve } from 'node:path';
+import { environmentStamp } from '../src/reconfigure.js';
 
 interface Handler {
     onConnect(abort: () => void): void;
@@ -92,6 +93,7 @@ export interface LiveFake {
     mode?: string;
     online: boolean;
     probes: string[];
+    settingsError?: string;
 }
 
 function statusOf(live: LiveFake) {
@@ -102,7 +104,11 @@ function statusOf(live: LiveFake) {
         appliedConfigAt: config.updatedAt ?? null,
         blockedReason: live.blockedReason ?? null,
     };
-    return { gateway: 'ready', operator, events: { subscriptions: live.subscriptions } };
+    const stamp = environmentStamp(existsSync('.env') ? readFileSync('.env', 'utf8') : '');
+    const settings = live.settingsError
+        ? { applied: null, failed: stamp, error: live.settingsError }
+        : { applied: stamp, failed: null, error: null };
+    return { gateway: 'ready', operator, events: { subscriptions: live.subscriptions }, settings };
 }
 
 export function syncLive(live: LiveFake): void {
@@ -134,10 +140,12 @@ export async function withLocal<T>(live: LiveFake, run: () => Promise<T>): Promi
     }) as Fetch;
     syncLive(live);
     const stop = watchFile(join('.data', 'operator.json'), () => syncLive(live));
+    const stopEnvironment = watchFile('.env', () => syncLive(live));
     try {
         return await run();
     } finally {
         stop();
+        stopEnvironment();
         globalThis.fetch = previous;
     }
 }

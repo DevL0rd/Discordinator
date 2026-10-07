@@ -25,7 +25,7 @@ import { VoiceService } from './voice/service.js';
 import { TranscriptStore } from './voice/transcripts.js';
 import { Gemini } from './voice/gemini.js';
 import { interactionEventName, interactionPayload } from './events/schema.js';
-import { baseEnvironment, reconfigure, watchEnvironment, type Reconfigurable } from './reconfigure.js';
+import { baseEnvironment, environmentStamp, reconfigure, watchEnvironment, type Reconfigurable } from './reconfigure.js';
 import { readFile } from 'node:fs/promises';
 
 export interface Host {
@@ -104,6 +104,7 @@ async function run(
         events.start();
         operator.start();
         people.start();
+        runtime.settings.applied = environmentStamp(await readFile('.env', 'utf8').catch(() => ''));
         await presence.start(events.status().subscriptions);
         runtime.watching.push(
             restartOnChange(
@@ -114,7 +115,12 @@ async function run(
                     startup.host.exit(75);
                 },
             ),
-            watchEnvironment('.env', base, (next) => applySettings(runtime, config, next)),
+            watchEnvironment(
+                '.env',
+                base,
+                (next, stamp) => applySettings(runtime, config, next, stamp),
+                (stamp) => settingsFailed(runtime, stamp, 'the saved settings are not valid'),
+            ),
         );
         console.log(`Discordinator MCP listening on http://127.0.0.1:${config.DISCORDINATOR_PORT}/mcp`);
     } catch (error) {
@@ -181,9 +187,10 @@ async function createRuntime(startup: Startup, config: Config, policyConfig: Pol
         people,
         presence,
         voice,
+        settings: { applied: null, failed: null, error: null } as SettingsReport,
         watching: [] as (() => void)[],
         touch: () => undefined as void,
-        status: () => ({ ...runtime.gateway.status(), events: events.status(), operator: operator.status(), voice: voice.status() }),
+        status: () => liveStatus(runtime),
         listen: (): HttpServer => listener(config, bridge, runtime, localKey),
         connect: () => startup.gateway(config, policy, queue, approvals, api, services),
         api,
@@ -203,6 +210,24 @@ async function createRuntime(startup: Startup, config: Config, policyConfig: Pol
 }
 
 type Runtime = Awaited<ReturnType<typeof createRuntime>>;
+
+type SettingsReport = { applied: string | null; failed: string | null; error: string | null };
+
+function liveStatus(runtime: {
+    gateway: GatewayPort;
+    events: EventsService;
+    operator: OperatorService;
+    voice: VoiceService;
+    settings: SettingsReport;
+}) {
+    return {
+        ...runtime.gateway.status(),
+        events: runtime.events.status(),
+        operator: runtime.operator.status(),
+        voice: runtime.voice.status(),
+        settings: runtime.settings,
+    };
+}
 
 function listener(
     config: Config,
@@ -245,14 +270,21 @@ function liveTargets(runtime: Runtime, config: Config): Reconfigurable {
     };
 }
 
-async function applySettings(runtime: Runtime, config: Config, next: Config): Promise<void> {
+async function applySettings(runtime: Runtime, config: Config, next: Config, stamp: string): Promise<void> {
     try {
         const changed = await reconfigure(config, next, liveTargets(runtime, config));
         if (changed.includes('GEMINI_API_KEY')) runtime.voice.keyChanged();
         if (changed.length) console.error(`Applied new settings without restarting: ${changed.join(', ')}`);
+        runtime.settings = { applied: stamp, failed: null, error: null };
     } catch (error) {
         failure('Settings change could not be applied; the previous settings were restored', 'reconfigure', error);
+        return settingsFailed(runtime, stamp, error instanceof Error ? error.message : 'the change could not be applied');
     }
+    runtime.touch();
+}
+
+function settingsFailed(runtime: Runtime, stamp: string, error: string): void {
+    runtime.settings = { ...runtime.settings, failed: stamp, error };
     runtime.touch();
 }
 

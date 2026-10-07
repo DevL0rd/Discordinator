@@ -1,6 +1,8 @@
 import { access, mkdir, writeFile } from 'node:fs/promises';
-import { join } from 'node:path';
+import { posix } from 'node:path';
 import { runFile, type Runner } from './run.js';
+
+const join = (...parts: string[]) => posix.join(...parts);
 
 export const launchAgentLabel = 'com.github.devl0rd.discordinator';
 export const launchAgentPath = (home: string) => join(home, 'Library', 'LaunchAgents', `${launchAgentLabel}.plist`);

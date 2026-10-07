@@ -112,7 +112,7 @@ async function checkDraft(): Promise<void> {
     );
     assert.match(
         multi.message,
-        /applies them right away, without restarting|uses them as soon as it is running/,
+        /applied them right away, without restarting|uses them as soon as it is running/,
         'every saved source is reported',
     );
     assert.match(multi.message, /wake-up/);

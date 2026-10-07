@@ -5,7 +5,7 @@ import type { Config } from '../src/core/config.js';
 import { DiscordApi } from '../src/discord/api.js';
 import { PolicyWatcher } from '../src/operator/policy-watcher.js';
 import type { ReplyOrigins } from '../src/core/reply-origins.js';
-import { baseEnvironment, changedKeys, parseEnvironment, reconfigure, watchEnvironment } from '../src/reconfigure.js';
+import { baseEnvironment, changedKeys, environmentStamp, parseEnvironment, reconfigure, watchEnvironment } from '../src/reconfigure.js';
 import { until } from './discord-fakes.js';
 import { fixture, ids } from './fixtures.js';
 
@@ -78,21 +78,31 @@ async function checkWatcher(directory: string): Promise<void> {
     const path = join(directory, 'live.env');
     await writeFile(path, env());
     const applied: Config[] = [];
+    const stamps: string[] = [];
+    const invalid: string[] = [];
     const errors: string[] = [];
     const log = console.error;
     console.error = (message: string) => errors.push(message);
-    const stop = watchEnvironment(path, {}, (next) => {
-        applied.push(next);
-        return Promise.resolve();
-    });
+    const stop = watchEnvironment(
+        path,
+        {},
+        (next, stamp) => {
+            applied.push(next);
+            stamps.push(stamp);
+            return Promise.resolve();
+        },
+        (stamp) => invalid.push(stamp),
+    );
     try {
         await writeFile(path, env('GEMINI_API_KEY=watched-key'));
         await until(() => applied.length === 1, 'a saved .env is applied');
         assert.equal(applied[0]!.GEMINI_API_KEY, 'watched-key');
+        assert.deepEqual(stamps, [environmentStamp(env('GEMINI_API_KEY=watched-key'))], 'each applied .env is identified by its stamp');
         await writeFile(path, 'DISCORDINATOR_PORT=1');
         await until(() => errors.length === 1, 'an invalid .env is reported');
         assert.match(errors[0]!, /could not be applied; the current settings stay in effect/);
         assert.equal(applied.length, 1, 'Invalid settings are never applied');
+        assert.deepEqual(invalid, [environmentStamp('DISCORDINATOR_PORT=1')], 'and the setup app is told that exact version failed');
     } finally {
         stop();
         console.error = log;

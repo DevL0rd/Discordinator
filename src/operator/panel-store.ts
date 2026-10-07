@@ -12,8 +12,8 @@ import { appState, connectApp, responderApps } from './connections.js';
 import { publicDomainBlock } from './connection-domain.js';
 import { validateModel } from './providers.js';
 import { activationBlock, isLocal, liveSetupStatus, waitForLiveStatus } from './setup-model.js';
+import { environmentStamp } from '../reconfigure.js';
 import { assignSetting, previewChanges, settings, settingValue, type SettingsSource } from './settings-registry.js';
-import { managedServiceStatus } from './service-status.js';
 import { scalar } from '../core/text.js';
 import { assistantName, responderMode } from './ui/status.js';
 
@@ -205,10 +205,22 @@ async function operatorMessage(activation: Activation, mode: string): Promise<st
         ? `Saved. ${assistantName(mode)} is now the primary responder.`
         : `Saved. ${assistantName(mode)} takes over once Discordinator finishes any current work.`;
 }
-async function environmentMessage(): Promise<string> {
-    return (await managedServiceStatus()).active
-        ? 'Settings saved. Discordinator applies them right away, without restarting.'
-        : 'Settings saved. Discordinator uses them as soon as it is running.';
+/** Waits for the running bot to report on this exact saved .env, so a failed apply is never shown as applied. */
+async function environmentMessage(path: string, failures: string[]): Promise<string> {
+    if (!(await liveSetupStatus())) return 'Settings saved. Discordinator uses them as soon as it is running.';
+    const stamp = environmentStamp(await readFile(path, 'utf8').catch(() => ''));
+    const outcome: { error?: string } = {};
+    const reported = await waitForLiveStatus((status) => {
+        if (status.settings?.failed === stamp) outcome.error = status.settings.error ?? 'the change could not be applied';
+        return status.settings?.applied === stamp || outcome.error !== undefined;
+    }, 30_000);
+    if (outcome.error) {
+        failures.push(`Discordinator could not apply them (${outcome.error}), so it keeps the previous settings.`);
+        return '';
+    }
+    return reported
+        ? 'Settings saved. Discordinator applied them right away, without restarting.'
+        : 'Settings saved. Discordinator is still applying them.';
 }
 function withEvents(snapshot: PanelSnapshot, drafts: Documents): Documents {
     const choosing = drafts.operator.mode === 'chatgpt-events' && snapshot.documents.operator.mode !== 'chatgpt-events';
@@ -285,12 +297,12 @@ export async function applyDraft(
     const failures: string[] = [];
     const mode = String(updated.documents.operator.mode);
     const messages: string[] = [];
-    if (sources.includes('environment')) messages.push(await environmentMessage());
+    if (sources.includes('environment')) messages.push(await environmentMessage(snapshot.paths.environment, failures));
     if (sources.includes('operator'))
         messages.push(await operatorMessage(await attempt(() => selectResponder(updated), 'paused', failures), mode));
     if (sources.includes('policy'))
         messages.push(prepared === drafts ? 'Discord settings saved and applied.' : 'Wake-up events are now allowed for ChatGPT.');
     const reconnected = await attempt(finish, '', failures);
     if (failures.length) return { snapshot: updated, message: `Saved, but ${failures.join(' ')}`, warning: true };
-    return { snapshot: updated, message: `${messages.join(' ')}${reconnected}` };
+    return { snapshot: updated, message: `${messages.filter(Boolean).join(' ')}${reconnected}` };
 }

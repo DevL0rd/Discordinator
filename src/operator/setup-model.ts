@@ -45,6 +45,7 @@ export interface LiveSetupStatus {
         supportedConfigVersion?: number;
     };
     events: { subscriptions: number };
+    settings?: { applied: string | null; failed: string | null; error: string | null };
 }
 export async function liveSetupStatus(): Promise<LiveSetupStatus | null> {
     if (!(await runtimePresent())) return null;

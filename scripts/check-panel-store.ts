@@ -154,6 +154,21 @@ async function checkMessages(live: LiveFake): Promise<void> {
     assert.match(await save({ mode: 'manual-mcp' }), /Another MCP app is now the primary responder/);
     const failed = await save({ instructions: 'Changed' }, () => Promise.resolve(() => Promise.reject(new Error('plain failure'))));
     assert.match(failed, /^Saved, but plain failure/);
+    const saveKey = async (key: string) => {
+        const snapshot = await readPanel();
+        const draft = edited(snapshot, { environment: { ...snapshot.documents.environment, GEMINI_API_KEY: key } });
+        return applyDraft(snapshot, draft, noReconnect);
+    };
+    assert.match((await saveKey('gemini-one')).message, /applied them right away/, 'a running bot confirms it applied .env');
+    live.settingsError = 'port 9000 is taken';
+    const refused = await saveKey('gemini-two');
+    assert.equal(refused.warning, true);
+    assert.match(
+        refused.message,
+        /^Saved, but Discordinator could not apply them \(port 9000 is taken\)/,
+        'a failed apply is never shown as applied',
+    );
+    live.settingsError = undefined;
     live.online = false;
     assert.match(await save({ instructions: 'Later' }), /takes over once Discordinator finishes/, 'a stopped bridge applies later');
 }
