@@ -60,9 +60,10 @@ export class Conversation {
         return !this.closed;
     }
 
-    async start(first: string): Promise<void> {
+    /** Opens the live voice, answering a first message if there is one; audio heard before it is ready is sent all at once. */
+    async start(first?: string): Promise<void> {
         this.session = await this.open();
-        this.session.text(first, true);
+        if (first) this.session.text(first, true);
         this.timer = setInterval(() => this.tick(), tickMs);
         this.timer.unref();
     }
@@ -191,11 +192,20 @@ export class Conversation {
         return joined.subarray(0, tickSamples);
     }
 
-    private tick(): void {
-        if (this.closed) return;
+    private backlog(): boolean {
+        return [...this.heard.values()].some((queue) => queue.reduce((total, chunk) => total + chunk.length, 0) >= tickSamples);
+    }
+
+    private mix(): Int16Array {
         const mixed = new Int32Array(tickSamples);
         for (const userId of this.heard.keys()) this.take(userId).forEach((sample, index) => (mixed[index] = mixed[index]! + sample));
-        this.session?.audio(Int16Array.from(mixed, (sample) => Math.max(-32768, Math.min(32767, sample))));
+        return Int16Array.from(mixed, (sample) => Math.max(-32768, Math.min(32767, sample)));
+    }
+
+    private tick(): void {
+        if (this.closed) return;
+        do this.session?.audio(this.mix());
+        while (this.backlog());
         if (!this.out && this.now() - this.lastActivity > this.hooks.settings().idleSeconds * 1000) void this.end();
     }
 

@@ -28,6 +28,13 @@ export function tone(seconds: number, volume = 8000): Buffer[] {
     }
 }
 
+async function* paced(packets: Buffer[], gapMs: number): AsyncGenerator<Buffer> {
+    for (const packet of packets) {
+        await new Promise((resolve) => setTimeout(resolve, gapMs));
+        yield packet;
+    }
+}
+
 class FakeLink implements VoiceLink {
     muted = false;
     talkers: string[] = [];
@@ -36,7 +43,7 @@ class FakeLink implements VoiceLink {
     destroyed = false;
     private speakingListener?: (userId: string) => void;
     private closedListener?: (reason: 'closed' | 'decrypt') => void;
-    private readonly streams = new Map<string, Buffer[]>();
+    private readonly streams = new Map<string, AsyncIterable<Buffer> | Buffer[]>();
     constructor(readonly channelId: string) {}
     onSpeaking(listener: (userId: string) => void): void {
         this.speakingListener = listener;
@@ -52,8 +59,9 @@ class FakeLink implements VoiceLink {
         this.streams.delete(userId);
         return Readable.from(packets);
     }
-    talk(userId: string, packets: Buffer[]): void {
-        this.streams.set(userId, packets);
+    /** Plays packets as one person's speech, all at once or one every gapMs like a real call. */
+    talk(userId: string, packets: Buffer[], gapMs = 0): void {
+        this.streams.set(userId, gapMs ? paced(packets, gapMs) : packets);
         this.speakingListener?.(userId);
     }
     get playing(): boolean {

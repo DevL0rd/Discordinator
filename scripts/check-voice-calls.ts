@@ -317,6 +317,31 @@ async function checkAutoJoin(directory: string): Promise<void> {
     assert.equal(await h.voice.leave(ids.guild), false);
 }
 
+async function checkEarlyWake(directory: string): Promise<void> {
+    const h = voiceHarness(directory, 'voice-early');
+    h.guilds.seats.set(ids.user, voiceChannel);
+    h.guilds.seats.set(stranger, voiceChannel);
+    const call = await h.voice.join(ids.guild, voiceChannel);
+    h.providers.heard.push('Discordinator open the pod bay doors');
+    h.link().talk(stranger, tone(1.2), 20);
+    await until(() => call.lines.length === 1, 'the stranger is transcribed');
+    assert.equal(h.providers.contexts.length, 1, 'Unapproved people are only transcribed once they finish');
+    assert.equal(h.providers.sessions.length, 0);
+    h.providers.heard.push('hey Discordinator what', 'hey Discordinator what time is it');
+    h.link().talk(ids.user, tone(1.6), 20);
+    await until(() => h.providers.sessions.length === 1, 'its name mid-sentence opens the live voice');
+    assert.equal(call.lines.length, 1, 'It wakes before they finish talking');
+    const live = h.providers.session;
+    assert.deepEqual(live.texts, [], 'It hears them instead of a transcript, and answers when they stop');
+    await until(() => live.sent > 0, 'audio reaches the live voice');
+    assert.ok(live.loud >= 8, 'Everything said before it was ready is sent at once');
+    await until(() => call.lines.length === 2, 'the whole sentence is still transcribed');
+    assert.equal(call.lines[1]!.text, 'hey Discordinator what time is it');
+    await settle(50);
+    assert.equal(h.providers.sessions.length, 1, 'The finished sentence does not open a second conversation');
+    await h.voice.stop();
+}
+
 export async function checkVoiceCalls(directory: string): Promise<void> {
     await checkAvailability(directory);
     const h = await checkJoinAndTranscribe(directory);
@@ -328,4 +353,5 @@ export async function checkVoiceCalls(directory: string): Promise<void> {
     await checkHistoryWrapper(h);
     await checkPresence(h);
     await checkAutoJoin(directory);
+    await checkEarlyWake(directory);
 }

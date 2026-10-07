@@ -13,6 +13,8 @@ export interface CallHooks {
     heard(line: TranscriptLine): void;
     live(userId: string, pcm: Int16Array): void;
     names(): string[];
+    wakeable(userId: string): boolean;
+    wake(userId: string, text: string, pcm: Int16Array): boolean;
 }
 
 export interface Utterance {
@@ -21,12 +23,24 @@ export interface Utterance {
     pcm: Int16Array;
 }
 
+interface Speech {
+    userId: string;
+    chunks: Int16Array[];
+    length: number;
+    startedAt: number;
+    peekedAt: number;
+    peeking: boolean;
+    woke: boolean;
+}
+
 const silenceMs = 600;
 const maxUtteranceSeconds = 30;
 const minSeconds = 0.4;
 const quiet = 120;
 const maxPending = 16;
 const workers = 2;
+const peekMs = 800;
+const peekSeconds = 8;
 
 export class CallSession {
     private pending: Utterance[] = [];
@@ -65,24 +79,42 @@ export class CallSession {
         if (this.closed || this.listening.has(userId) || !(await this.hooks.shouldTranscribe(userId))) return;
         this.listening.add(userId);
         const decoder = this.codec();
-        let chunks: Int16Array[] = [];
-        let length = 0;
-        let startedAt = this.now();
+        const now = this.now();
+        const speech: Speech = { userId, chunks: [], length: 0, startedAt: now, peekedAt: now, peeking: false, woke: false };
         try {
             for await (const packet of this.link.listen(userId, silenceMs)) {
                 const pcm = decoder.decode(packet);
                 this.hooks.live(userId, pcm);
-                chunks.push(pcm);
-                length += pcm.length;
-                if (length < maxUtteranceSeconds * 96_000) continue;
-                this.enqueue({ userId, startedAt, pcm: concat(chunks) });
-                [chunks, length, startedAt] = [[], 0, this.now()];
+                speech.chunks.push(pcm);
+                speech.length += pcm.length;
+                this.peek(speech);
+                if (speech.length < maxUtteranceSeconds * 96_000) continue;
+                this.enqueue({ userId, startedAt: speech.startedAt, pcm: concat(speech.chunks) });
+                Object.assign(speech, { chunks: [], length: 0, startedAt: this.now() });
             }
         } finally {
             decoder.free();
             this.listening.delete(userId);
         }
-        if (chunks.length) this.enqueue({ userId, startedAt, pcm: concat(chunks) });
+        if (speech.chunks.length) this.enqueue({ userId, startedAt: speech.startedAt, pcm: concat(speech.chunks) });
+    }
+
+    /** Transcribes what someone is still saying every so often, so its name can open the live voice before they finish. */
+    private peek(speech: Speech): void {
+        const now = this.now();
+        if (speech.woke || speech.peeking || now - speech.peekedAt < peekMs || !this.hooks.wakeable(speech.userId)) return;
+        speech.peekedAt = now;
+        const pcm = toSpeech(concat(speech.chunks).subarray(-peekSeconds * 96_000));
+        if (pcm.length < minSeconds * speechRate || loudness(pcm) < quiet) return;
+        speech.peeking = true;
+        const settings = this.hooks.settings();
+        void this.providers
+            .transcribe(wav(pcm), settings.transcribeModel, settings.language, this.context())
+            .then((text) => {
+                if (text && !this.closed && !speech.woke) speech.woke = this.hooks.wake(speech.userId, text, concat(speech.chunks));
+            })
+            .catch(() => undefined)
+            .finally(() => (speech.peeking = false));
     }
 
     enqueue(utterance: Utterance): void {

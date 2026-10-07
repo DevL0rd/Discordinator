@@ -130,6 +130,8 @@ export class VoiceService {
             self: () => this.guilds.self(),
             heard: (line) => this.heard(session, line),
             live: (userId, pcm) => this.live.audio(session, userId, pcm),
+            wakeable: (userId): boolean => this.live.wakeable(session, userId),
+            wake: (userId, text, pcm): boolean => this.live.wake(session, userId, text, pcm),
             names: () => [
                 ...this.policy.names(),
                 ...this.guilds.occupants(call.guildId, call.channelId).flatMap((id) => {
