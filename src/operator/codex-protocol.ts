@@ -3,7 +3,7 @@ import { roleInstructions } from './manager-guide.js';
 import type { CodexCli } from './codex-config.js';
 import { randomUUID } from 'node:crypto';
 import type { Readable, Writable } from 'node:stream';
-import type { OperatorConfig } from './config.js';
+import { codexChoice, type OperatorConfig } from './config.js';
 import type { ProviderApproval, ProviderEvent, ProviderRole, ProviderSession } from './provider-adapter.js';
 
 export type RecordValue = Record<string, unknown>;
@@ -146,7 +146,7 @@ export function sessionParams(config: OperatorConfig, sessionId?: string, role: 
         cwd: config.workspace,
         approvalPolicy: 'on-request',
         approvalsReviewer: 'user',
-        ...(config.codexModel ? { model: config.codexModel } : {}),
+        ...(codexChoice(config, role === 'worker').model ? { model: codexChoice(config, role === 'worker').model } : {}),
         developerInstructions: roleInstructions(role, config.instructions),
         ...(sessionId ? { threadId: sessionId } : {}),
     };

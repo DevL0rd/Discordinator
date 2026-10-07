@@ -105,9 +105,11 @@ function modeSettings(mode: OperatingMode, view: View): Item[] {
                 'Starts the app if needed',
                 'good',
             ),
+            settingItem('operator.workerClaudeModel', 'Model for new chats'),
+            settingItem('operator.workerClaudeEffort', 'Thinking for new chats'),
             note(
                 'claude-note',
-                'The settings below apply when it runs in the background. In Claude Desktop you choose the model in the app.',
+                'New chats are the ones it starts for big work, in Claude Desktop or in the background; Default uses the model below. The settings below apply when it runs in the background. In Claude Desktop you choose its own model in the app.',
             ),
             ...background('claude'),
         ];
@@ -117,6 +119,8 @@ function modeSettings(mode: OperatingMode, view: View): Item[] {
             settingItem('operator.workspace', 'Working folder'),
             settingItem('operator.backgroundOnly', 'Always run in the background'),
             ...background('codex'),
+            settingItem('operator.workerCodexModel', 'Model for workers'),
+            settingItem('operator.workerCodexEffort', 'Reasoning for workers'),
         ];
     if (mode === 'manual-mcp') return mcpAddresses(view.drafts.environment).map((text, index) => note(`mcp-address-${index}`, text));
     return [

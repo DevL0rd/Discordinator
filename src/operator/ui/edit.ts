@@ -5,13 +5,30 @@ import type { Observations } from './model.js';
 import { scalar } from '../../core/text.js';
 import { effortOptions, type ProviderModels } from '../providers.js';
 
-const optional = ['codexModel', 'codexEffort', 'claudeModel', 'claudeEffort', 'instructions'];
+const optional = [
+    'codexModel',
+    'codexEffort',
+    'claudeModel',
+    'claudeEffort',
+    'workerCodexModel',
+    'workerCodexEffort',
+    'workerClaudeModel',
+    'workerClaudeEffort',
+    'instructions',
+];
+const text = (value: unknown) => (typeof value === 'string' && value ? value : undefined);
 
 export function editOptions(field: SettingDefinition, drafts: Documents, observed: Observations): string[] {
     if (field.path === 'codexModel') return ['', ...observed.codex.models.map((model) => model.id)];
     if (field.path === 'claudeModel') return ['', ...observed.claude.models.map((model) => model.id)];
     if (field.path === 'codexEffort') return ['', ...effortOptions(observed.codex, drafts.operator.codexModel as string | undefined)];
     if (field.path === 'claudeEffort') return ['', ...effortOptions(observed.claude, drafts.operator.claudeModel as string | undefined)];
+    if (field.path === 'workerCodexModel') return ['', ...observed.codex.models.map((model) => model.id)];
+    if (field.path === 'workerClaudeModel') return ['', ...observed.claude.models.map((model) => model.id)];
+    if (field.path === 'workerCodexEffort')
+        return ['', ...effortOptions(observed.codex, text(drafts.operator.workerCodexModel) ?? text(drafts.operator.codexModel))];
+    if (field.path === 'workerClaudeEffort')
+        return ['', ...effortOptions(observed.claude, text(drafts.operator.workerClaudeModel) ?? text(drafts.operator.claudeModel))];
     if (field.id === 'policy.ownerUserId') return ['', ...((drafts.policy.allowedUserIds as string[] | undefined) ?? [])];
     if (field.kind === 'choice') return [...(field.choices ?? [])];
     return [];
@@ -25,6 +42,8 @@ const modelLabels = (models: ProviderModels): Record<string, string> => ({
 export function optionLabels(field: SettingDefinition, observed: Observations): Record<string, string> {
     if (field.path === 'codexModel') return modelLabels(observed.codex);
     if (field.path === 'claudeModel') return modelLabels(observed.claude);
+    if (field.path === 'workerCodexModel') return { ...modelLabels(observed.codex), '': 'Same as the responder' };
+    if (field.path === 'workerClaudeModel') return { ...modelLabels(observed.claude), '': 'Same as the responder' };
     return {};
 }
 

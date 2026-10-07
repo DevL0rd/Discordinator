@@ -2,7 +2,7 @@ import { randomUUID } from 'node:crypto';
 import { roleInstructions } from './manager-guide.js';
 import { contextWindow, mainUsage, MessageQueue, progressText } from './claude-stream.js';
 import { approvalKind, errorText, type PendingApproval, type Resolution, type SessionState, type TurnState } from './claude-session.js';
-import type { OperatorConfig } from './config.js';
+import { claudeChoice, type OperatorConfig } from './config.js';
 import type { ApprovalDecision, ProviderAdapter, ProviderHooks, ProviderReconciliation, ProviderRole } from './provider-adapter.js';
 import {
     loadClaudeQuery,
@@ -64,8 +64,7 @@ export class ClaudeAdapter implements ProviderAdapter {
             prompt: queue,
             options: {
                 cwd: this.config!.workspace,
-                ...(this.config!.claudeModel ? { model: this.config!.claudeModel } : {}),
-                ...(this.config!.claudeEffort ? { effort: this.config!.claudeEffort } : {}),
+                ...(claudeChoice(this.config!, input.role === 'worker') as { model?: string; effort?: OperatorConfig['claudeEffort'] }),
                 systemPrompt: {
                     type: 'preset' as const,
                     preset: 'claude_code' as const,

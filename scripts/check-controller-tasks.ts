@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { join } from 'node:path';
-import { defaultOperatorConfig } from '../src/operator/config.js';
+import { claudeChoice, codexChoice, defaultOperatorConfig } from '../src/operator/config.js';
 import { ConversationController } from '../src/operator/controller.js';
 import { ControllerStore, conversationKey } from '../src/operator/controller-state.js';
 import { desktopGuide, roleInstructions, workerBrief } from '../src/operator/manager-guide.js';
@@ -19,11 +19,35 @@ function checkGuides(): void {
     );
     assert.doesNotMatch(roleInstructions('worker', undefined), /start_task/, 'workers are not told to start more workers');
     assert.match(
-        desktopGuide,
+        desktopGuide(),
         /session tools[\s\S]*claude --bg[\s\S]*claude agents --json/,
         'Claude Desktop manages chats with its own tools',
     );
-    assert.doesNotMatch(desktopGuide, /assistant_/);
+    assert.doesNotMatch(desktopGuide(), /assistant_|--model/);
+    assert.match(
+        desktopGuide({ model: 'opus', effort: 'high' }),
+        /start them with --model opus --effort high/,
+        'new chats start with the model and effort chosen for them',
+    );
+    assert.deepEqual(
+        claudeChoice({ ...defaultOperatorConfig(), claudeModel: 'sonnet', claudeEffort: 'low' }, true),
+        { model: 'sonnet', effort: 'low' },
+        'workers default to the responder’s choice',
+    );
+    assert.deepEqual(
+        claudeChoice({ ...defaultOperatorConfig(), claudeModel: 'sonnet', claudeEffort: 'low', workerClaudeModel: 'opus' }, true),
+        { model: 'opus' },
+        'a different worker model does not inherit an effort it may not offer',
+    );
+    assert.deepEqual(codexChoice({ ...defaultOperatorConfig(), codexModel: 'gpt', workerCodexEffort: 'high' }, true), {
+        model: 'gpt',
+        effort: 'high',
+    });
+    assert.deepEqual(
+        codexChoice({ ...defaultOperatorConfig(), codexModel: 'gpt', workerCodexModel: 'mini' }),
+        { model: 'gpt' },
+        'the responder keeps its own',
+    );
     assert.equal(
         workerBrief('Ship it', 'Do the thing', 'event-1', 'Discord · #dev · from Owner'),
         'Task: Ship it\nRequested in: Discord · #dev · from Owner\nDiscord eventId for this work: "event-1"\n\nDo the thing',

@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import { codexUsage } from './codex-activity.js';
-import type { OperatorConfig } from './config.js';
+import { codexChoice, type OperatorConfig } from './config.js';
 import type {
     ApprovalDecision,
     ProviderAdapter,
@@ -58,7 +58,8 @@ export class CodexAdapter implements ProviderAdapter {
 
     async connect(config: OperatorConfig, hooks: ProviderHooks): Promise<void> {
         if (this.connecting || this.connection?.alive) throw new Error('Codex adapter is already connected');
-        if (config.codexEffort && !efforts.has(config.codexEffort)) throw new Error('Unsupported Codex reasoning effort');
+        for (const effort of [config.codexEffort, config.workerCodexEffort])
+            if (effort && !efforts.has(effort)) throw new Error('Unsupported Codex reasoning effort');
         this.connecting = true;
         this.config = { ...config };
         this.hooks = hooks;
@@ -168,12 +169,13 @@ export class CodexAdapter implements ProviderAdapter {
         session.submitted = true;
         session.messages.clear();
         try {
+            const effort = this.config && codexChoice(this.config, session.role === 'worker').effort;
             const response = object(
                 await this.rpc(connection, 'turn/start', {
                     threadId: sessionId,
                     input: textInput(input.text),
                     clientUserMessageId: input.originEventId,
-                    ...(this.config?.codexEffort ? { effort: this.config.codexEffort } : {}),
+                    ...(effort ? { effort } : {}),
                     ...(input.taskId ? { responsesapiClientMetadata: { discordinator_task_id: input.taskId } } : {}),
                 }),
             );

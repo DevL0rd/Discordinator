@@ -4,7 +4,7 @@ import { join } from 'node:path';
 import { z } from 'zod';
 import type { ModelInfo, Query } from '@anthropic-ai/claude-agent-sdk';
 import type { UsageWindow } from './provider-adapter.js';
-import type { OperatorConfig } from './config.js';
+import { claudeChoice, codexChoice, type OperatorConfig } from './config.js';
 import { codexHome } from './codex-config.js';
 import { claudeExecutable } from './executables.js';
 
@@ -119,6 +119,14 @@ export function validateEffort(provider: string, effort: string | undefined, mod
 }
 export const effortOptions = effortsFor;
 export async function validateModel(config: OperatorConfig): Promise<void> {
-    if (config.mode === 'codex-local') validateEffort('Codex', config.codexEffort, config.codexModel, await codexModels());
-    if (config.mode === 'claude-session') validateEffort('Claude', config.claudeEffort, config.claudeModel, await claudeModels());
+    if (config.mode === 'codex-local') {
+        const models = await codexModels();
+        validateEffort('Codex', config.codexEffort, config.codexModel, models);
+        validateEffort('Codex worker', codexChoice(config, true).effort, codexChoice(config, true).model, models);
+    }
+    if (config.mode === 'claude-session') {
+        const models = await claudeModels();
+        validateEffort('Claude', config.claudeEffort, config.claudeModel, models);
+        validateEffort('Claude new-chat', claudeChoice(config, true).effort, claudeChoice(config, true).model, models);
+    }
 }

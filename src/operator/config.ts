@@ -26,6 +26,10 @@ const operatorObject = z
         codexEffort: z.string().trim().max(32).optional(),
         claudeModel: z.string().trim().max(200).optional(),
         claudeEffort: z.enum(['low', 'medium', 'high', 'xhigh', 'max']).optional(),
+        workerCodexModel: z.string().trim().max(200).optional(),
+        workerCodexEffort: z.string().trim().max(32).optional(),
+        workerClaudeModel: z.string().trim().max(200).optional(),
+        workerClaudeEffort: z.enum(['low', 'medium', 'high', 'xhigh', 'max']).optional(),
         instructions: z.string().max(8000).optional(),
         progressSeconds: z.number().int().min(15).max(600).optional(),
         activityVisibility: z.boolean().default(false),
@@ -35,6 +39,23 @@ const operatorObject = z
     .strict();
 export const operatorSchema = z.preprocess(migrateConfig, operatorObject);
 export type OperatorConfig = z.infer<typeof operatorObject>;
+
+export interface ModelChoice {
+    model?: string;
+    effort?: string;
+}
+
+const choice = (model?: string, effort?: string): ModelChoice => ({ ...(model ? { model } : {}), ...(effort ? { effort } : {}) });
+
+export function claudeChoice(config: OperatorConfig, worker = false): ModelChoice {
+    if (!worker) return choice(config.claudeModel, config.claudeEffort);
+    return choice(config.workerClaudeModel || config.claudeModel, config.workerClaudeEffort || (config.workerClaudeModel ? undefined : config.claudeEffort));
+}
+
+export function codexChoice(config: OperatorConfig, worker = false): ModelChoice {
+    if (!worker) return choice(config.codexModel, config.codexEffort);
+    return choice(config.workerCodexModel || config.codexModel, config.workerCodexEffort || (config.workerCodexModel ? undefined : config.codexEffort));
+}
 
 export const operatorPath = '.data/operator.json';
 export const defaultOperatorConfig = (): OperatorConfig => ({

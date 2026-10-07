@@ -56,6 +56,33 @@ export const operatorSettings = [
                 'Thinking effort levels the selected Claude model offers. Default uses Claude’s own setting. Like the model, it applies when the Discordinator conversation is created; change it in Claude for an existing one.',
             kind: 'text',
         },
+        {
+            path: 'workerClaudeModel',
+            label: 'Claude model for new chats',
+            description:
+                'The model for the Claude chats and workers the responder starts for big work. Default uses the responder’s Claude model.',
+            kind: 'text',
+        },
+        {
+            path: 'workerClaudeEffort',
+            label: 'Claude thinking for new chats',
+            description:
+                'Thinking effort for the Claude chats and workers the responder starts. Default uses the responder’s effort, or the new chat model’s own setting when that model differs.',
+            kind: 'text',
+        },
+        {
+            path: 'workerCodexModel',
+            label: 'Codex model for workers',
+            description: 'The model for the Codex workers the responder starts for big work. Default uses the responder’s Codex model.',
+            kind: 'text',
+        },
+        {
+            path: 'workerCodexEffort',
+            label: 'Codex reasoning for workers',
+            description:
+                'Reasoning for the Codex workers the responder starts. Default uses the responder’s reasoning, or the worker model’s own setting when that model differs.',
+            kind: 'text',
+        },
     ]),
     ...group('operator', 'responders', 'next-request', [
         {

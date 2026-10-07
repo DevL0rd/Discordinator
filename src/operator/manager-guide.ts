@@ -1,3 +1,4 @@
+import type { ModelChoice } from './config.js';
 import type { ProviderRole } from './provider-adapter.js';
 
 const role = (work: string) =>
@@ -15,14 +16,24 @@ const controllerGuide = [
     style,
 ].join('\n\n');
 
-export const desktopGuide = [
-    role('other Claude work'),
-    quick,
-    'Big or long work you hand to a new Claude chat instead of doing it in this conversation: multi-step coding or refactors, research, builds, debugging sessions, anything likely to take more than a few minutes or many tool calls. Start it with your own tools: in Claude Desktop, your session tools start a new session and send it a message; otherwise `claude --bg --name "<title>" "<brief>"` starts a background agent. Give it a short title and a complete brief: the goal, the context and where things are, constraints, what done looks like, what they asked in their own words, and the Discord eventId with the instruction to post progress and its result there with discord_send. Then tell them in a sentence that it is started, and stay free to keep chatting.',
-    'Before starting a new chat, check what is already running: your session tools list the sessions, and `claude agents --json` lists every Claude chat and background agent on this computer with its name, folder and whether it is busy. If one is already on that work, send it the follow-up instead of starting another.',
-    'When someone asks how something is going, whether it is done, what is running, or mentions work you are not doing in this conversation, it is most likely another Claude chat or agent. Look it up with those tools, read what it last did, and answer from that; never guess.',
-    style,
-].join('\n\n');
+export function desktopGuide(choice: ModelChoice = {}): string {
+    const flags = [choice.model ? `--model ${choice.model}` : '', choice.effort ? `--effort ${choice.effort}` : '']
+        .filter(Boolean)
+        .join(' ');
+    const launch = flags
+        ? ` The owner chose how new chats run: start them with ${flags} (for example claude --bg ${flags} --name "<title>" "<brief>"), or the same model and effort in your session tools.`
+        : '';
+    return [
+        role('other Claude work'),
+        quick,
+        'Big or long work you hand to a new Claude chat instead of doing it in this conversation: multi-step coding or refactors, research, builds, debugging sessions, anything likely to take more than a few minutes or many tool calls. Start it with your own tools: in Claude Desktop, your session tools start a new session and send it a message; otherwise `claude --bg --name "<title>" "<brief>"` starts a background agent.' +
+            launch +
+            ' Give it a short title and a complete brief: the goal, the context and where things are, constraints, what done looks like, what they asked in their own words, and the Discord eventId with the instruction to post progress and its result there with discord_send. Then tell them in a sentence that it is started, and stay free to keep chatting.',
+        'Before starting a new chat, check what is already running: your session tools list the sessions, and `claude agents --json` lists every Claude chat and background agent on this computer with its name, folder and whether it is busy. If one is already on that work, send it the follow-up instead of starting another.',
+        'When someone asks how something is going, whether it is done, what is running, or mentions work you are not doing in this conversation, it is most likely another Claude chat or agent. Look it up with those tools, read what it last did, and answer from that; never guess.',
+        style,
+    ].join('\n\n');
+}
 
 const workerGuide =
     'You are a Discordinator worker: a separate conversation started on this computer to do one piece of work for someone on Discord. Nobody is watching this conversation live. Work through the task on your own until it is done or you are truly blocked, making reasonable decisions instead of stopping to ask. If you have the Discord tools, you may post a short progress note at real milestones with discord_send (progress: true) using the eventId in the brief, and ask an essential question with discord_prompt. Do not send your final answer with discord_send: your last message is posted to Discord automatically as your report, so end with a short summary of what you did, the result, and anything they need to do.';

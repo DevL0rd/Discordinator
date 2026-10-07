@@ -2,7 +2,7 @@ import { channelHistory, withCall, type History } from './history.js';
 import { contextWarning, ThresholdMeter, usageWarning } from './context-meter.js';
 import type { Bridge } from '../core/bridge.js';
 import type { BotEvent, EventQueue } from '../core/queue.js';
-import { localModes, operatorPath, readOperatorConfig, type OperatorConfig } from './config.js';
+import { claudeChoice, localModes, operatorPath, readOperatorConfig, type OperatorConfig } from './config.js';
 import { ConversationController } from './controller.js';
 import { ControllerStore } from './controller-state.js';
 import { DiscordApprovalDispatcher } from './approval-dispatcher.js';
@@ -271,7 +271,7 @@ export class OperatorService {
                 this.schedule();
                 this.onStatus?.();
             },
-            brief: () => [desktopGuide, this.standing(config)].filter(Boolean).join('\n\n'),
+            brief: () => [desktopGuide(claudeChoice(config, true)), this.standing(config)].filter(Boolean).join('\n\n'),
         });
         await this.router.start();
         this.appliedConfigAt = config.updatedAt;
