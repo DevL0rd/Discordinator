@@ -36,6 +36,11 @@ import { approvalResult, requestApproval, requestTool, controllerParams } from '
 import { existingSession, resumedState, started, notification, reconcileThread } from './codex-state.js';
 export type { CodexTransport, CodexAdapterOptions } from './codex-protocol.js';
 
+function assertEfforts(config: OperatorConfig): void {
+    for (const effort of [config.codexEffort, config.workerCodexEffort])
+        if (effort && !efforts.has(effort)) throw new Error('Unsupported Codex reasoning effort');
+}
+
 export class CodexAdapter implements ProviderAdapter {
     private connection?: Connection;
     private config?: OperatorConfig;
@@ -58,8 +63,7 @@ export class CodexAdapter implements ProviderAdapter {
 
     async connect(config: OperatorConfig, hooks: ProviderHooks): Promise<void> {
         if (this.connecting || this.connection?.alive) throw new Error('Codex adapter is already connected');
-        for (const effort of [config.codexEffort, config.workerCodexEffort])
-            if (effort && !efforts.has(effort)) throw new Error('Unsupported Codex reasoning effort');
+        assertEfforts(config);
         this.connecting = true;
         this.config = { ...config };
         this.hooks = hooks;

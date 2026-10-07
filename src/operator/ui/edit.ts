@@ -18,17 +18,27 @@ const optional = [
 ];
 const text = (value: unknown) => (typeof value === 'string' && value ? value : undefined);
 
+type Options = (drafts: Documents, observed: Observations) => string[];
+const models =
+    (provider: 'codex' | 'claude'): Options =>
+    (_drafts, observed) => ['', ...observed[provider].models.map((model) => model.id)];
+const efforts =
+    (provider: 'codex' | 'claude', ...fields: string[]): Options =>
+    (drafts, observed) => ['', ...effortOptions(observed[provider], fields.map((field) => text(drafts.operator[field])).find(Boolean))];
+const pickers: Record<string, Options> = {
+    codexModel: models('codex'),
+    claudeModel: models('claude'),
+    workerCodexModel: models('codex'),
+    workerClaudeModel: models('claude'),
+    codexEffort: efforts('codex', 'codexModel'),
+    claudeEffort: efforts('claude', 'claudeModel'),
+    workerCodexEffort: efforts('codex', 'workerCodexModel', 'codexModel'),
+    workerClaudeEffort: efforts('claude', 'workerClaudeModel', 'claudeModel'),
+};
+
 export function editOptions(field: SettingDefinition, drafts: Documents, observed: Observations): string[] {
-    if (field.path === 'codexModel') return ['', ...observed.codex.models.map((model) => model.id)];
-    if (field.path === 'claudeModel') return ['', ...observed.claude.models.map((model) => model.id)];
-    if (field.path === 'codexEffort') return ['', ...effortOptions(observed.codex, drafts.operator.codexModel as string | undefined)];
-    if (field.path === 'claudeEffort') return ['', ...effortOptions(observed.claude, drafts.operator.claudeModel as string | undefined)];
-    if (field.path === 'workerCodexModel') return ['', ...observed.codex.models.map((model) => model.id)];
-    if (field.path === 'workerClaudeModel') return ['', ...observed.claude.models.map((model) => model.id)];
-    if (field.path === 'workerCodexEffort')
-        return ['', ...effortOptions(observed.codex, text(drafts.operator.workerCodexModel) ?? text(drafts.operator.codexModel))];
-    if (field.path === 'workerClaudeEffort')
-        return ['', ...effortOptions(observed.claude, text(drafts.operator.workerClaudeModel) ?? text(drafts.operator.claudeModel))];
+    const picker = field.source === 'operator' ? pickers[field.path] : undefined;
+    if (picker) return picker(drafts, observed);
     if (field.id === 'policy.ownerUserId') return ['', ...((drafts.policy.allowedUserIds as string[] | undefined) ?? [])];
     if (field.kind === 'choice') return [...(field.choices ?? [])];
     return [];

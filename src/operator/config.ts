@@ -49,12 +49,18 @@ const choice = (model?: string, effort?: string): ModelChoice => ({ ...(model ? 
 
 export function claudeChoice(config: OperatorConfig, worker = false): ModelChoice {
     if (!worker) return choice(config.claudeModel, config.claudeEffort);
-    return choice(config.workerClaudeModel || config.claudeModel, config.workerClaudeEffort || (config.workerClaudeModel ? undefined : config.claudeEffort));
+    return choice(
+        config.workerClaudeModel || config.claudeModel,
+        config.workerClaudeEffort || (config.workerClaudeModel ? undefined : config.claudeEffort),
+    );
 }
 
 export function codexChoice(config: OperatorConfig, worker = false): ModelChoice {
     if (!worker) return choice(config.codexModel, config.codexEffort);
-    return choice(config.workerCodexModel || config.codexModel, config.workerCodexEffort || (config.workerCodexModel ? undefined : config.codexEffort));
+    return choice(
+        config.workerCodexModel || config.codexModel,
+        config.workerCodexEffort || (config.workerCodexModel ? undefined : config.codexEffort),
+    );
 }
 
 export const operatorPath = '.data/operator.json';
