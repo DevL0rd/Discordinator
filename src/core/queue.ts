@@ -35,11 +35,15 @@ export interface AccessContext {
     deliver?: EventContext['deliver'];
 }
 
+const retainedContexts = 5000;
+
 export class EventQueue {
     ownerContext?: (id: string) => AccessContext | undefined;
     durableContext?: (id: string) => BotEvent | undefined;
+    persist?: (event: BotEvent) => void;
     readonly epoch = randomUUID();
     private items: EventContext[] = [];
+    private readonly contexts = new Map<string, EventContext>();
     private seen = new Map<string, number>();
     private sequence = 0;
     private discardedThrough = 0;
@@ -75,7 +79,16 @@ export class EventQueue {
             cursor: ++this.sequence,
             receivedAt: new Date(this.now()).toISOString(),
         };
-        this.items.push({ event, expiresAt: this.now() + this.ttlMs, ...(respond ? { respond } : {}), ...(deliver ? { deliver } : {}) });
+        const item: EventContext = {
+            event,
+            expiresAt: this.now() + this.ttlMs,
+            ...(respond ? { respond } : {}),
+            ...(deliver ? { deliver } : {}),
+        };
+        this.items.push(item);
+        this.contexts.set(event.id, item);
+        if (event.kind !== 'message') this.persist?.(event);
+        if (this.contexts.size > retainedContexts) this.contexts.delete(this.contexts.keys().next().value!);
         if (this.items.length > this.capacity) this.discardedThrough = this.items.shift()!.event.cursor;
         for (const wake of this.waiters) wake();
         return event;
@@ -84,8 +97,9 @@ export class EventQueue {
     context(id: string): EventContext {
         this.prune();
         const durable = this.durableContext?.(id);
-        const item = durable ? { event: durable, expiresAt: Number.POSITIVE_INFINITY } : this.items.find((item) => item.event.id === id);
-        if (!item) throw new Error('Event expired, dropped, or unknown');
+        const live = this.contexts.get(id);
+        const item = durable && (!live || live.event.kind === 'message') ? { event: durable, expiresAt: Number.POSITIVE_INFINITY } : live;
+        if (!item) throw new Error('Event unknown or no longer retained');
         if (item.event.sourceEventId) {
             const parent = this.context(item.event.sourceEventId).event;
             if (parent.actorId !== item.event.actorId || parent.channelId !== item.event.channelId || parent.guildId !== item.event.guildId)

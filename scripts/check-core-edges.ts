@@ -63,7 +63,7 @@ async function checkReplies(directory: string): Promise<void> {
     const api = new RecordingApi(f.policy);
     const origins = new ReplyOrigins(join(directory, 'core-reply-origins.json'));
     const bridge = new Bridge(f.policy, f.queue, f.journal, f.approvals, api, origins);
-    await assert.rejects(bridge.respond({ eventId: randomUUID(), content: 'hi', idempotencyKey: 'unknown' }), /unknown or revoked/);
+    await assert.rejects(bridge.respond({ eventId: randomUUID(), content: 'hi', idempotencyKey: 'unknown' }), /Reply origin unknown/);
     const heads: string[] = [];
     const slash = f.queue.add(
         'slash',

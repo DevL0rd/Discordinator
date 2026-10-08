@@ -72,7 +72,7 @@ If epoch changes or latestCursor is lower than your cursor, reset after to zero.
 If gap is true, some events expired or were dropped; do not invent missing requests.
 Check droppedOnDedupeLimit for overload loss too.
 Handle only captured whitelisted triggers. Use the eventId for user-driven writes.
-Answer with discord_send and the eventId so the reply stays in its conversation.
+Answer with discord_send and the eventId so the reply stays in its conversation. An eventId does not expire with time: late answers and prompts still work, and the sender, channel and scope are checked again on every call. It also survives restarts and deletion or editing of the request message (the answer is then posted in the channel without a reply link), and an expired Discord interaction token falls back to a normal channel message. It stops working only if its author is no longer allowed or the oldest records are discarded to stay within storage limits.
 Never move a user's reply to another channel or DM to evade origin rules.
 Before executing a sensitive operation, show its exact preview to the originating
 user and wait for a new addressed Discord approval from that user in that channel.

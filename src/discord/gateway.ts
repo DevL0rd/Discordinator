@@ -151,9 +151,6 @@ export class Gateway {
     }
 
     private remove(id: string): void {
-        this.safely(async () => {
-            await this.replyOrigins?.revokeMessage(id);
-        });
         this.context?.remove(id);
         this.media?.index.remove(id);
     }

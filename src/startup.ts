@@ -174,7 +174,7 @@ async function createRuntime(startup: Startup, config: Config, policyConfig: Pol
     voice.requests.publish = (event) => events.emit(interactionPayload(event, null), interactionEventName);
     const operator = new OperatorService(queue, bridge);
     const commands = new CommandService(operator);
-    const people = new PolicyWatcher(config.DISCORDINATOR_POLICY_FILE, policy, replyOrigins);
+    const people = new PolicyWatcher(config.DISCORDINATOR_POLICY_FILE, policy);
     const presence = new PresenceWriter();
     const localKey = await loadLocalKey();
     const runtime = {

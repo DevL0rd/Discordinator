@@ -5,7 +5,6 @@ import { peopleRevision } from '../src/operator/people.js';
 import { PolicyWatcher } from '../src/operator/policy-watcher.js';
 import { restartOnChange } from '../src/operator/environment-watcher.js';
 import { fixture, ids } from './fixtures.js';
-import { ReplyOrigins } from '../src/core/reply-origins.js';
 
 async function until(check: () => boolean): Promise<void> {
     for (let index = 0; index < 100 && !check(); index++) await new Promise((resolve) => setTimeout(resolve, 20));
@@ -17,16 +16,14 @@ export async function checkPeople(directory: string): Promise<void> {
     const f = fixture(join(directory, 'people-journal.json'));
     const path = join(directory, 'people-policy.json');
     await writeFile(path, JSON.stringify(f.policy.config));
-    const origins = new ReplyOrigins(join(directory, 'people-origins.json'));
-    await origins.capture(f.event);
-    const watcher = new PolicyWatcher(path, f.policy, origins);
+    const watcher = new PolicyWatcher(path, f.policy);
     watcher.start();
     try {
         const next = { ...f.policy.config, allowedUserIds: [], channels: { mode: 'blocklist', allowed: [], blocked: [ids.channel] } };
         await writeFile(path, JSON.stringify(next));
         await until(() => f.policy.config.allowedUserIds.length === 0);
         assert.equal(f.policy.channelAllowed(ids.channel), false, 'scope changes apply without a restart');
-        assert.throws(() => origins.context(f.event.id), /revoked/, 'removed people lose reply authority');
+        assert.throws(() => f.policy.assertOrigin(f.event), /whitelisted/, 'removed people are refused on every call');
         await writeFile(path, '{"servers": 5}');
         await new Promise((resolve) => setTimeout(resolve, 200));
         assert.equal(f.policy.channelAllowed(ids.channel), false, 'an invalid file keeps the previous policy');

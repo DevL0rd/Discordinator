@@ -18,7 +18,8 @@ async function checkRemovals(directory: string): Promise<void> {
     await h.gateway.message(fakeMessage({ id: snowflakeId(2) }));
     const [first, second] = h.queued().slice(-2);
     h.gateway.client.emit(Events.MessageDelete, fakeMessage({ id: snowflakeId(1) }) as never);
-    await until(() => !hasOrigin(origins, first!.id), 'the deleted request to be revoked');
+    await until(() => h.context.removed.includes(snowflakeId(1)), 'the deleted request to leave the context index');
+    assert.ok(hasOrigin(origins, first!.id), 'a deleted request can still be answered');
     h.gateway.client.emit(
         Events.MessageBulkDelete,
         new Map([
@@ -27,7 +28,8 @@ async function checkRemovals(directory: string): Promise<void> {
         ]) as never,
         {} as never,
     );
-    await until(() => !hasOrigin(origins, second!.id), 'the bulk-deleted request to be revoked');
+    await until(() => h.context.removed.includes(snowflakeId(3)), 'the bulk-deleted requests to leave the context index');
+    assert.ok(hasOrigin(origins, second!.id), 'a bulk-deleted request can still be answered');
     assert.deepEqual(h.context.removed, [snowflakeId(1), snowflakeId(2), snowflakeId(3)]);
     assert.deepEqual(h.media.removed, [snowflakeId(1), snowflakeId(2), snowflakeId(3)]);
     h.gateway.stop();

@@ -55,7 +55,7 @@ Configuration is local. The runtime is event-driven: it watches its settings fil
 
 | Resource | Bound |
 | :-- | :-- |
-| Event retention | 500 events, ten-minute TTL, at most 4,000 text characters each |
+| Event retention | The poll feed keeps 500 events for ten minutes; an eventId stays valid for sending and prompting indefinitely (every request is kept in a durable store that discards the oldest only past 25,000 records or 16 MiB, and the newest 5,000 live events also keep their interaction handles), at most 4,000 text characters each |
 | Event dedupe | 2,000 IDs retained for the same TTL; overload rejects new IDs and increments a counter |
 | Context | Defaults 500 records, 50/channel, 30 minutes, 1,000 text characters; policy hard maxima described in [Events and context](mcp-events.md) |
 | Webhooks | 100 subscriptions, 500 pending deliveries, ten-minute outbox TTL, six attempts, 256 KiB/body, 8 MiB store |
@@ -76,7 +76,7 @@ REST errors are reduced to status/network categories. Startup and Gateway logs a
 
 Keys are hashed; normalized tool input is fingerprinted. A pending record is flushed to a private temporary file, atomically renamed into the journal, and recorded before issuing a mutation. Completed results are retained for replay; changed input with the same key is rejected. Mutations are serialized, and the runtime lock prevents concurrent process instances sharing this directory. Text sends also use Discord `nonce`/`enforce_nonce` within Discord’s limited nonce retention window. Poll creation and other writes rely on the journal alone.
 
-Approval/provenance rejection before the request does not establish success. Once an action enters the journal, any exception, interruption or crash can leave a pending/unknown record; that key will not replay automatically. A completed cache remains subject to current origin/scopes, so an expired event or restarted queue cannot be used to bypass authorization. Completed entries expire after 24 hours; this is bounded retry protection, not global exactly-once delivery.
+Approval/provenance rejection before the request does not establish success. Once an action enters the journal, any exception, interruption or crash can leave a pending/unknown record; that key will not replay automatically. A completed cache remains subject to current origin/scopes, so an old event or restarted queue cannot be used to bypass authorization. Completed entries expire after 24 hours; this is bounded retry protection, not global exactly-once delivery.
 
 If a call is uncertain:
 

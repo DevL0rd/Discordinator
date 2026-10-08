@@ -7,7 +7,7 @@ import type { Operation } from '../discord/operations.js';
 import { mentions } from '../discord/operations.js';
 import type { Policy } from './policy.js';
 import type { ScopeList } from './config.js';
-import type { AccessContext, Delivery, EventContext, EventQueue } from './queue.js';
+import type { AccessContext, BotEvent, Delivery, EventContext, EventQueue } from './queue.js';
 import { MediaAccess } from '../media/access.js';
 import { MediaService } from '../media/service.js';
 import { Flows } from '../interactions/flows.js';
@@ -47,7 +47,10 @@ export class Bridge {
         ...storage: [replyOrigins?: ReplyOrigins, replyJournal?: Journal]
     ) {
         [this.replyOrigins, this.replyJournal = journal] = storage;
-        if (this.replyOrigins) queue.durableContext = (id) => (this.replyOrigins!.has(id) ? this.replyOrigins!.context(id) : undefined);
+        if (this.replyOrigins) {
+            queue.durableContext = (id) => (this.replyOrigins!.has(id) ? this.replyOrigins!.context(id) : undefined);
+            queue.persist = (event) => void this.replyOrigins!.capture(event).catch(() => undefined);
+        }
         this.ownerContexts = new OwnerContexts(policy, api);
         queue.ownerContext = (id) => this.ownerContexts.get(id);
         this.context = new ContextIndex(policy, queue);
@@ -131,13 +134,15 @@ export class Bridge {
         if (live && live.event.kind !== 'message') return this.event(id);
         const event = this.replyOrigins.context(id);
         this.policy.assertOrigin(event);
-        const source = await this.api.message(event.channelId, event.messageId!);
-        if (!matchesReplySource(source, event)) {
-            await this.replyOrigins.revokeMessage(event.messageId!);
-            throw new Error('Reply source changed, deleted or no longer matches captured author/destination');
-        }
         if (event.guildId && (await this.api.channel(event.channelId)).guild_id !== event.guildId) throw new Error('Reply guild mismatch');
-        return { event, expiresAt: Number.POSITIVE_INFINITY };
+        return { event: await this.withSource(event), expiresAt: Number.POSITIVE_INFINITY };
+    }
+    private async withSource(event: BotEvent): Promise<BotEvent> {
+        if (!event.messageId) return event;
+        const source = await this.api.message(event.channelId, event.messageId).catch(() => undefined);
+        if (source?.id === event.messageId && source.channel_id === event.channelId) return event;
+        const { messageId: _gone, ...detached } = event;
+        return detached;
     }
 
     async respond(input: MutationInput & Rich & { notifyRequester?: boolean; status?: boolean }): Promise<unknown> {
@@ -146,12 +151,19 @@ export class Bridge {
         return this.replyJournal.execute(input.idempotencyKey, { operation: 'respond', ...input }, async () => {
             const context = await this.replyEvent(input.eventId);
             this.policy.assertResponse(context.event, context.event.channelId);
-            if ((input.embeds?.length && context.deliver) || context.respond) return this.interactionReply(context, input, input.status);
+            if ((input.embeds?.length && context.deliver) || context.respond) {
+                const answered = await this.interactionReply(context, input, input.status).then(
+                    (reply) => ({ reply }),
+                    () => undefined,
+                );
+                if (answered) return answered.reply;
+            }
+            const replyTo = context.event.messageId ? { replyTo: context.event.messageId } : {};
             if (input.status)
                 return this.statuses.show(input.eventId, input.content, (content) =>
-                    this.send(context.event.channelId, { content }, input.idempotencyKey, { replyTo: context.event.messageId }),
+                    this.send(context.event.channelId, { content }, input.idempotencyKey, replyTo),
                 );
-            const options = { replyTo: context.event.messageId, ...(input.notifyRequester ? { notify: context.event.actorId } : {}) };
+            const options = { ...replyTo, ...(input.notifyRequester ? { notify: context.event.actorId } : {}) };
             const sent = await this.send(context.event.channelId, input, input.idempotencyKey, options);
             await this.statuses.settle(
                 input.eventId,
@@ -211,8 +223,13 @@ export class Bridge {
         const context = await this.replyEvent(eventId);
         this.policy.assertScope('messages.write');
         this.policy.assertResponse(context.event, context.event.channelId);
-        if (context.deliver) return context.deliver(delivery);
-        if (context.event.kind === 'interaction') throw new Error('Interaction delivery is unavailable');
+        if (context.deliver) {
+            const delivered = await context.deliver(delivery).then(
+                (result) => ({ result }),
+                () => undefined,
+            );
+            if (delivered) return delivered.result;
+        }
         const nonce = createHash('sha256').update(key).digest('hex').slice(0, 24);
         const result = (await this.api.postFiles(
             `/channels/${context.event.channelId}/messages`,
@@ -325,16 +342,6 @@ function partBody(
     };
 }
 
-function matchesReplySource(source: import('../discord/api.js').Json, event: EventContext['event']): boolean {
-    const author = source.author as { id?: string };
-    return (
-        source.id === event.messageId &&
-        source.channel_id === event.channelId &&
-        author?.id === event.actorId &&
-        !source.webhook_id &&
-        source.content === event.text
-    );
-}
 function scopeSummary(list: ScopeList) {
     return { mode: list.mode, allowed: list.allowed.length, blocked: list.blocked.length };
 }

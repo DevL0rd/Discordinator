@@ -102,7 +102,7 @@ function checkQueue(): void {
     queue.add('two', event);
     queue.add('three', event);
     assert.equal(queue.snapshot(0, 25).gap, true);
-    assert.throws(() => queue.context(first.id));
+    assert.equal(queue.context(first.id).event.id, first.id, 'an event pushed out of the poll feed can still be answered');
     now = 101;
     assert.equal(queue.snapshot(0, 25).events.length, 0);
     assert.notEqual(queue.add('one', event), null);
@@ -111,7 +111,8 @@ function checkQueue(): void {
     const child = queue.add('child', { ...event, kind: 'interaction', sourceEventId: source.id })!;
     assert.ok(queue.context(child.id));
     now = 202;
-    assert.throws(() => queue.context(child.id));
+    assert.equal(queue.context(child.id).event.id, child.id, 'time alone never makes an event unanswerable');
+    assert.throws(() => queue.context('00000000-0000-4000-8000-000000000000'), /unknown/);
 }
 
 async function checkLongReply(file: string): Promise<void> {

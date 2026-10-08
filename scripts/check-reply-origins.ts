@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { join } from 'node:path';
 import { fixture, ids } from './fixtures.js';
+import { until } from './discord-fakes.js';
 import { ReplyOrigins } from '../src/core/reply-origins.js';
 import { EventQueue } from '../src/core/queue.js';
 import { Journal } from '../src/core/journal.js';
@@ -49,17 +50,58 @@ export async function checkReplyOrigins(directory: string): Promise<void> {
     await restarted.respond(input);
     assert.equal(base.api.calls.filter((call) => call.method === 'POST').length, 1, 'reply dedup survives a restart within its retention');
     await assert.rejects(restarted.respond({ ...input, content: 'changed' }), /different input/);
-    base.api.message = () =>
-        Promise.resolve({ id: ids.message, channel_id: ids.other, author: { id: ids.user }, content: base.event.text });
-    await assert.rejects(restarted.respond({ ...input, idempotencyKey: 'wrong-channel-reply' }), /source changed/);
-    assert.throws(() => restored.context(base.event.id), /revoked/);
-    const afterRevocation = new ReplyOrigins(origins.file);
-    await afterRevocation.load();
-    assert.throws(() => afterRevocation.context(base.event.id), /revoked/);
+    await checkDetachedSource(base, restarted, restored, input);
     await checkRevocations(directory);
     await checkDurableActions(directory);
 }
+async function checkDetachedSource(
+    base: ReturnType<typeof fixture>,
+    restarted: Bridge,
+    restored: ReplyOrigins,
+    input: { eventId: string; idempotencyKey: string; content: string; notifyRequester: boolean },
+): Promise<void> {
+    base.api.message = () =>
+        Promise.resolve({ id: ids.message, channel_id: ids.other, author: { id: ids.user }, content: base.event.text });
+    await restarted.respond({ ...input, idempotencyKey: 'moved-source-reply' });
+    const moved = base.api.calls.filter((call) => call.method === 'POST').at(-1)!.body as { message_reference?: unknown };
+    assert.equal(moved.message_reference, undefined, 'a request whose source moved is answered in its channel without a reply link');
+    base.api.message = () => Promise.reject(new Error('Unknown Message'));
+    await restarted.respond({ ...input, idempotencyKey: 'deleted-source-reply' });
+    assert.equal(base.api.calls.filter((call) => call.method === 'POST').length, 3, 'a deleted request can still be answered');
+    assert.equal(restored.context(base.event.id).id, base.event.id, 'and its authority is never revoked');
+}
+async function checkNoExpiry(directory: string): Promise<void> {
+    const f = fixture(join(directory, 'no-expiry.json'));
+    const old = { ...f.event, receivedAt: new Date(Date.now() - 400 * 24 * 60 * 60_000).toISOString() };
+    const origins = new ReplyOrigins(join(directory, 'no-expiry-origins.json'));
+    await origins.capture(old);
+    const restored = new ReplyOrigins(origins.file);
+    await restored.load();
+    assert.deepEqual(restored.context(old.id), old, 'a captured request stays valid however old it is');
+    let now = 0;
+    const queue = new EventQueue(5, 10, () => now);
+    const event = queue.add('late', { actorId: ids.user, channelId: ids.channel, guildId: ids.guild, kind: 'interaction', text: 'go' })!;
+    now = 24 * 60 * 60_000;
+    assert.equal(queue.snapshot(0, 25).events.length, 0, 'the poll feed still ages events out');
+    await checkRestartedEvents(directory);
+    assert.equal(queue.context(event.id).event.id, event.id, 'a late answer can still find its request');
+}
+async function checkRestartedEvents(directory: string): Promise<void> {
+    const f = fixture(join(directory, 'restarted-events.json'));
+    const origins = new ReplyOrigins(join(directory, 'restarted-origins.json'));
+    const queue = new EventQueue();
+    new Bridge(f.policy, queue, f.journal, f.approvals, f.api, origins);
+    const live = queue.add('slash', { actorId: ids.user, channelId: ids.channel, guildId: ids.guild, kind: 'interaction', text: 'go' })!;
+    await until(() => origins.has(live.id), 'the slash request to be stored');
+    const reloaded = new ReplyOrigins(origins.file);
+    await reloaded.load();
+    const restarted = new Bridge(f.policy, new EventQueue(), f.journal, f.approvals, f.api, reloaded);
+    await restarted.respond({ eventId: live.id, content: 'Late answer', idempotencyKey: 'late-slash-answer' });
+    const sent = f.api.calls.filter((call) => call.method === 'POST').at(-1)!;
+    assert.match(sent.route, new RegExp(`/channels/${ids.channel}/messages`), 'after a restart the answer is posted in the channel');
+}
 async function checkDurableActions(directory: string): Promise<void> {
+    await checkNoExpiry(directory);
     const f = fixture(join(directory, 'durable-actions.json'));
     const origins = new ReplyOrigins(join(directory, 'durable-action-origins.json'));
     await origins.capture(f.event);
@@ -124,10 +166,4 @@ async function checkRevocations(directory: string): Promise<void> {
     assert.equal(store.context(base.event.id).actorId, ids.user, 'unchanged edits keep the request');
     await store.edit(ids.message, 'fixed a typo');
     assert.equal(store.context(base.event.id).text, 'fixed a typo', 'edited requests stay answerable with the new text');
-    await store.revokeMessage('900000000000000001');
-    assert.equal(store.context(base.event.id).text, 'fixed a typo', 'unrelated deletions change nothing');
-    const other = new ReplyOrigins(join(directory, 'deleted-origins.json'));
-    await other.capture(base.event);
-    await other.revokeMessage(ids.message);
-    assert.throws(() => other.context(base.event.id), /revoked/);
 }

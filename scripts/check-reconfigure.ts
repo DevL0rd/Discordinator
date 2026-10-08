@@ -4,7 +4,6 @@ import { join } from 'node:path';
 import type { Config } from '../src/core/config.js';
 import { DiscordApi } from '../src/discord/api.js';
 import { PolicyWatcher } from '../src/operator/policy-watcher.js';
-import type { ReplyOrigins } from '../src/core/reply-origins.js';
 import { baseEnvironment, changedKeys, environmentStamp, parseEnvironment, reconfigure, watchEnvironment } from '../src/reconfigure.js';
 import { until } from './discord-fakes.js';
 import { fixture, ids } from './fixtures.js';
@@ -113,9 +112,7 @@ async function checkPolicyMove(directory: string): Promise<void> {
     const f = fixture(join(directory, 'move.json'));
     const other = join(directory, 'other-policy.json');
     await writeFile(other, JSON.stringify({ allowedUserIds: [ids.denied] }));
-    const revoked: string[][] = [];
-    const origins = { revokeActors: (actors: string[]) => Promise.resolve(void revoked.push(actors)) } as unknown as ReplyOrigins;
-    const watcher = new PolicyWatcher(join(directory, 'missing.json'), f.policy, origins);
+    const watcher = new PolicyWatcher(join(directory, 'missing.json'), f.policy);
     watcher.start();
     const log = console.error;
     console.error = () => undefined;
@@ -126,7 +123,6 @@ async function checkPolicyMove(directory: string): Promise<void> {
         await watcher.stop();
     }
     assert.deepEqual([watcher.path, f.policy.config.allowedUserIds], [other, [ids.denied]], 'A new policy file is loaded at once');
-    assert.deepEqual(revoked, [[ids.user]], 'People dropped by the new file lose their reply authority');
     const api = new DiscordApi('first-token', f.policy);
     api.setToken('second-token');
 }
