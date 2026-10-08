@@ -41,7 +41,7 @@ async function checkWithoutRequest(f: Fixture): Promise<void> {
     const queue = new EventQueue(5, 10, () => now);
     const bridge = new Bridge(f.policy, queue, f.journal, f.approvals, f.api);
     await bridge.proactive({ channelId: ids.channel, content: 'No request required', idempotencyKey: 'post-empty-queue' });
-    const event = queue.add('expired-request', {
+    const event = queue.add('old-request', {
         actorId: ids.user,
         channelId: ids.channel,
         guildId: ids.guild,
@@ -50,8 +50,8 @@ async function checkWithoutRequest(f: Fixture): Promise<void> {
         text: 'Old request',
     })!;
     now = 24 * 60 * 60_000;
-    assert.throws(() => queue.context(event.id), /expired/);
-    await bridge.proactive({ channelId: ids.channel, content: 'No reply deadline', idempotencyKey: 'post-expired-queue' });
+    assert.equal(queue.context(event.id).event.id, event.id, 'time alone never makes a request unanswerable');
+    await bridge.proactive({ channelId: ids.channel, content: 'Posting needs no reply', idempotencyKey: 'post-old-queue' });
     for (const call of f.api.calls.slice(-2)) assert.equal(Object.hasOwn(call.body as object, 'message_reference'), false);
 }
 
