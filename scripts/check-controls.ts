@@ -126,7 +126,7 @@ function fakeButton(id: string, custom: string) {
             return Promise.resolve();
         },
         followUp: (value: { flags?: number; allowedMentions?: { parse: string[] } }) => {
-            assert.equal(value.flags, 64);
+            assert.equal(value.flags, undefined);
             assert.deepEqual(value.allowedMentions?.parse, []);
             calls.push('final');
             return Promise.resolve({ id: ids.message, channelId: ids.channel });
