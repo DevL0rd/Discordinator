@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { join } from 'node:path';
-import { Events, MessageFlags, type ChatInputCommandInteraction, type Interaction } from 'discord.js';
+import { Events, type ChatInputCommandInteraction, type Interaction } from 'discord.js';
 import type { Flows } from '../src/interactions/flows.js';
 import { replyEmbed, type CommandHandler } from '../src/discord/commands.js';
 import { ids } from './fixtures.js';
@@ -56,7 +56,7 @@ async function checkBuiltIns(file: string): Promise<void> {
     ];
     const activity = fakeInteraction({ commandName: 'activity', options: { data } });
     await h.gateway.interaction(activity.interaction);
-    assert.deepEqual(activity.sent[0], { kind: 'defer', body: { flags: MessageFlags.Ephemeral } });
+    assert.deepEqual(activity.sent[0], { kind: 'defer', body: undefined });
     assert.deepEqual(seen[0], ['activity', { mode: 'on', empty: '' }, { guildId: ids.guild, channelId: ids.channel, actorId: ids.user }]);
     assert.deepEqual(embedOf(activity.sent), { title: 'Activity', description: 'On', color: 0x3ba55d });
     const stop = fakeInteraction({ commandName: 'stop' });

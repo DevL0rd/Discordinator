@@ -1,4 +1,4 @@
-import { MessageFlags, type APIEmbed, type ChatInputCommandInteraction } from 'discord.js';
+import { type APIEmbed, type ChatInputCommandInteraction } from 'discord.js';
 import type { CommandOptions, CommandReply } from '../operator/commands.js';
 import { assistants } from '../operator/ui/status.js';
 import { responderChoices } from '../operator/commands.js';
@@ -66,7 +66,7 @@ export function replyEmbed(reply: CommandReply): APIEmbed {
 }
 
 export async function runCommand(interaction: ChatInputCommandInteraction, handler: CommandHandler): Promise<void> {
-    await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+    await interaction.deferReply();
     const options: CommandOptions = Object.fromEntries(interaction.options.data.map((option) => [option.name, String(option.value ?? '')]));
     const origin = { guildId: interaction.guildId, channelId: interaction.channelId, actorId: interaction.user.id };
     const reply = await handler(interaction.commandName, options, origin).catch((error: unknown): CommandReply => ({
@@ -78,5 +78,5 @@ export async function runCommand(interaction: ChatInputCommandInteraction, handl
 }
 
 export async function denyCommand(interaction: ChatInputCommandInteraction): Promise<void> {
-    await interaction.reply({ content: 'You are not approved to use Discordinator here.', flags: MessageFlags.Ephemeral });
+    await interaction.reply({ content: 'You are not approved to use Discordinator here.', allowedMentions: { parse: [] } });
 }

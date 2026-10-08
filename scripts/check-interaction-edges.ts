@@ -2,7 +2,7 @@ import { until } from './discord-fakes.js';
 import { fade } from '../src/core/fade.js';
 import assert from 'node:assert/strict';
 import { join } from 'node:path';
-import { MessageFlags, type ButtonInteraction } from 'discord.js';
+import type { ButtonInteraction } from 'discord.js';
 import { captureInteraction, handleControl } from '../src/interactions/gateway.js';
 import { promptSchema } from '../src/interactions/schema.js';
 import { fixture, ids } from './fixtures.js';
@@ -85,7 +85,7 @@ async function checkCapture(directory: string): Promise<void> {
     fade.ms = 10;
     try {
         await f.queue.context(captured.id).respond!('Working: reading files', true);
-        assert.equal(quiet.calls.at(-1)!.value?.flags, MessageFlags.Ephemeral, 'A progress update stays private and fades');
+        assert.equal(quiet.calls.at(-1)!.value?.flags, undefined, 'A progress update is a normal message that fades');
         await until(() => quiet.calls.at(-1)!.method === 'deleteReply', 'the progress update disappears');
     } finally {
         fade.ms = 6000;

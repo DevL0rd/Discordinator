@@ -1,6 +1,5 @@
 import {
     ComponentType,
-    MessageFlags,
     type ButtonInteraction,
     type StringSelectMenuInteraction,
     type ModalSubmitInteraction,
@@ -39,7 +38,6 @@ export async function captureInteraction(interaction: Respondable, input: EventI
                       components: payload.components,
                       embeds: payload.embeds,
                       files: payload.files?.map((file) => ({ attachment: file.data, name: file.name })),
-                      ...(fleeting ? { flags: MessageFlags.Ephemeral } : {}),
                   })
                 : await interaction.editReply(options);
         if (fleeting) fadeLater(() => interaction.deleteReply(reply.id));
@@ -53,7 +51,7 @@ export async function captureInteraction(interaction: Respondable, input: EventI
     );
     if (!event) return null;
     eventId = event.id;
-    ready = quiet && 'deferUpdate' in interaction ? interaction.deferUpdate() : interaction.deferReply({ flags: MessageFlags.Ephemeral });
+    ready = quiet && 'deferUpdate' in interaction ? interaction.deferUpdate() : interaction.deferReply();
     await ready;
     return event;
 }
@@ -129,7 +127,6 @@ function controlInput(interaction: ButtonInteraction | StringSelectMenuInteracti
 async function rejectControl(interaction: Respondable): Promise<void> {
     await interaction.reply({
         content: 'This control is only for its original approved requester, or is no longer active.',
-        flags: MessageFlags.Ephemeral,
         allowedMentions: { parse: [] },
     });
 }
