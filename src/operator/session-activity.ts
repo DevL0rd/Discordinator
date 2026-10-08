@@ -43,6 +43,13 @@ function replies(entry: Entry): string[] {
     });
 }
 
+const reminder = /<system-reminder>[\s\S]*?<\/system-reminder>/g;
+
+function startsTurn(entry: Entry): boolean {
+    if (entry.type !== 'user' || blocks(entry).some((block) => block.type === 'tool_result')) return false;
+    return userText(entry).replace(reminder, '').trim().length > 0;
+}
+
 function userText(entry: Entry): string {
     if (entry.type !== 'user') return '';
     const content = entry.message?.content;
@@ -132,8 +139,11 @@ export class SessionActivity {
         const delivered = [...userText(entry).matchAll(quoted)].map((match) => match[1]!).filter((id) => this.expected.has(id));
         const eventId = delivered.at(-1);
         if (eventId) this.deliveredEntry(eventId);
-        for (const id of replies(entry)) this.hooks.replied?.(id);
+        else if (startsTurn(entry)) this.current = undefined;
+        const answered = replies(entry);
+        for (const id of answered) this.hooks.replied?.(id);
         for (const step of steps(entry)) await this.publish(step);
+        if (this.current && answered.includes(this.current)) this.current = undefined;
     }
 
     private deliveredEntry(eventId: string): void {

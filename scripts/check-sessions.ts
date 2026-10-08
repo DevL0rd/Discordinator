@@ -215,4 +215,49 @@ async function checkTranscriptSwitch(
     await new Promise((resolve) => setTimeout(resolve, 200));
     assert.equal(posted.length, 4, 'activity respects the visibility setting');
     activity.stop();
+    await checkForeignTurns(directory);
+}
+
+async function checkForeignTurns(directory: string): Promise<void> {
+    const path = join(directory, 'activity-foreign.jsonl');
+    await writeFile(path, '');
+    const posted: string[] = [];
+    const activity = new SessionActivity(
+        (eventId, text) => {
+            posted.push(`${eventId}:${text}`);
+            return Promise.resolve();
+        },
+        () => true,
+    );
+    await activity.follow(path, 'event-a');
+    const reminder = JSON.stringify({
+        type: 'user',
+        message: {
+            content: [
+                { type: 'tool_result', content: 'ok' },
+                { type: 'text', text: '<system-reminder>note</system-reminder>' },
+            ],
+        },
+    });
+    const foreign = JSON.stringify({
+        type: 'user',
+        message: { content: '<cross-session-message>what time is it</cross-session-message>' },
+    });
+    await appendFile(path, `${delivered('event-a')}\n${reminder}\n${tool('Read', { file_path: '/r/a.ts' })}\n`);
+    await until(() => posted.length === 1);
+    assert.deepEqual(posted, ['event-a:Reading a.ts'], 'tool results and reminders do not end a Discord turn');
+    await appendFile(path, `${foreign}\n${tool('Read', { file_path: '/r/secret.ts' })}\n`);
+    await new Promise((resolve) => setTimeout(resolve, 200));
+    assert.equal(posted.length, 1, 'a turn that did not come from Discord never posts to Discord');
+    await activity.follow(path, 'event-b');
+    await appendFile(path, `${delivered('event-b')}\n${tool('Read', { file_path: '/r/b.ts' })}\n`);
+    await until(() => posted.length === 2);
+    assert.equal(posted[1], 'event-b:Reading b.ts', 'the next Discord message gets its own status again');
+    await appendFile(
+        path,
+        `${tool('mcp__discordinator__discord_send', { eventId: 'event-b' })}\n${tool('Read', { file_path: '/r/after.ts' })}\n`,
+    );
+    await new Promise((resolve) => setTimeout(resolve, 200));
+    assert.equal(posted.length, 2, 'nothing is posted for a message once it has been answered');
+    activity.stop();
 }
