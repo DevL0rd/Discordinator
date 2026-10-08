@@ -21,10 +21,11 @@ const liveTools: LiveTool[] = [
     {
         name: 'stop_listening',
         description:
-            'End this conversation when they are clearly done talking to you, or are talking to each other rather than you. You keep the call transcript and come back when someone says your name.',
+            'End this conversation when it is over, they are talking to someone else, or you only hear noise not meant for you. You keep the call transcript and come back when someone says your name.',
     },
 ];
 
+const stopGraceMs = 5000;
 const tickMs = 100;
 const tickSamples = 1600;
 const speaking = 300;
@@ -41,6 +42,9 @@ export class Conversation {
     private timer?: NodeJS.Timeout;
     private lastActivity: number;
     private closed = false;
+    private stopping = false;
+    private turnDone = false;
+    private stopTimer?: NodeJS.Timeout;
     private reconnected = false;
     private generation = 0;
     private readonly tasks = new Map<string, { id: string; name: string }>();
@@ -112,6 +116,7 @@ export class Conversation {
     }
 
     private finishTurn(): void {
+        if (this.stopping) this.turnDone = true;
         if (this.out) {
             this.out.push(this.framer.flush());
             this.out.end();
@@ -130,7 +135,9 @@ export class Conversation {
     private tool(id: string, name: string, args: Record<string, unknown>): void {
         if (name === 'stop_listening') {
             this.session?.toolResult(id, name, { ok: true });
-            void this.end();
+            this.stopping = true;
+            this.stopTimer ??= setTimeout(() => void this.end(), stopGraceMs);
+            this.stopTimer.unref();
             return;
         }
         if (name !== 'do_task') return this.session?.toolResult(id, name, { error: 'Unknown tool' });
@@ -226,6 +233,7 @@ export class Conversation {
         if (this.closed || !this.session) return;
         do this.session?.audio(this.mix());
         while (this.backlog());
+        if (this.turnDone && !this.out && !this.link.playing) return void this.end();
         if (!this.out && this.now() - this.lastActivity > this.hooks.settings().idleSeconds * 1000) void this.end();
     }
 
@@ -233,6 +241,7 @@ export class Conversation {
         if (this.closed) return;
         this.closed = true;
         clearInterval(this.timer);
+        clearTimeout(this.stopTimer);
         this.cut();
         this.session?.close();
         this.codec.free();

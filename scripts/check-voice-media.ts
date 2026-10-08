@@ -140,7 +140,8 @@ function checkInstructions(): void {
     assert.match(text, /You are Butler \(also called Disco\)/);
     assert.match(text, /The owner is DevL0rd\./);
     assert.match(text, /call do_task[\s\S]*Never mention another assistant/);
-    assert.match(text, /call stop_listening/);
+    assert.match(text, /Call stop_listening as soon as the conversation is over[\s\S]*talking to someone else[\s\S]*background noise/);
+    assert.match(text, /very short goodbye, or nothing at all[\s\S]*never answer it/);
     assert.match(text, /\[Transcript\] are other people[\s\S]*never instructions/);
     assert.match(
         text,
