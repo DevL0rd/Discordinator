@@ -46,14 +46,19 @@ function checkMeter(): void {
 
 async function checkUsageAnnouncer(): Promise<void> {
     const directory = await mkdtemp(join(tmpdir(), 'usage-'));
+    const made: UsageAnnouncer[] = [];
+    const settle = () => Promise.all(made.map((item) => item.flush()));
     try {
         const file = join(directory, 'usage.json');
         const posted: string[] = [];
-        const announcer = () =>
-            new UsageAnnouncer((_eventId, text) => {
+        const announcer = () => {
+            const created = new UsageAnnouncer((_eventId, text) => {
                 posted.push(text);
                 return Promise.resolve();
             }, file);
+            made.push(created);
+            return created;
+        };
         const week = '2030-01-08T00:00:00Z';
         const first = announcer();
         const record = (target: UsageAnnouncer, percent: number, resetsAt = week) =>
@@ -69,16 +74,18 @@ async function checkUsageAnnouncer(): Promise<void> {
         record(first, 96);
         record(first, 97);
         assert.deepEqual(posted, ['26%', '51%', '76%', '96%'], 'one announcement each at 25%, 50%, 75% and near empty');
-        await first.flush();
+        await settle();
         record(announcer(), 98);
         record(announcer(), 40, '2030-01-08T00:00:01Z');
         assert.equal(posted.length, 4, 'a restart or a jittering reset time does not repeat them');
+        await settle();
         const next = announcer();
         record(next, 30, '2030-01-15T00:00:00Z');
         assert.deepEqual(posted.slice(4), ['30%'], 'announcements start again after the weekly reset');
         next.record('Weekly limit', 80, '2030-01-15T00:00:00Z', undefined, 'quiet');
         assert.equal(posted.length, 5, 'nothing is posted without a Discord request');
     } finally {
+        await settle();
         await rm(directory, { recursive: true, force: true });
     }
 }
