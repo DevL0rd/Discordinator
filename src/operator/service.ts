@@ -1,5 +1,6 @@
 import { channelHistory, withCall, type History } from './history.js';
 import { contextWarning, ThresholdMeter, usageWarning } from './context-meter.js';
+import { UsageAnnouncer } from './usage-announcer.js';
 import type { Bridge } from '../core/bridge.js';
 import type { BotEvent, EventQueue } from '../core/queue.js';
 import { claudeChoice, localModes, operatorPath, readOperatorConfig, type OperatorConfig } from './config.js';
@@ -49,6 +50,7 @@ export class OperatorService {
     private failures = 0;
     private readonly history: History;
     readonly meter: ThresholdMeter;
+    private readonly usage: UsageAnnouncer;
     onStatus?: () => void;
     private usageCheckedAt = 0;
 
@@ -60,6 +62,7 @@ export class OperatorService {
             bridge.voice ? (guildId, actorId, seen) => bridge.voice!.context(guildId, actorId, seen) : undefined,
         );
         this.meter = new ThresholdMeter((eventId, content, idempotencyKey) => this.bridge.respond({ eventId, content, idempotencyKey }));
+        this.usage = new UsageAnnouncer((eventId, content, idempotencyKey) => this.announce(eventId, content, idempotencyKey));
         bridge.policy.onChange((previous) => {
             if (!this.controller || previous.ownerUserId === bridge.policy.config.ownerUserId) return;
             this.appliedConfigAt = null;
@@ -113,9 +116,10 @@ export class OperatorService {
     }
     private recordUsage(windows: UsageWindow[], eventId: string | undefined): void {
         for (const window of windows)
-            this.meter.record(
-                `usage:${window.label}`,
+            this.usage.record(
+                window.label,
                 window.usedPercent,
+                window.resetsAt,
                 eventId,
                 usageWarning(window.label, window.usedPercent, window.resetsAt),
             );
@@ -321,6 +325,13 @@ export class OperatorService {
         this.indicator = indicator;
         await controller.start();
         this.appliedConfigAt = config.updatedAt;
+    }
+    private announce(eventId: string, content: string, idempotencyKey: string): Promise<unknown> {
+        const channelId = this.origin(eventId)?.channelId;
+        if (!channelId) return Promise.resolve();
+        return this.bridge
+            .proactive({ channelId, content, idempotencyKey })
+            .catch(() => this.bridge.respond({ eventId, content, idempotencyKey }));
     }
     private origin(eventId: string): BotEvent | undefined {
         try {

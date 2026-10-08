@@ -1,5 +1,9 @@
 import assert from 'node:assert/strict';
+import { mkdtemp, rm } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { contextWarning, ThresholdMeter, usageWarning } from '../src/operator/context-meter.js';
+import { UsageAnnouncer } from '../src/operator/usage-announcer.js';
 import { codexUsage, contextPercent } from '../src/operator/codex-activity.js';
 import { notification } from '../src/operator/codex-state.js';
 import { builtInCommands, commandDefinitions, replyEmbed } from '../src/discord/commands.js';
@@ -38,6 +42,45 @@ function checkMeter(): void {
     assert.equal(meter.percent('s'), 92);
     meter.record('usage:Weekly limit', 52, 'e', usageWarning('Weekly limit', 52, '2030-01-01T00:00:00Z'));
     assert.match(posted.at(-1)!, /Weekly limit 52% used\.\*\* Resets <t:1893456000:R>/, 'plan usage warns with its reset time');
+}
+
+async function checkUsageAnnouncer(): Promise<void> {
+    const directory = await mkdtemp(join(tmpdir(), 'usage-'));
+    try {
+        const file = join(directory, 'usage.json');
+        const posted: string[] = [];
+        const announcer = () =>
+            new UsageAnnouncer((_eventId, text) => {
+                posted.push(text);
+                return Promise.resolve();
+            }, file);
+        const week = '2030-01-08T00:00:00Z';
+        const first = announcer();
+        const record = (target: UsageAnnouncer, percent: number, resetsAt = week) =>
+            target.record('Weekly limit', percent, resetsAt, 'e', `${percent}%`);
+        record(first, 10);
+        record(first, 26);
+        record(first, 30);
+        record(first, 49);
+        record(first, 51);
+        record(first, 49);
+        record(first, 52);
+        record(first, 76);
+        record(first, 96);
+        record(first, 97);
+        assert.deepEqual(posted, ['26%', '51%', '76%', '96%'], 'one announcement each at 25%, 50%, 75% and near empty');
+        await first.flush();
+        record(announcer(), 98);
+        record(announcer(), 40, '2030-01-08T00:00:01Z');
+        assert.equal(posted.length, 4, 'a restart or a jittering reset time does not repeat them');
+        const next = announcer();
+        record(next, 30, '2030-01-15T00:00:00Z');
+        assert.deepEqual(posted.slice(4), ['30%'], 'announcements start again after the weekly reset');
+        next.record('Weekly limit', 80, '2030-01-15T00:00:00Z', undefined, 'quiet');
+        assert.equal(posted.length, 5, 'nothing is posted without a Discord request');
+    } finally {
+        await rm(directory, { recursive: true, force: true });
+    }
 }
 
 function checkCodexUsageEvent(): void {
@@ -208,6 +251,7 @@ export async function checkSlashCommands(): Promise<void> {
     checkInvite();
     checkServers();
     checkMeter();
+    await checkUsageAnnouncer();
     checkCodexParsing();
     checkCodexUsageEvent();
     checkSplit();
