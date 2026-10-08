@@ -39,7 +39,7 @@ export async function captureInteraction(interaction: Respondable, input: EventI
                       components: payload.components,
                       embeds: payload.embeds,
                       files: payload.files?.map((file) => ({ attachment: file.data, name: file.name })),
-                      flags: MessageFlags.Ephemeral,
+                      ...(fleeting ? { flags: MessageFlags.Ephemeral } : {}),
                   })
                 : await interaction.editReply(options);
         if (fleeting) fadeLater(() => interaction.deleteReply(reply.id));
