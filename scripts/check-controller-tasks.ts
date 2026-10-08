@@ -17,6 +17,17 @@ function checkGuides(): void {
         roleInstructions('worker', 'Owner note.'),
         /^You are a Discordinator worker[\s\S]*Report to Discordinator, not to Discord[\s\S]*Owner note\.$/,
     );
+    assert.match(
+        roleInstructions('controller', undefined),
+        /discord_prompt[\s\S]*AskUserQuestion/,
+        'controller routes decisions to Discord',
+    );
+    assert.match(desktopGuide(), /discord_prompt[\s\S]*AskUserQuestion/, 'desktop controller routes decisions to Discord');
+    assert.match(
+        roleInstructions('worker', undefined),
+        /AskUserQuestion[\s\S]*Discordinator asks the requester/,
+        'workers hand decisions to the responder',
+    );
     assert.doesNotMatch(roleInstructions('worker', undefined), /start_task/, 'workers are not told to start more workers');
     assert.match(
         desktopGuide(),
