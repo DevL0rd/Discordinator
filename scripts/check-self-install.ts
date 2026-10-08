@@ -19,6 +19,7 @@ import { fakeConfig } from './fixtures.js';
 import { fakeRunner, inDirectory, withEnv, writeFiles } from './host-fixture.js';
 
 const git = (cwd: string, ...args: string[]) => execFileSync('git', args, { cwd, encoding: 'utf8' }).trim();
+const pattern = (text: string) => text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 const present = (path: string) =>
     access(path).then(
         () => true,
@@ -126,8 +127,8 @@ async function checkInstallUpdateUninstall(root: string): Promise<void> {
             assert.ok(await present(join(target, '.data', 'people.json')));
             assert.deepEqual(npm, [['ci', '--no-audit', '--no-fund']]);
             const unit = await readFile(join(home, '.config/systemd/user/discordinator.service'), 'utf8');
-            assert.match(unit, new RegExp(`^WorkingDirectory=${target}$`, 'm'), 'the service runs from the installed copy');
-            assert.match(await readFile(join(home, '.local/bin/discordinator'), 'utf8'), new RegExp(`cd '${target}'`));
+            assert.match(unit, new RegExp(`^WorkingDirectory=${pattern(target)}$`, 'm'), 'the service runs from the installed copy');
+            assert.match(await readFile(join(home, '.local/bin/discordinator'), 'utf8'), new RegExp(`cd '${pattern(target)}'`));
             assert.ok(
                 sudo.some((args) => args.join(' ') === 'tee /usr/share/libalpm/hooks/discordinator-update.hook'),
                 'system updates are hooked',
