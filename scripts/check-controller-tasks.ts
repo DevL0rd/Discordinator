@@ -53,7 +53,7 @@ function checkGuides(): void {
     assert.doesNotMatch(roleInstructions('worker', undefined), /start_task/, 'workers are not told to start more workers');
     assert.match(
         desktopGuide(),
-        /never as a background agent[\s\S]*session tools[\s\S]*claude --remote-control[\s\S]*claude agents --json/,
+        /never as a background agent[\s\S]*session tools[\s\S]*Remote Control[\s\S]*claude --remote-control[\s\S]*Never run the chat in the foreground[\s\S]*claude agents --json/,
         'Claude Desktop manages chats with its own tools',
     );
     assert.doesNotMatch(desktopGuide(), /assistant_|--model/);
