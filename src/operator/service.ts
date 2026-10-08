@@ -175,14 +175,13 @@ export class OperatorService {
     private async build(config: OperatorConfig): Promise<void> {
         if (config.mode === 'claude-session') {
             if (!config.backgroundOnly && (await desktopInstalled())) return this.createRouter(config);
-            return this.createController(config, new ClaudeAdapter(), true);
+            return this.createController(config, new ClaudeAdapter());
         }
         const socket = config.backgroundOnly ? undefined : await codexDaemonSocket();
         const cli = await codexCommand();
         await this.createController(
             config,
             new CodexAdapter({ spawnTransport: socket ? () => daemonTransport(socket) : (current) => localTransport(current, cli) }),
-            Boolean(socket),
         );
     }
     private async consume(): Promise<void> {
@@ -284,7 +283,7 @@ export class OperatorService {
         const instructions = this.standing(config);
         return instructions ? { ...config, instructions } : config;
     }
-    private async createController(config: OperatorConfig, adapter: ProviderAdapter, shared: boolean, primary = true): Promise<void> {
+    private async createController(config: OperatorConfig, adapter: ProviderAdapter, primary = true): Promise<void> {
         const dispatcher = new DiscordApprovalDispatcher(this.bridge, (key, decision, origin) =>
             this.tasks!.resolveApproval(key, decision, origin),
         );
@@ -308,7 +307,7 @@ export class OperatorService {
                     this.releaseIdle();
                     this.onStatus?.();
                 },
-                ...(shared ? { sharedConversation: 'discordinator' } : {}),
+                sharedConversation: 'discordinator',
                 history: this.history,
                 describe: (event) => requestText(this.bridge.policy, event),
                 brief: (eventId, title, prompt) => this.brief(eventId, title, prompt),

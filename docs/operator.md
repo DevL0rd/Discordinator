@@ -67,7 +67,7 @@ Messages are pushed through Claude Code's own session inbox, the same mechanism 
 
 Discordinator connects to the shared Codex app-server service that the Codex command line manages (`codex app-server daemon`), starting it if needed, and keeps one ongoing Discordinator conversation there. Because the conversation lives in that shared service rather than inside Discordinator, other Codex clients attached to it can follow and continue it, for example `codex resume --remote unix://` from a terminal, or the ChatGPT app once the service's remote control is enabled with `codex app-server daemon enable-remote-control`.
 
-If your Codex has no shared service, or **Always run in the background** is on, Discordinator runs a private Codex app-server instead, with one conversation per person and channel. Questions and permission requests go to Discord as buttons in both cases.
+If your Codex has no shared service, or **Always run in the background** is on, Discordinator runs a private Codex app-server instead. It is still one conversation for everyone, never split per person, channel or server. Questions and permission requests go to Discord as buttons in both cases.
 
 ### ChatGPT - Dot
 
