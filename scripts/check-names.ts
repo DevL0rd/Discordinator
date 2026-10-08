@@ -54,7 +54,7 @@ async function spoofedGateway(file: string) {
     f.policy.config.ownerUserId = owner;
     f.policy.config.scopes.push('messages.read');
     f.policy.config.context = { enabled: true, capture: 'all', reach: 'channel', perChannel: 50, includeBots: true };
-    const gateway = new Gateway(fakeConfig(), f.policy, f.queue, f.approvals, f.api, {
+    const gateway = new Gateway(fakeConfig(), f.policy, f.queue, f.api, {
         context: f.bridge.context,
         people: f.bridge.people,
     });

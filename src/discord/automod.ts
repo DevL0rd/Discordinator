@@ -9,7 +9,7 @@ export const automodOperations = [
     ),
     define(
         'automod_keyword_create',
-        'Create an enabled keyword-block AutoMod rule, with confirmation.',
+        'Create an enabled keyword-block AutoMod rule.',
         { scope: 'automod.write', target: 'guild' },
         {
             ...guild,
@@ -38,7 +38,7 @@ export const automodOperations = [
     ),
     define(
         'automod_rule_toggle',
-        'Enable or disable an AutoMod rule, with confirmation.',
+        'Enable or disable an AutoMod rule.',
         { scope: 'automod.write', target: 'guild' },
         { ...rule, enabled: z.boolean() },
         (a, c) => c.api.patch(`/guilds/${a.guildId}/auto-moderation/rules/${a.ruleId}`, { enabled: a.enabled }),
@@ -46,7 +46,7 @@ export const automodOperations = [
     ),
     define(
         'automod_rule_delete',
-        'Delete an AutoMod rule, with confirmation.',
+        'Delete an AutoMod rule.',
         { scope: 'automod.write', target: 'guild' },
         rule,
         (a, c) => c.api.delete(`/guilds/${a.guildId}/auto-moderation/rules/${a.ruleId}`),

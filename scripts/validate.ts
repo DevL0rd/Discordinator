@@ -195,7 +195,7 @@ try {
             await checkStdio(directory);
             await checkSetupApp(directory);
             console.log(
-                `Local validation passed: policy/triggers, Gateway mocks, approvals, idempotency, queue and bearer/OAuth MCP (${toolCount()} tools), context, MCP Events, safe media/retrieval and correlated controls. No Discord connection.`,
+                `Local validation passed: policy/triggers, Gateway mocks, idempotency, queue and bearer/OAuth MCP (${toolCount()} tools), context, MCP Events, safe media/retrieval and correlated controls. No Discord connection.`,
             );
         }
     }

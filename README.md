@@ -192,7 +192,7 @@ Connecting only ever touches the entry named <code>discordinator</code>. Your ot
     <td width="33%" valign="top">🔑 <b>Abilities</b><br>Every kind of action is on by default, and you can switch any of them off. Discord permissions still apply.</td>
   </tr>
   <tr>
-    <td valign="top">✅ <b>Approvals</b><br>Sensitive actions and the AI's own permission prompts wait for a Discord button press from the person who asked.</td>
+    <td valign="top">✅ <b>Approvals</b><br>The AI's own permission prompts wait for a Discord button press from the person who asked.</td>
     <td valign="top">🏠 <b>Stays in the thread</b><br>Answers go back where the request came from unless the requester asks otherwise.</td>
     <td valign="top">🔒 <b>Private by default</b><br>Listens on your computer only, and always requires sign-in. Cloud apps reach it through your own domain and password.</td>
   </tr>

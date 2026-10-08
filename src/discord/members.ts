@@ -27,7 +27,7 @@ export const memberOperations = [
     ),
     define(
         'member_nickname',
-        'Change a member nickname, with confirmation.',
+        'Change a member nickname.',
         { scope: 'members.write', target: 'guild' },
         { ...member, nickname: z.string().max(32).nullable() },
         (a, c) => c.api.patch(`/guilds/${a.guildId}/members/${a.userId}`, { nick: a.nickname }),
@@ -35,7 +35,7 @@ export const memberOperations = [
     ),
     define(
         'member_timeout',
-        'Set or clear a member timeout, with confirmation. Discord hierarchy applies.',
+        'Set or clear a member timeout. Discord hierarchy applies.',
         { scope: 'moderation.write', target: 'guild' },
         {
             ...member,
@@ -59,7 +59,7 @@ export const memberOperations = [
     ),
     define(
         'member_kick',
-        'Kick a member, with confirmation. No automatic DM is sent.',
+        'Kick a member. No automatic DM is sent.',
         { scope: 'moderation.write', target: 'guild' },
         { ...member, reason },
         (a, c) => c.api.delete(`/guilds/${a.guildId}/members/${a.userId}`, a.reason),
@@ -67,7 +67,7 @@ export const memberOperations = [
     ),
     define(
         'member_ban',
-        'Ban a member, optionally delete up to seven days of messages, with confirmation.',
+        'Ban a member, optionally delete up to seven days of messages.',
         { scope: 'moderation.write', target: 'guild' },
         { ...member, deleteMessageSeconds: z.number().int().min(0).max(604800).default(0), reason },
         (a, c) => c.api.put(`/guilds/${a.guildId}/bans/${a.userId}`, { delete_message_seconds: a.deleteMessageSeconds }, a.reason),
@@ -75,7 +75,7 @@ export const memberOperations = [
     ),
     define(
         'member_unban',
-        'Remove a guild ban, with confirmation.',
+        'Remove a guild ban.',
         { scope: 'moderation.write', target: 'guild' },
         { ...member, reason },
         (a, c) => c.api.delete(`/guilds/${a.guildId}/bans/${a.userId}`, a.reason),
@@ -89,7 +89,7 @@ export const memberOperations = [
     ),
     define(
         'role_create',
-        'Create a role, including explicit permission bits, with confirmation.',
+        'Create a role, including explicit permission bits.',
         { scope: 'roles.write', target: 'guild' },
         {
             ...guild,
@@ -112,7 +112,7 @@ export const memberOperations = [
     ),
     define(
         'role_edit',
-        'Edit a role or its permissions, with confirmation.',
+        'Edit a role or its permissions.',
         { scope: 'roles.write', target: 'guild' },
         { ...role, ...roleSettings },
         (a, c) =>
@@ -127,7 +127,7 @@ export const memberOperations = [
     ),
     define(
         'role_delete',
-        'Delete a role, with confirmation.',
+        'Delete a role.',
         { scope: 'roles.write', target: 'guild' },
         role,
         (a, c) => c.api.delete(`/guilds/${a.guildId}/roles/${a.roleId}`),
@@ -135,7 +135,7 @@ export const memberOperations = [
     ),
     define(
         'role_position',
-        'Move a role in the hierarchy, with confirmation.',
+        'Move a role in the hierarchy.',
         { scope: 'roles.write', target: 'guild' },
         { ...role, position: z.number().int().min(0).max(1000) },
         (a, c) => c.api.patch(`/guilds/${a.guildId}/roles`, [{ id: a.roleId, position: a.position }]),
@@ -143,7 +143,7 @@ export const memberOperations = [
     ),
     define(
         'member_role_add',
-        'Assign a guild role, with confirmation.',
+        'Assign a guild role.',
         { scope: 'roles.write', target: 'guild' },
         { ...member, roleId: snowflake },
         (a, c) => c.api.put(`/guilds/${a.guildId}/members/${a.userId}/roles/${a.roleId}`),
@@ -151,7 +151,7 @@ export const memberOperations = [
     ),
     define(
         'member_role_remove',
-        'Remove a member role, with confirmation.',
+        'Remove a member role.',
         { scope: 'roles.write', target: 'guild' },
         { ...member, roleId: snowflake },
         (a, c) => c.api.delete(`/guilds/${a.guildId}/members/${a.userId}/roles/${a.roleId}`),
@@ -159,7 +159,7 @@ export const memberOperations = [
     ),
     define(
         'voice_member_edit',
-        'Move, disconnect, mute or deafen a member, with confirmation; no audio capture/playback.',
+        'Move, disconnect, mute or deafen a member; no audio capture/playback.',
         { scope: 'voice.write', target: 'guild' },
         { ...member, channelId: snowflake.nullable().optional(), mute: z.boolean().optional(), deaf: z.boolean().optional() },
         async (a, c) => {

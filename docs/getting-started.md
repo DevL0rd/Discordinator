@@ -102,5 +102,4 @@ Replace the placeholders with real quoted IDs. An empty allowlist allows nothing
 | The bot ignores a message | Your user ID is allowed, the server and channel are allowed, and the message mentions the bot, uses a trigger name or replies to the bot. |
 | No reply arrives | The responder is started on **Home**, and the bot has Send Messages in that channel. |
 | A cloud app cannot connect | Public domain, HTTPS proxy, allowed Host and OAuth settings. See [Connection](connection.md). |
-| Sensitive action returns a preview | Approve it in Discord with `@Discordinator approve APPROVAL_UUID` from the same person in the same channel. |
 | Unknown outcome after a timeout | Check Discord before retrying; follow [recovery](architecture.md#idempotency-and-recovery). |

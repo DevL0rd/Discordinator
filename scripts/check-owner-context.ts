@@ -33,7 +33,7 @@ export async function checkOwnerContext(directory: string): Promise<void> {
     f.policy.config.context.enabled = true;
     f.policy.config.media.enabled = true;
     const queue = new EventQueue();
-    const bridge = new Bridge(f.policy, queue, f.journal, f.approvals, f.api);
+    const bridge = new Bridge(f.policy, queue, f.journal, f.api);
     await assert.rejects(bridge.authorizeContext(ids.channel, ids.user), /Authenticated owner/);
     await checkContextReuse(f);
     const context = await bridge.withOwner(() => bridge.authorizeContext(ids.channel, ids.user));

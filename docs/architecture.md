@@ -16,8 +16,7 @@ flowchart LR
   Client[Authenticated MCP client] --> Poll[Explicit poll]
   Poll --> Queue
   Client --> Bridge[Central bridge authorization]
-  Bridge --> Approval[Fresh Discord approval for sensitive writes]
-  Approval --> Journal[Idempotency journal]
+  Bridge --> Journal[Idempotency journal]
   Journal --> REST[Typed Discord REST operations]
   REST --> Discord
 ```
@@ -28,7 +27,7 @@ flowchart LR
 | :-- | :-- |
 | `src/core/config.ts` | Environment/policy parsing, capability schema, intent prerequisites |
 | `src/core/policy.ts`, `triggers.ts` | Exact user whitelist, resource scopes, destination/origin constraints, literal triggers |
-| `src/core/queue.ts`, `approvals.ts` | Bounded event retention/dedupe and same-user confirmation |
+| `src/core/queue.ts` | Bounded event retention and dedupe |
 | `src/core/journal.ts`, `runtime.ts` | Serialized persistent idempotency and one-instance lock |
 | `src/core/bridge.ts` | Shared authorization before every mutation and outbound response |
 | `src/discord/` | Gateway capture, safe output projection, fixed typed operation families |
@@ -45,9 +44,9 @@ The bot receives messages and its own `/discordinator` interactions. It checks u
 
 Attachment observation has its own policy (on by default), separate from context and delivery. Metadata never becomes an origin. Media reads require an allowed live event, approved resources in that origin's guild (or its exact DM), and opaque event-bound handles. Uploads remain bounded memory; only fingerprints/outcome IDs enter the send journal. Verified controls add child origins bound to the same actor/channel/guild and actual prompt message. The queue resolves the live parent again; child requests cannot extend authority beyond its lifetime. Button/modal values never enter the approval parser. See [files and controls](media-and-controls.md).
 
-Every mutation resolves a live server-owned event ID, rechecks the user and capabilities, verifies its resource target, and goes through the journal. Replies and content-producing operations stay in the triggering channel; admin actions stay in the triggering guild. DMs can only target the triggering whitelisted author. New reactions and pins additionally require a whitelisted message author or this bot. Deletions/moderation can affect other members after explicit confirmation; they never auto-DM the target. Proactive text sends require a separately approved guild-channel grant and have no arbitrary recipient or actor parameter.
+Every mutation resolves a live server-owned event ID, rechecks the user and capabilities, verifies its resource target, and goes through the journal. Replies and content-producing operations stay in the triggering channel; admin actions stay in the triggering guild. DMs can only target the triggering whitelisted author. New reactions and pins additionally require a whitelisted message author or this bot. Deletions/moderation can affect other members and run as soon as they are called; they never auto-DM the target. Proactive text sends require a separately approved guild-channel grant and have no arbitrary recipient or actor parameter.
 
-Sensitive operations are marked in their definition. Missing approval returns a preview, not a Discord mutation. Approvals are bounded to 100 outstanding entries and expire after two minutes. Only a new whitelisted, triggered Discord event in the same channel from the same actor confirms one. The approval binds operation name, normalized arguments, original event ID and idempotency key; changed input or another origin is rejected. Successful execution consumes the approval. Nothing exposes a tool to mark approval as confirmed.
+Destructive operations are marked in their definition so MCP clients can show them as destructive. They run as soon as they are called: origin, scope, channel and Discord permission checks still apply on every call.
 
 Configuration is local. The runtime is event-driven: it watches its settings files for saved changes (such as responder settings and approved people) and reacts to Discord events as they arrive, with no polling loop. Servers and channels default to `blocklist` mode with nothing blocked, so a new server works in every channel right away; `allowlist` mode narrows it. Neither mode changes whitelist/trigger checks, capability grants or approval rules; owner messages follow the same server and channel rules as replies. Message visibility remains governed by Discord channel permissions; requester authorization is not message audience isolation.
 
@@ -61,7 +60,6 @@ Configuration is local. The runtime is event-driven: it watches its settings fil
 | Webhooks | 100 subscriptions, 500 pending deliveries, ten-minute outbox TTL, six attempts, 256 KiB/body, 8 MiB store |
 | Gateway handlers | 32 simultaneous message handlers; overload is counted |
 | Polls | 25 events, 20-second wait, eight waiting callers |
-| Approvals | 100 entries, two-minute TTL, process-local |
 | Journal | 4,096 records, completed-record retention of 24 hours |
 | HTTP | 512,000-byte body/output, 16 active dispatches, 32 connections, 120 requests/minute |
 | HTTP timeouts | Five-second headers, 30-second request receipt timeout |
@@ -76,7 +74,7 @@ REST errors are reduced to status/network categories. Startup and Gateway logs a
 
 Keys are hashed; normalized tool input is fingerprinted. A pending record is flushed to a private temporary file, atomically renamed into the journal, and recorded before issuing a mutation. Completed results are retained for replay; changed input with the same key is rejected. Mutations are serialized, and the runtime lock prevents concurrent process instances sharing this directory. Text sends also use Discord `nonce`/`enforce_nonce` within Discord’s limited nonce retention window. Poll creation and other writes rely on the journal alone.
 
-Approval/provenance rejection before the request does not establish success. Once an action enters the journal, any exception, interruption or crash can leave a pending/unknown record; that key will not replay automatically. A completed cache remains subject to current origin/scopes, so an old event or restarted queue cannot be used to bypass authorization. Completed entries expire after 24 hours; this is bounded retry protection, not global exactly-once delivery.
+A rejection before the request does not establish success. Once an action enters the journal, any exception, interruption or crash can leave a pending/unknown record; that key will not replay automatically. A completed cache remains subject to current origin/scopes, so an old event or restarted queue cannot be used to bypass authorization. Completed entries expire after 24 hours; this is bounded retry protection, not global exactly-once delivery.
 
 If a call is uncertain:
 

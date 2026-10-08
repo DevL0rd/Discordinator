@@ -4,7 +4,6 @@ import type { Message, PartialMessage, ChatInputCommandInteraction, Interaction 
 import type { Config, PolicyConfig } from '../core/config.js';
 import type { Policy } from '../core/policy.js';
 import type { EventQueue } from '../core/queue.js';
-import type { Approvals } from '../core/approvals.js';
 import { Triggers } from '../core/triggers.js';
 import type { ContextIndex } from '../core/context.js';
 import { author, botNames, interactionAuthor, mentioned, observe } from './observation.js';
@@ -56,7 +55,6 @@ export class Gateway {
         readonly config: Config,
         readonly policy: Policy,
         readonly queue: EventQueue,
-        readonly approvals: Approvals,
         readonly api: Api,
         services: {
             context?: ContextIndex;
@@ -305,15 +303,7 @@ export class Gateway {
         const queued = this.queue.add(`message:${message.id}`, event);
         if (!queued) return null;
         await this.replyOrigins?.capture(queued);
-        const approvalId = await this.approvalIn(message);
-        if (approvalId) this.approvals.confirm(event, approvalId);
         return queued;
-    }
-    private async approvalIn(message: Message): Promise<string | null> {
-        const prefixed = this.triggers.approvalId(message.content, this.api.botId, message.guildId === null);
-        if (prefixed) return prefixed;
-        const bare = this.triggers.approvalId(message.content, this.api.botId, true);
-        return bare && (await replyToBot(message, this.api.botId)) ? bare : null;
     }
     private async addressed(message: Message): Promise<boolean> {
         if (message.guildId === null) return true;
@@ -347,8 +337,6 @@ export class Gateway {
         const queued = await captureInteraction(interaction, event, this.policy, this.queue);
         if (!queued) return;
         await this.events?.emit(interactionPayload(queued, interaction.id), interactionEventName);
-        const approvalId = this.triggers.approvalId(event.text, this.api.botId, true);
-        if (approvalId) this.approvals.confirm(event, approvalId);
     }
 
     onState?: () => void;

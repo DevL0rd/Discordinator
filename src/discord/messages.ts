@@ -53,7 +53,7 @@ export const messageOperations = [
     ),
     define(
         'message_delete',
-        'Delete one message after explicit Discord confirmation.',
+        'Delete one message.',
         { scope: 'moderation.write', target: 'channel' },
         message,
         (a, c) => c.api.delete(`/channels/${a.channelId}/messages/${a.messageId}`),
@@ -61,7 +61,7 @@ export const messageOperations = [
     ),
     define(
         'messages_bulk_delete',
-        'Delete 2–100 messages newer than 14 days, with confirmation.',
+        'Delete 2–100 messages newer than 14 days.',
         { scope: 'moderation.write', target: 'channel' },
         { ...channel, messageIds: z.array(message.messageId).min(2).max(100) },
         (a, c) => c.api.post(`/channels/${a.channelId}/messages/bulk-delete`, { messages: a.messageIds }),
@@ -80,7 +80,7 @@ export const messageOperations = [
     ),
     define(
         'message_unpin',
-        'Unpin a message with confirmation.',
+        'Unpin a message.',
         { scope: 'messages.write', target: 'channel' },
         message,
         (a, c) => c.api.delete(`/channels/${a.channelId}/messages/pins/${a.messageId}`),
@@ -138,7 +138,7 @@ export const messageOperations = [
     ),
     define(
         'poll_end',
-        'End a bot-authored poll with confirmation.',
+        'End a bot-authored poll.',
         { scope: 'messages.write', target: 'channel' },
         message,
         async (a, c) => {

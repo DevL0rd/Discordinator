@@ -39,7 +39,7 @@ async function checkChannels(f: Fixture): Promise<void> {
 async function checkWithoutRequest(f: Fixture): Promise<void> {
     let now = 0;
     const queue = new EventQueue(5, 10, () => now);
-    const bridge = new Bridge(f.policy, queue, f.journal, f.approvals, f.api);
+    const bridge = new Bridge(f.policy, queue, f.journal, f.api);
     await bridge.proactive({ channelId: ids.channel, content: 'No request required', idempotencyKey: 'post-empty-queue' });
     const event = queue.add('old-request', {
         actorId: ids.user,

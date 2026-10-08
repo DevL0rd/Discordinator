@@ -62,10 +62,10 @@ export class Journal {
         return next;
     }
 
-    async execute(key: string, input: unknown, action: () => Promise<unknown>, preflight?: () => void): Promise<unknown> {
+    async execute(key: string, input: unknown, action: () => Promise<unknown>): Promise<unknown> {
         const hashedKey = createHash('sha256').update(key).digest('hex');
         const fingerprint = createHash('sha256').update(canonical(input, true)).digest('hex');
-        const claim = await this.locked(() => this.claim(hashedKey, fingerprint, preflight));
+        const claim = await this.locked(() => this.claim(hashedKey, fingerprint));
         if ('result' in claim) return claim.result;
         let result: unknown;
         try {
@@ -81,12 +81,11 @@ export class Journal {
         return result;
     }
 
-    private async claim(hashedKey: string, fingerprint: string, preflight?: () => void): Promise<{ result: unknown } | { claimed: true }> {
+    private async claim(hashedKey: string, fingerprint: string): Promise<{ result: unknown } | { claimed: true }> {
         this.prune();
         const previous = this.records[hashedKey];
         if (previous) return { result: this.replay(previous, fingerprint) };
         if (Object.keys(this.records).length >= this.capacity) throw new Error('Idempotency journal is full of unresolved operations');
-        preflight?.();
         this.records[hashedKey] = { fingerprint, state: 'pending', createdAt: this.now() };
         await this.save();
         return { claimed: true };

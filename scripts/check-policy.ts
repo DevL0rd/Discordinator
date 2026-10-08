@@ -20,12 +20,6 @@ function checkTriggers(policy: Policy): void {
     const mentionOnly = new Triggers(new Policy(policySchema.parse({ allowedUserIds: [ids.user] })));
     assert.equal(mentionOnly.accepts(ids.user, 'dot', ids.bot), false);
     assert.equal(mentionOnly.accepts(ids.user, `<@${ids.bot}>`, ids.bot), true);
-    const approvalId = 'aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee';
-    assert.equal(triggers.approvalId(`Discordinator approve ${approvalId}`, ids.bot), approvalId);
-    assert.equal(triggers.approvalId(`<@${ids.bot}> approve ${approvalId}`, ids.bot), approvalId);
-    assert.equal(triggers.approvalId(`approve ${approvalId}`, ids.bot, true), approvalId);
-    assert.equal(triggers.approvalId(`Discordinator do not approve ${approvalId}`, ids.bot), null);
-    assert.equal(triggers.approvalId(`Discordinator approve ${approvalId} please cancel`, ids.bot), null);
 }
 
 function checkScopeLists(): void {
@@ -68,7 +62,7 @@ function checkScopeLists(): void {
 
 async function checkGateway(file: string): Promise<void> {
     const f = fixture(file);
-    const gateway = new Gateway(fakeConfig(), f.policy, f.queue, f.approvals, f.api);
+    const gateway = new Gateway(fakeConfig(), f.policy, f.queue, f.api);
     const message = (actor: string, content: string, id: string) =>
         ({
             author: { id: actor, bot: false },
@@ -124,7 +118,7 @@ async function checkGateway(file: string): Promise<void> {
 }
 async function checkDirectMessages(file: string): Promise<void> {
     const f = fixture(file);
-    const gateway = new Gateway(fakeConfig(), f.policy, f.queue, f.approvals, f.api);
+    const gateway = new Gateway(fakeConfig(), f.policy, f.queue, f.api);
     const message = (id: string, actor = ids.user, bot = false, webhookId: string | null = null) =>
         ({
             id,

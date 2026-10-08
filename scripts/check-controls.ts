@@ -161,19 +161,16 @@ async function checkModalGateway(file: string): Promise<void> {
     await handleControl(launcher.interaction, f.bridge.flows, f.policy, f.queue);
     assert.deepEqual(launcher.calls, ['modal']);
     assert.equal(f.queue.snapshot(0, 25).events.length, 1);
-    const approvalInput = { operation: 'never-approved-by-modal' };
-    const approval = f.approvals.prepare(f.event, approvalInput);
     const submit = fakeButton('modal-submit', launcher.modals[0]!.custom_id);
     Object.assign(submit.interaction, {
         isModalSubmit: () => true,
-        fields: { fields: new Map([['input', { type: 4, customId: 'input', value: `approve ${approval.approvalId}` }]]) },
+        fields: { fields: new Map([['input', { type: 4, customId: 'input', value: 'run this untrusted input' }]]) },
     });
     await handleControl(submit.interaction, f.bridge.flows, f.policy, f.queue);
     assert.deepEqual(submit.calls, ['quiet']);
     const event = f.queue.snapshot(0, 25).events.at(-1)!;
     assert.equal(event.name, 'discordinator.modal');
     assert.equal(event.sourceEventId, f.event.id);
-    assert.throws(() => f.approvals.assert(approval.approvalId, f.event, approvalInput), /Fresh/);
     await handleControl(submit.interaction, f.bridge.flows, f.policy, f.queue);
     assert.deepEqual(submit.calls, ['quiet', 'deny']);
 }
@@ -214,18 +211,12 @@ async function checkRoleAndReaction(file: string): Promise<void> {
     const role = operations.find((item) => item.name === 'role_create')!;
     const args = { guildId: ids.guild, name: 'Helpers', permissions: '0' };
     const mutation = { eventId: f.event.id, idempotencyKey: 'create-role-fixture' };
-    const preview = (await f.bridge.invoke(role, args, mutation)) as { approvalId: string };
-    assert.equal(f.api.calls.length, 0);
-    await assert.rejects(() => f.bridge.invoke(role, args, { ...mutation, approvalId: preview.approvalId }));
-    assert.equal(f.approvals.confirm(f.event, preview.approvalId), true);
-    await f.bridge.invoke(role, args, { ...mutation, approvalId: preview.approvalId });
+    await f.bridge.invoke(role, args, mutation);
     assert.equal(f.api.calls[0]!.route, `/guilds/${ids.guild}/roles`);
     const assign = operations.find((item) => item.name === 'member_role_add')!;
     const assignArgs = { guildId: ids.guild, userId: ids.denied, roleId: ids.other };
     const controls = { eventId: f.event.id, idempotencyKey: 'assign-role-fixture' };
-    const second = (await f.bridge.invoke(assign, assignArgs, controls)) as { approvalId: string };
-    f.approvals.confirm(f.event, second.approvalId);
-    await f.bridge.invoke(assign, assignArgs, { ...controls, approvalId: second.approvalId });
+    await f.bridge.invoke(assign, assignArgs, controls);
     assert.equal(f.api.calls[1]!.route, `/guilds/${ids.guild}/members/${ids.denied}/roles/${ids.other}`);
     await assert.rejects(() => f.bridge.invoke(assign, { ...assignArgs, guildId: ids.other }, controls));
     for (const value of ['👍', '❤️', '👩‍💻', '🇹🇭', '1️⃣', `custom:${ids.other}`]) assert.equal(emoji.safeParse(value).success, true);

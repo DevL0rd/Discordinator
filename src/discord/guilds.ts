@@ -7,7 +7,7 @@ export const guildOperations = [
     ),
     define(
         'guild_edit',
-        'Change guild name, description or verification level, with confirmation.',
+        'Change guild name, description or verification level.',
         { scope: 'guild.write', target: 'guild' },
         {
             ...guild,
@@ -35,7 +35,7 @@ export const guildOperations = [
     ),
     define(
         'invite_create',
-        'Create a bounded channel invite, with confirmation. This is not a bot installation invite.',
+        'Create a bounded channel invite. This is not a bot installation invite.',
         { scope: 'invites.write', target: 'channel' },
         {
             ...channel,
@@ -54,7 +54,7 @@ export const guildOperations = [
     ),
     define(
         'invite_delete',
-        'Revoke an invite belonging to the specified approved channel, with confirmation.',
+        'Revoke an invite belonging to the specified approved channel.',
         { scope: 'invites.write', target: 'channel' },
         { ...channel, code: z.string().regex(/^[A-Za-z0-9_-]{2,100}$/) },
         async (a, c) => {
@@ -66,7 +66,7 @@ export const guildOperations = [
     ),
     define(
         'command_register',
-        'Register /discordinator with a text option in this guild, with confirmation. No global replacement.',
+        'Register /discordinator with a text option in this guild. No global replacement.',
         { scope: 'commands.write', target: 'guild' },
         guild,
         (a, c) =>
@@ -84,7 +84,7 @@ export const guildOperations = [
     ),
     define(
         'command_delete',
-        'Delete one of this bot’s guild commands, with confirmation.',
+        'Delete one of this bot’s guild commands.',
         { scope: 'commands.write', target: 'guild' },
         { ...guild, commandId: channel.channelId },
         (a, c) => c.api.delete(`/applications/${c.api.botId}/guilds/${a.guildId}/commands/${a.commandId}`),
@@ -95,7 +95,7 @@ export const guildOperations = [
     ),
     define(
         'emoji_create',
-        'Create an emoji from bounded image data, with confirmation; no URL fetching.',
+        'Create an emoji from bounded image data; no URL fetching.',
         { scope: 'expressions.write', target: 'guild' },
         {
             ...guild,
@@ -110,7 +110,7 @@ export const guildOperations = [
     ),
     define(
         'emoji_rename',
-        'Rename a guild emoji, with confirmation.',
+        'Rename a guild emoji.',
         { scope: 'expressions.write', target: 'guild' },
         { ...guild, emojiId: channel.channelId, name: z.string().regex(/^[A-Za-z0-9_]{2,32}$/) },
         (a, c) => c.api.patch(`/guilds/${a.guildId}/emojis/${a.emojiId}`, { name: a.name }),
@@ -118,7 +118,7 @@ export const guildOperations = [
     ),
     define(
         'emoji_delete',
-        'Delete a guild emoji, with confirmation.',
+        'Delete a guild emoji.',
         { scope: 'expressions.write', target: 'guild' },
         { ...guild, emojiId: channel.channelId },
         (a, c) => c.api.delete(`/guilds/${a.guildId}/emojis/${a.emojiId}`),
@@ -133,7 +133,7 @@ export const guildOperations = [
     ),
     define(
         'sticker_edit',
-        'Change a guild sticker’s name, description or tags, with confirmation.',
+        'Change a guild sticker’s name, description or tags.',
         { scope: 'expressions.write', target: 'guild' },
         {
             ...guild,
@@ -152,7 +152,7 @@ export const guildOperations = [
     ),
     define(
         'sticker_delete',
-        'Delete a guild sticker, with confirmation.',
+        'Delete a guild sticker.',
         { scope: 'expressions.write', target: 'guild' },
         { ...guild, stickerId: channel.channelId },
         (a, c) => c.api.delete(`/guilds/${a.guildId}/stickers/${a.stickerId}`),

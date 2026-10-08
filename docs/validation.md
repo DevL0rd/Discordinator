@@ -26,7 +26,6 @@ Checked behavior includes:
 - Whitelist checks before trigger parsing, literal mention/name/alias matching, Unicode/underscore boundaries and escaped alias punctuation.
 - No ordinary-message or non-whitelisted-user response, message dedupe, slash deferral/edit gating.
 - Captured-event requirements, suppressed mentions, same-author DMs, and owner sends refused outside the server and channel rules or to people who are not approved.
-- Exact sensitive-action previews, same-actor/channel confirmation, mismatched input rejection and successful retry replay.
 - Journal reload, changed-key-input denial, ambiguous outcomes, capacity rejection, queue loss/expiry/dedupe.
 - Real v2 SDK MCP discovery/tool listing/poll/reply against mocks, unauthenticated/wrong-credential/Origin denial, body limits and actor-field spoof rejection.
 - Modern 2026-07-28 authenticated discovery/list/subscribe/unsubscribe, disabled all-message denial and schema validation.
@@ -40,7 +39,7 @@ Checked behavior includes:
 - Media upload reservation/expiry/size, canonical ordered chunks, exact retry bytes, SHA-256 sealing, filename/format/MIME/dimension checks and mention-safe source-linked multipart replies.
 - Local versus history attachment coverage, latest/exact/filter/pagination selection, cross-channel scope checks, handle/event binding, metadata redaction, deletion, source mutation and revocation during retrieval.
 - Fixed CDN host/path, private DNS denial, redirect/size/stream rejection and byte-bound downloads using mocks; no live attachment request is made.
-- Actor/application/message/channel/guild/type-bound single-use controls, invalid choices/fields, modal launch before deferral, correlated child response and parent expiry. Modal approval-like text cannot confirm sensitive actions.
+- Actor/application/message/channel/guild/type-bound single-use controls, invalid choices/fields, modal launch before deferral, correlated child response and parent expiry.
 - Confirmed role creation/assignment, cross-guild denial and Unicode/custom emoji schemas/routes.
 
 Build, type, quality, mock behavior and banner checks were run locally on Linux. Both production-only and full dependency audits reported zero known advisories at validation time. Canonical serialization matched both baseline implementations in 22 cases; control-byte validation preserved all 32 ASCII control cases and 11 Unicode/custom emoji acceptance/rejection cases passed. This does not establish live Discord permissions, privileged-intent approval, end-to-end public HTTPS/provider OAuth integration, actual platform delivery or Windows/macOS execution. Those require later explicitly authorized integration work with the owner’s credentials and resources.

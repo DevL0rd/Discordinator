@@ -80,7 +80,7 @@ function checkBounds(index: ContextIndex, f: ReturnType<typeof fixture>): void {
 
 async function checkReplies(file: string): Promise<void> {
     const f = fixture(file);
-    const gateway = new Gateway(fakeConfig(), f.policy, f.queue, f.approvals, f.api);
+    const gateway = new Gateway(fakeConfig(), f.policy, f.queue, f.api);
     let fetched = 0;
     const message = (actorId: string, targetAuthor: string, id: string, targetChannel: string = ids.channel) =>
         ({

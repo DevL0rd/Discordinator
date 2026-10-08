@@ -14,7 +14,6 @@ import { Flows } from '../interactions/flows.js';
 import type { Journal } from './journal.js';
 import { ContextIndex } from './context.js';
 import { Directory } from './directory.js';
-import type { Approvals } from './approvals.js';
 import type { ReplyOrigins } from './reply-origins.js';
 import { splitMessage } from '../operator/message-split.js';
 import { peopleRevision } from '../operator/people.js';
@@ -24,7 +23,6 @@ export type Rich = { content: string; embeds?: import('discord.js').APIEmbed[] }
 export interface MutationInput {
     eventId: string;
     idempotencyKey: string;
-    approvalId?: string | undefined;
 }
 
 const warningColor = 0xf0b232;
@@ -42,7 +40,6 @@ export class Bridge {
         readonly policy: Policy,
         readonly queue: EventQueue,
         readonly journal: Journal,
-        readonly approvals: Approvals,
         readonly api: Api,
         ...storage: [replyOrigins?: ReplyOrigins, replyJournal?: Journal]
     ) {
@@ -97,23 +94,11 @@ export class Bridge {
 
     private async mutate(operation: Operation, args: Record<string, unknown>, mutation: MutationInput): Promise<unknown> {
         const input = { operation: operation.name, args, eventId: mutation.eventId, idempotencyKey: mutation.idempotencyKey };
-        if (operation.sensitive && !mutation.approvalId) return this.approvals.prepare(this.event(mutation.eventId).event, input);
-        return this.journal.execute(
-            mutation.idempotencyKey,
-            input,
-            async () => {
-                const event = await this.replyEvent(mutation.eventId);
-                await this.authorize(operation, args, event);
-                if (operation.sensitive) {
-                    this.approvals.assert(mutation.approvalId!, event.event, input);
-                    this.approvals.consume(mutation.approvalId!);
-                }
-                return project(await operation.run(args, { api: this.api, policy: this.policy, origin: event }));
-            },
-            () => {
-                if (operation.sensitive) this.approvals.assert(mutation.approvalId!, this.event(mutation.eventId).event, input);
-            },
-        );
+        return this.journal.execute(mutation.idempotencyKey, input, async () => {
+            const event = await this.replyEvent(mutation.eventId);
+            await this.authorize(operation, args, event);
+            return project(await operation.run(args, { api: this.api, policy: this.policy, origin: event }));
+        });
     }
 
     private readonly typingChecks = new Map<string, { context: AccessContext; until: number }>();
@@ -186,7 +171,7 @@ export class Bridge {
     async prompt(input: MutationInput & import('../interactions/schema.js').Prompt): Promise<unknown> {
         await this.replyEvent(input.eventId);
         this.flows.authorize(input.eventId);
-        const { eventId, idempotencyKey: _key, approvalId: _approval, ...prompt } = input;
+        const { eventId, idempotencyKey: _key, ...prompt } = input;
         return this.journal.execute(input.idempotencyKey, { operation: 'prompt', ...input }, async () => {
             const flow = this.flows.prepare(eventId, prompt);
             const reply = (await this.deliver(

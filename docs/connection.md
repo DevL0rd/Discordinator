@@ -74,9 +74,6 @@ Check droppedOnDedupeLimit for overload loss too.
 Handle only captured whitelisted triggers. Use the eventId for user-driven writes.
 Answer with discord_send and the eventId so the reply stays in its conversation. An eventId does not expire with time: late answers and prompts still work, and the sender, channel and scope are checked again on every call. It also survives restarts and deletion or editing of the request message (the answer is then posted in the channel without a reply link), and an expired Discord interaction token falls back to a normal channel message. It stops working only if its author is no longer allowed or the oldest records are discarded to stay within storage limits.
 Never move a user's reply to another channel or DM to evade origin rules.
-Before executing a sensitive operation, show its exact preview to the originating
-user and wait for a new addressed Discord approval from that user in that channel.
-Repeat the exact original input/key with approvalId only after that confirmation.
 Reuse idempotency keys for retries. On an uncertain outcome, inspect Discord and
 ask the owner before intentionally issuing a new key.
 Poll again only while this task is actively running, or through an independently
@@ -84,7 +81,6 @@ authorized host scheduling mechanism. A supported explicit subscription is anoth
 option when requested; do not promise automatic arbitrary-event wake of this chat.
 ```
 
-The confirmation syntax is exact: `@Discordinator approve APPROVAL_UUID` using an actual bot mention, `Discordinator approve APPROVAL_UUID` using an enabled alias, or `/discordinator text:approve APPROVAL_UUID`. Nothing else belongs in the confirmation message. Negations, trailing requests and bare unaddressed messages do not confirm an action.
 
 ## Polling contract
 

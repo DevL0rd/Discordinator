@@ -5,7 +5,6 @@ import { CommandService } from './operator/commands.js';
 import { Policy } from './core/policy.js';
 import { EventQueue } from './core/queue.js';
 import { Journal } from './core/journal.js';
-import { Approvals } from './core/approvals.js';
 import { Bridge } from './core/bridge.js';
 import { DiscordApi, type Api } from './discord/api.js';
 import { Gateway } from './discord/gateway.js';
@@ -139,18 +138,17 @@ async function createCore(startup: Startup, config: Config, policyConfig: Policy
     await replyOrigins.load();
     const replyJournal = new Journal('.data/reply-idempotency.json', 16384, Date.now, 7 * 24 * 60 * 60_000);
     await replyJournal.load();
-    const approvals = new Approvals(policy);
     const api = startup.api(config.DISCORD_BOT_TOKEN, policy);
-    const bridge = new Bridge(policy, queue, journal, approvals, api, replyOrigins, replyJournal);
+    const bridge = new Bridge(policy, queue, journal, api, replyOrigins, replyJournal);
     const voice = (bridge.voice = createVoice(config, bridge));
     const store = new SubscriptionStore('.data/subscriptions.json');
     await store.load();
-    return { policy, queue, approvals, api, bridge, voice, store, replyOrigins };
+    return { policy, queue, api, bridge, voice, store, replyOrigins };
 }
 
 async function createRuntime(startup: Startup, config: Config, policyConfig: PolicyConfig, oauth?: BundledOAuth) {
     const core = await createCore(startup, config, policyConfig);
-    const { policy, queue, approvals, api, bridge, voice, store, replyOrigins } = core;
+    const { policy, queue, api, bridge, voice, store, replyOrigins } = core;
     const access = { auth: new Authenticator(config, oauth?.verifyKey) };
     const events = new EventsService(
         store,
@@ -178,7 +176,7 @@ async function createRuntime(startup: Startup, config: Config, policyConfig: Pol
     const presence = new PresenceWriter();
     const localKey = await loadLocalKey();
     const runtime = {
-        gateway: startup.gateway(config, policy, queue, approvals, api, services),
+        gateway: startup.gateway(config, policy, queue, api, services),
         http: undefined as unknown as HttpServer,
         oauth,
         access,
@@ -192,7 +190,7 @@ async function createRuntime(startup: Startup, config: Config, policyConfig: Pol
         touch: () => undefined as void,
         status: () => liveStatus(runtime),
         listen: (): HttpServer => listener(config, bridge, runtime, localKey),
-        connect: () => startup.gateway(config, policy, queue, approvals, api, services),
+        connect: () => startup.gateway(config, policy, queue, api, services),
         api,
     };
     runtime.http = runtime.listen();

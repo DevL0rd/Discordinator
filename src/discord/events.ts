@@ -9,7 +9,7 @@ export const scheduledEventOperations = [
     ),
     define(
         'scheduled_event_create',
-        'Create an external scheduled event, with confirmation.',
+        'Create an external scheduled event.',
         { scope: 'events.write', target: 'guild' },
         {
             ...guild,
@@ -36,7 +36,7 @@ export const scheduledEventOperations = [
     ),
     define(
         'scheduled_event_edit',
-        'Edit scheduled event text or transition its status, with confirmation.',
+        'Edit scheduled event text or transition its status.',
         { scope: 'events.write', target: 'guild' },
         {
             ...event,
@@ -54,7 +54,7 @@ export const scheduledEventOperations = [
     ),
     define(
         'scheduled_event_delete',
-        'Delete a scheduled event, with confirmation.',
+        'Delete a scheduled event.',
         { scope: 'events.write', target: 'guild' },
         event,
         (a, c) => c.api.delete(`/guilds/${a.guildId}/scheduled-events/${a.scheduledEventId}`),

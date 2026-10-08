@@ -5,7 +5,6 @@ import { policySchema, type Config } from '../src/core/config.js';
 import { Policy } from '../src/core/policy.js';
 import { EventQueue } from '../src/core/queue.js';
 import { Journal } from '../src/core/journal.js';
-import { Approvals } from '../src/core/approvals.js';
 import { Bridge } from '../src/core/bridge.js';
 
 export const ids = {
@@ -67,9 +66,8 @@ export function fixture(file: string) {
     );
     const queue = new EventQueue();
     const journal = new Journal(file);
-    const approvals = new Approvals(policy);
     const api = new FakeApi(policy);
-    const bridge = new Bridge(policy, queue, journal, approvals, api);
+    const bridge = new Bridge(policy, queue, journal, api);
     const event = queue.add('fixture', {
         actorId: ids.user,
         channelId: ids.channel,
@@ -78,7 +76,7 @@ export function fixture(file: string) {
         kind: 'message',
         text: 'Discordinator help',
     })!;
-    return { policy, queue, journal, approvals, api, bridge, event };
+    return { policy, queue, journal, api, bridge, event };
 }
 
 export function fakeConfig(port = 8787): Config {

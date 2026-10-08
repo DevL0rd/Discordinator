@@ -62,7 +62,7 @@ Administrator gives broad Discord permissions and bypasses channel overwrites, b
 
 For a smaller installation, start with View Channel, Send Messages, Read Message History and Send Messages in Threads as needed. Add Pin Messages/Add Reactions/Create Threads for those operations, and Connect/Speak for [voice calls](voice.md); management/moderation/event/expression capabilities need the corresponding permissions. Administrator does not override Discordinator’s whitelist, scopes or approval gate.
 
-`discord_command_register` is an approved, confirmed operation, not startup behavior. It creates/updates this bot’s guild `/discordinator` command with default member permissions `"0"`, so it is admin-only until you explicitly configure a Discord command permission overwrite for a whitelisted user. Discord command permissions and Discordinator’s whitelist are separate checks. See [application command permissions](https://docs.discord.com/developers/interactions/application-commands#permissions).
+`discord_command_register` is an explicit operation, not startup behavior. It creates/updates this bot’s guild `/discordinator` command with default member permissions `"0"`, so it is admin-only until you explicitly configure a Discord command permission overwrite for a whitelisted user. Discord command permissions and Discordinator’s whitelist are separate checks. See [application command permissions](https://docs.discord.com/developers/interactions/application-commands#permissions).
 
 ## Run, stop and recover
 

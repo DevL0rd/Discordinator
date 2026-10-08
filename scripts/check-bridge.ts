@@ -11,20 +11,14 @@ import { EventQueue } from '../src/core/queue.js';
 async function checkMutations(file: string): Promise<void> {
     const f = fixture(file);
     const operation = operations.find((item) => item.name === 'message_delete')!;
-    const controls = { eventId: f.event.id, idempotencyKey: 'delete-confirmation' };
+    const controls = { eventId: f.event.id, idempotencyKey: 'delete-once' };
     const args = { channelId: ids.channel, messageId: ids.message };
     await assert.rejects(() => f.bridge.invoke(operation, args));
-    const preview = (await f.bridge.invoke(operation, args, controls)) as { approvalId: string };
     assert.equal(f.api.calls.length, 0);
-    await assert.rejects(() => f.bridge.invoke(operation, args, { ...controls, approvalId: preview.approvalId }));
-    assert.equal(f.approvals.confirm({ ...f.event, actorId: ids.user, channelId: ids.other }, preview.approvalId), false);
-    assert.equal(f.approvals.confirm(f.event, preview.approvalId), true);
-    await assert.rejects(() =>
-        f.bridge.invoke(operation, { ...args, messageId: ids.other }, { ...controls, approvalId: preview.approvalId }),
-    );
-    await f.bridge.invoke(operation, args, { ...controls, approvalId: preview.approvalId });
-    await f.bridge.invoke(operation, args, { ...controls, approvalId: preview.approvalId });
-    assert.equal(f.api.calls.length, 1);
+    await f.bridge.invoke(operation, args, controls);
+    assert.equal(f.api.calls.length, 1, 'a destructive call runs at once, with no confirmation step');
+    await f.bridge.invoke(operation, args, controls);
+    assert.equal(f.api.calls.length, 1, 'repeating the same key does not run it twice');
     const channels = f.policy.config.channels;
     f.policy.config.channels = { mode: 'allowlist', allowed: [], blocked: [] };
     await assert.rejects(

@@ -126,7 +126,7 @@ export function fakeMessage(overrides: Record<string, unknown> = {}): Message {
     } as unknown as Message;
 }
 
-export function gatewayHarness(file: string, services: ConstructorParameters<typeof Gateway>[5] = {}, config = fakeConfig()) {
+export function gatewayHarness(file: string, services: ConstructorParameters<typeof Gateway>[4] = {}, config = fakeConfig()) {
     const f = fixture(file);
     f.policy.config.scopes.push('messages.read');
     f.policy.config.context.enabled = true;
@@ -156,7 +156,7 @@ export function gatewayHarness(file: string, services: ConstructorParameters<typ
             },
         } as unknown as EventsService,
     };
-    const gateway = new Gateway(config, f.policy, f.queue, f.approvals, f.api, { ...fakes, ...services });
+    const gateway = new Gateway(config, f.policy, f.queue, f.api, { ...fakes, ...services });
     const queued = () => f.queue.snapshot(0, 1000).events;
     return { ...f, gateway, context, media, emitted, queued };
 }

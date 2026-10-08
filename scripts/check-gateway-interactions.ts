@@ -82,13 +82,10 @@ async function checkAsk(file: string): Promise<void> {
     const builtIn = fakeInteraction({ commandName: 'status' });
     await h.gateway.interaction(builtIn.interaction);
     assert.deepEqual(builtIn.sent, [], 'built-in commands do nothing without a command handler');
-    const origin = { actorId: ids.user, channelId: ids.channel, guildId: ids.guild };
-    const approval = h.approvals.prepare(origin, { action: 'slash' }).approvalId;
-    const ask = fakeInteraction({ id: snowflakeId(9001), options: { getString: () => `approve ${approval}` } });
+    const ask = fakeInteraction({ id: snowflakeId(9001), options: { getString: () => 'do the thing' } });
     await h.gateway.interaction(ask.interaction);
-    assert.doesNotThrow(() => h.approvals.assert(approval, origin, { action: 'slash' }), 'a slash command can approve');
     assert.equal(h.emitted.at(-1)![1], 'discord.interaction.created');
-    assert.equal(h.emitted.at(-1)![0].text, `approve ${approval}`);
+    assert.equal(h.emitted.at(-1)![0].text, 'do the thing');
     const blank = fakeInteraction({ id: snowflakeId(9002), options: { getString: () => null } });
     await h.gateway.interaction(blank.interaction);
     assert.equal(h.queued().at(-1)!.text, '', 'a missing text option becomes empty text');

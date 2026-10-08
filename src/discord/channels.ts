@@ -21,7 +21,7 @@ export const channelOperations = [
     ),
     define(
         'channel_create',
-        'Create a text, voice, category, announcement, stage or forum channel, with confirmation.',
+        'Create a text, voice, category, announcement, stage or forum channel.',
         { scope: 'channels.write', target: 'guild' },
         {
             ...guild,
@@ -41,7 +41,7 @@ export const channelOperations = [
     ),
     define(
         'channel_edit',
-        'Change channel name, topic, slowmode or NSFW flag, with confirmation.',
+        'Change channel name, topic, slowmode or NSFW flag.',
         { scope: 'channels.write', target: 'channel' },
         {
             ...channel,
@@ -56,7 +56,7 @@ export const channelOperations = [
     ),
     define(
         'channel_delete',
-        'Delete a channel or thread, with confirmation.',
+        'Delete a channel or thread.',
         { scope: 'channels.write', target: 'channel' },
         channel,
         (a, c) => c.api.delete(`/channels/${a.channelId}`),
@@ -64,7 +64,7 @@ export const channelOperations = [
     ),
     define(
         'channel_overwrite_set',
-        'Set a typed member/role permission overwrite, with confirmation.',
+        'Set a typed member/role permission overwrite.',
         { scope: 'channels.write', target: 'channel' },
         overwrite,
         (a, c) => c.api.put(`/channels/${a.channelId}/permissions/${a.overwriteId}`, { type: a.type, allow: a.allow, deny: a.deny }),
@@ -72,7 +72,7 @@ export const channelOperations = [
     ),
     define(
         'channel_overwrite_delete',
-        'Delete a permission overwrite, with confirmation.',
+        'Delete a permission overwrite.',
         { scope: 'channels.write', target: 'channel' },
         { ...channel, overwriteId: snowflake },
         (a, c) => c.api.delete(`/channels/${a.channelId}/permissions/${a.overwriteId}`),
@@ -131,7 +131,7 @@ export const channelOperations = [
     ),
     define(
         'thread_edit',
-        'Archive, reopen, lock or rename a thread, with confirmation.',
+        'Archive, reopen, lock or rename a thread.',
         { scope: 'threads.write', target: 'channel' },
         { ...channel, archived: z.boolean().optional(), locked: z.boolean().optional(), name: shortName.optional() },
         (a, c) => c.api.patch(`/channels/${a.channelId}`, { archived: a.archived, locked: a.locked, name: a.name }),
@@ -155,7 +155,7 @@ export const channelOperations = [
     ),
     define(
         'thread_member_add',
-        'Add a whitelisted user to a thread, with confirmation.',
+        'Add a whitelisted user to a thread.',
         { scope: 'threads.write', target: 'channel' },
         { ...channel, userId: snowflake },
         (a, c) => {
@@ -166,7 +166,7 @@ export const channelOperations = [
     ),
     define(
         'thread_member_remove',
-        'Remove a thread member, with confirmation.',
+        'Remove a thread member.',
         { scope: 'threads.write', target: 'channel' },
         { ...channel, userId: snowflake },
         (a, c) => c.api.delete(`/channels/${a.channelId}/thread-members/${a.userId}`),

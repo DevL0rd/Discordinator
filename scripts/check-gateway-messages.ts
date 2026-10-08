@@ -87,35 +87,18 @@ async function checkUndelivered(file: string): Promise<void> {
     h.gateway.stop();
 }
 
-async function checkApprovals(file: string): Promise<void> {
+async function checkRoleMention(file: string): Promise<void> {
     const h = gatewayHarness(file);
-    const origin = { actorId: ids.user, channelId: ids.channel, guildId: ids.guild };
-    const named = h.approvals.prepare(origin, { action: 'named' }).approvalId;
-    await h.gateway.message(fakeMessage({ id: id('named-approval'), content: `Discordinator approve ${named}` }));
-    assert.doesNotThrow(() => h.approvals.assert(named, origin, { action: 'named' }));
-    const replied = h.approvals.prepare(origin, { action: 'reply' }).approvalId;
-    const reference = { messageId: ids.other, channelId: ids.channel, guildId: ids.guild };
-    const target = { id: ids.other, channelId: ids.channel, guildId: ids.guild, author: { id: ids.bot } };
-    await h.gateway.message(
-        fakeMessage({ id: id('reply-approval'), content: `approve ${replied}`, reference, fetchReference: () => Promise.resolve(target) }),
-    );
-    assert.doesNotThrow(() => h.approvals.assert(replied, origin, { action: 'reply' }), 'a bare approval replying to the bot counts');
-    const roleOnly = h.approvals.prepare(origin, { action: 'role' }).approvalId;
     const me = { roles: { botRole: { id: botRole } } };
     await h.gateway.message(
         fakeMessage({
-            id: id('role-approval'),
-            content: `approve ${roleOnly}`,
+            id: id('role-mention'),
+            content: 'hello there',
             guild: { members: { me } },
             mentions: { roles: new Map([[botRole, {}]]) },
         }),
     );
-    assert.equal(h.queued().at(-1)!.messageId, id('role-approval'), 'a bot role mention addresses the bot');
-    assert.throws(() => h.approvals.assert(roleOnly, origin, { action: 'role' }), /Fresh Discord confirmation/);
-    const direct = { ...origin, guildId: null };
-    const dm = h.approvals.prepare(direct, { action: 'dm' }).approvalId;
-    await h.gateway.message(fakeMessage({ id: id('dm-approval'), guildId: null, content: `approve ${dm}` }));
-    assert.doesNotThrow(() => h.approvals.assert(dm, direct, { action: 'dm' }), 'a direct message approval needs no prefix');
+    assert.equal(h.queued().at(-1)!.messageId, id('role-mention'), 'a bot role mention addresses the bot');
     h.gateway.stop();
 }
 
@@ -155,11 +138,11 @@ async function checkReplyOrigins(directory: string): Promise<void> {
     await first.gateway.message(fakeMessage({ id: id('captured') }));
     const event = first.queued().at(-1)!;
     assert.equal(origins.context(event.id).messageId, id('captured'), 'triggers are recorded as durable reply origins');
-    const second = new Gateway(fakeConfig(), first.policy, new EventQueue(), first.approvals, first.api, { replyOrigins: origins });
+    const second = new Gateway(fakeConfig(), first.policy, new EventQueue(), first.api, { replyOrigins: origins });
     await second.message(fakeMessage({ id: id('captured') }));
     assert.equal(second.queue.snapshot(0, 25).events.length, 0, 'an already captured request is not captured again');
     const shared = gatewayHarness(join(directory, 'gateway-origins-b.json'));
-    const twin = new Gateway(fakeConfig(), shared.policy, shared.queue, shared.approvals, shared.api, { context: shared.gateway.context });
+    const twin = new Gateway(fakeConfig(), shared.policy, shared.queue, shared.api, { context: shared.gateway.context });
     await shared.gateway.message(fakeMessage({ id: id('twice') }));
     await twin.message(fakeMessage({ id: id('twice') }));
     assert.deepEqual(
@@ -173,7 +156,7 @@ async function checkReplyOrigins(directory: string): Promise<void> {
 export async function checkGatewayMessages(directory: string): Promise<void> {
     await checkAddressedThread(join(directory, 'gateway-thread.json'));
     await checkUndelivered(join(directory, 'gateway-undelivered.json'));
-    await checkApprovals(join(directory, 'gateway-approvals.json'));
+    await checkRoleMention(join(directory, 'gateway-role-mention.json'));
     await checkAddressing(join(directory, 'gateway-addressing.json'));
     await checkReplyOrigins(directory);
 }

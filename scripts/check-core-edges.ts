@@ -44,7 +44,7 @@ function checkContextAccess(file: string): void {
 async function checkGuildList(file: string): Promise<void> {
     const f = fixture(file);
     const api = new RecordingApi(f.policy);
-    const bridge = new Bridge(f.policy, f.queue, f.journal, f.approvals, api);
+    const bridge = new Bridge(f.policy, f.queue, f.journal, api);
     f.policy.config.servers.blocked.push(ids.other);
     api.responses.set('/users/@me/guilds', [
         { id: ids.guild, name: 'Home', icon: 'hidden' },
@@ -62,7 +62,7 @@ async function checkReplies(directory: string): Promise<void> {
     const f = fixture(join(directory, 'core-replies.json'));
     const api = new RecordingApi(f.policy);
     const origins = new ReplyOrigins(join(directory, 'core-reply-origins.json'));
-    const bridge = new Bridge(f.policy, f.queue, f.journal, f.approvals, api, origins);
+    const bridge = new Bridge(f.policy, f.queue, f.journal, api, origins);
     await assert.rejects(bridge.respond({ eventId: randomUUID(), content: 'hi', idempotencyKey: 'unknown' }), /Reply origin unknown/);
     const heads: string[] = [];
     const slash = f.queue.add(
