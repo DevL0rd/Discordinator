@@ -3,10 +3,32 @@ import { join } from 'node:path';
 import { claudeChoice, codexChoice, defaultOperatorConfig } from '../src/operator/config.js';
 import { ConversationController } from '../src/operator/controller.js';
 import { ControllerStore, conversationKey } from '../src/operator/controller-state.js';
+import { ProcessingIndicator } from '../src/operator/processing-indicator.js';
 import { desktopGuide, roleInstructions, workerBrief } from '../src/operator/manager-guide.js';
 import { controllerEvent, FakeProvider, settle } from './check-controller.js';
 
 type Tasks = { tasks: { id: string; title: string; state: string; progress?: string; result?: string }[] };
+
+async function checkIndicator(): Promise<void> {
+    let now = 0;
+    const typed: string[] = [];
+    const indicator = new ProcessingIndicator(
+        (eventId) => {
+            typed.push(eventId);
+            return Promise.resolve();
+        },
+        () => now,
+        1000,
+    );
+    indicator.set('s', 'e1', true);
+    await indicator.pulse();
+    assert.ok(typed.length >= 2, 'it types while the responder is working');
+    now = 2000;
+    const before = typed.length;
+    await indicator.pulse();
+    assert.equal(typed.length, before, 'it never types forever');
+    indicator.stop();
+}
 
 function checkGuides(): void {
     assert.match(
@@ -93,6 +115,7 @@ async function checkReport(
 
 export async function checkControllerTasks(directory: string): Promise<void> {
     checkGuides();
+    await checkIndicator();
     const adapter = new FakeProvider();
     const sent: string[] = [];
     const controller = new ConversationController(

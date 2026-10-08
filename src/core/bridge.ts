@@ -132,7 +132,7 @@ export class Bridge {
             live = undefined;
         }
         if (live && live.event.kind !== 'message') return this.event(id);
-        const event = this.replyOrigins.context(id);
+        const event = live && !this.replyOrigins.has(id) ? live.event : this.replyOrigins.context(id);
         this.policy.assertOrigin(event);
         if (event.guildId && (await this.api.channel(event.channelId)).guild_id !== event.guildId) throw new Error('Reply guild mismatch');
         return { event: await this.withSource(event), expiresAt: Number.POSITIVE_INFINITY };

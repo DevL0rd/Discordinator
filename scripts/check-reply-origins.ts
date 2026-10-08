@@ -84,7 +84,24 @@ async function checkNoExpiry(directory: string): Promise<void> {
     now = 24 * 60 * 60_000;
     assert.equal(queue.snapshot(0, 25).events.length, 0, 'the poll feed still ages events out');
     await checkRestartedEvents(directory);
+    await checkTypingBeforeCapture(directory);
     assert.equal(queue.context(event.id).event.id, event.id, 'a late answer can still find its request');
+}
+async function checkTypingBeforeCapture(directory: string): Promise<void> {
+    const f = fixture(join(directory, 'typing-early.json'));
+    const origins = new ReplyOrigins(join(directory, 'typing-early-origins.json'));
+    const queue = new EventQueue();
+    const bridge = new Bridge(f.policy, queue, f.journal, f.approvals, f.api, origins);
+    const event = queue.add('early', {
+        actorId: ids.user,
+        channelId: ids.channel,
+        guildId: ids.guild,
+        messageId: ids.message,
+        kind: 'message',
+        text: 'hi',
+    })!;
+    await bridge.typing(event.id);
+    assert.match(f.api.calls.at(-1)!.route, new RegExp(`/channels/${ids.channel}/typing`), 'typing starts before the request is saved');
 }
 async function checkRestartedEvents(directory: string): Promise<void> {
     const f = fixture(join(directory, 'restarted-events.json'));

@@ -1,9 +1,13 @@
 export class ProcessingIndicator {
-    private active = new Map<string, string>();
+    private active = new Map<string, { eventId: string; since: number }>();
     private timer?: ReturnType<typeof setInterval>;
-    constructor(readonly typing: (eventId: string) => Promise<void>) {}
+    constructor(
+        readonly typing: (eventId: string) => Promise<void>,
+        readonly now = Date.now,
+        readonly maxMs = 10 * 60_000,
+    ) {}
     set(sessionId: string, eventId: string, processing: boolean): void {
-        if (processing) this.active.set(sessionId, eventId);
+        if (processing) this.active.set(sessionId, { eventId, since: this.now() });
         else this.active.delete(sessionId);
         if (!this.active.size) {
             clearInterval(this.timer);
@@ -17,7 +21,11 @@ export class ProcessingIndicator {
         if (processing) void this.pulse();
     }
     async pulse(): Promise<void> {
-        for (const [sessionId, eventId] of this.active) {
+        for (const [sessionId, { eventId, since }] of this.active) {
+            if (this.now() - since > this.maxMs) {
+                this.active.delete(sessionId);
+                continue;
+            }
             try {
                 await this.typing(eventId);
             } catch {
