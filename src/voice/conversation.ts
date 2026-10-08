@@ -20,8 +20,7 @@ const liveTools: LiveTool[] = [
     },
     {
         name: 'stop_listening',
-        description:
-            'End this conversation when it is over, they are talking to someone else, or you only hear noise not meant for you. You keep the call transcript and come back when someone says your name.',
+        description: 'End this conversation.',
     },
 ];
 

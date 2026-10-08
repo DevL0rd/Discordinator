@@ -183,7 +183,7 @@ async function checkTasks(h: Harness): Promise<void> {
     assert.deepEqual(live.results.at(-1)!.delivery, { scheduling: 'interrupt', more: true }, 'Results can be told right away');
     h.policy.config.voice.resultTiming = 'pause';
     live.events.tool('t4', 'stop_listening', {});
-    assert.equal(live.closed, false, 'It lets a short goodbye finish before it stops');
+    assert.equal(live.closed, false, 'It lets what it is saying finish before it stops');
     live.events.turnComplete();
     await until(() => live.closed, 'it stops listening once the turn is over');
     assert.equal(h.voice.status().calls[0]!.talking, false);
