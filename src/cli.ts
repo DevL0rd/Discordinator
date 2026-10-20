@@ -22,7 +22,7 @@ async function main(args: string[]): Promise<void> {
     const [command, ...rest] = args;
     const print = (lines: string[] | string) => console.log([lines].flat().join('\n'));
     if (command === 'install') return print(await installApp(localShell(true)));
-    if (command === 'update') return print(await applyUpdate(localShell(true)));
+    if (command === 'update') return print(await applyUpdate(localShell(true), undefined, rest.includes('--hook')));
     if (command === 'uninstall') return print(await uninstallApp(localShell(true), rest.includes('--purge')));
     if (command === 'help' || command === '--help' || command === '-h') return print(usage);
     if (command) throw new Error(`Unknown command: ${command}\n\n${usage}`);

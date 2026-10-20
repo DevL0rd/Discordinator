@@ -12,6 +12,7 @@ import {
     updateBlocker,
     type Shell,
 } from '../src/operator/self-install.js';
+import { withUpdateLock } from '../src/operator/update-guard.js';
 import { hookFile, updaterScript } from '../src/operator/update-hooks.js';
 import type { ServiceHost } from '../src/operator/install.js';
 import { policySchema } from '../src/core/config.js';
@@ -53,7 +54,7 @@ function checkPaths(): void {
     assert.match(hookFile('apt-get'), /DPkg::Post-Invoke/);
     assert.match(
         updaterScript(),
-        /runuser -u "\$owner"[\s\S]*dist\/src\/cli\.js update[\s\S]*exit 0\n$/,
+        /runuser -u "\$owner"[\s\S]*dist\/src\/cli\.js update --hook[\s\S]*exit 0\n$/,
         'a failed update never fails the system update',
     );
 }
@@ -99,6 +100,36 @@ async function pushUpstream(root: string, origin: string): Promise<string> {
     return git(other, 'rev-parse', '--short', 'HEAD');
 }
 
+async function checkFailedUpdate(root: string, shell: Shell, host: ServiceHost): Promise<void> {
+    assert.match(await applyUpdate(shell, host), /is up to date/);
+    const other = join(root, 'other');
+    await writeFile(join(other, 'README.md'), 'three\n');
+    git(other, '-c', 'user.name=t', '-c', 'user.email=t@t', 'commit', '--quiet', '-am', 'three');
+    git(other, 'push', '--quiet');
+    const builds: string[][] = [];
+    let broken = true;
+    const flaky: Shell = {
+        ...shell,
+        npm: (_cwd, args) => {
+            builds.push(args);
+            return broken ? Promise.reject(new Error('build failed')) : Promise.resolve();
+        },
+    };
+    await assert.rejects(applyUpdate(flaky, host, true), /build failed/);
+    assert.equal(builds.length, 1);
+    assert.match(await applyUpdate(flaky, host, true), /last update failed for these inputs, skipping/);
+    assert.equal(builds.length, 1, 'a hook run with the same inputs does not build again');
+    await assert.rejects(applyUpdate(flaky, host), /build failed/);
+    assert.equal(builds.length, 2, 'a manual update always tries');
+    broken = false;
+    assert.match(await applyUpdate(flaky, host), /^Rebuilt Discordinator/);
+    assert.match(await applyUpdate(flaky, host, true), /is up to date/);
+    assert.equal(builds.length, 4, 'a recovered update clears the failure and an up to date hook run builds nothing');
+    const held = withUpdateLock(host.home, () => applyUpdate(flaky, host, true));
+    assert.match((await held) ?? '', /^Discordinator: /);
+    assert.equal(builds.length, 4);
+}
+
 async function checkInstallUpdateUninstall(root: string): Promise<void> {
     const { source, origin } = await prepareSource(root);
     const target = join(root, 'app');
@@ -108,7 +139,7 @@ async function checkInstallUpdateUninstall(root: string): Promise<void> {
     const shell = fakeShell(npm, sudo);
     const fake = fakeRunner((call) => (call.args.includes('show') ? 'LoadState=loaded\nActiveState=inactive\n' : ''));
     const host: ServiceHost = { platform: 'linux', home, run: fake.run };
-    await withEnv({ DISCORDINATOR_APP_HOME: target }, () =>
+    await withEnv({ DISCORDINATOR_APP_HOME: target, XDG_STATE_HOME: join(home, '.local', 'state') }, () =>
         inDirectory(source, async () => {
             const notes = await installApp(shell, host);
             assert.match(notes[0]!, /installed in .*app\. Run discordinator/);
@@ -141,7 +172,7 @@ async function checkInstallUpdateUninstall(root: string): Promise<void> {
             assert.match(await applyUpdate(shell, host), new RegExp(`Updated Discordinator from \\w+ to ${latest}\\.$`));
             assert.deepEqual(npm.at(-1), ['run', 'build'], 'an update rebuilds');
             assert.equal(npm.filter((args) => args[0] === 'ci').length, 1, 'dependencies are only reinstalled when they change');
-            assert.match(await applyUpdate(shell, host), /is up to date/);
+            await checkFailedUpdate(root, shell, host);
             process.chdir(root);
             await rm(source, { recursive: true, force: true });
             assert.equal((await checkForUpdate(shell, target)).behind, 0, 'deleting the repo does not break the install or its updates');

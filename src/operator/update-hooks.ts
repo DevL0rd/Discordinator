@@ -34,7 +34,7 @@ cd "$app" || exit 0
 runuser -u "$owner" -- env -i HOME="$home" USER="$owner" LOGNAME="$owner" \\
     PATH="$home/.local/bin:/usr/local/bin:/usr/bin:/bin" LANG="\${LANG:-C.UTF-8}" \\
     XDG_RUNTIME_DIR="/run/user/$uid" DBUS_SESSION_BUS_ADDRESS="unix:path=/run/user/$uid/bus" \\
-    "$node" dist/src/cli.js update || echo "discordinator: the update did not finish, see above"
+    "$node" dist/src/cli.js update --hook || echo "discordinator: the update did not finish, see above"
 exit 0
 `;
 }
