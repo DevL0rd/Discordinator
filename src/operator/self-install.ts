@@ -157,6 +157,10 @@ export interface UpdateState {
 
 export async function checkForUpdate(shell: Shell, root = appHome()): Promise<UpdateState> {
     await shell.git(root, ['fetch', '--quiet', 'origin']);
+    return readUpdateState(shell, root);
+}
+
+async function readUpdateState(shell: Shell, root: string): Promise<UpdateState> {
     const count = async (range: string) => Number((await shell.git(root, ['rev-list', '--count', range])).trim());
     return {
         behind: await count('HEAD..@{upstream}'),
@@ -173,11 +177,9 @@ export function updateBlocker(state: UpdateState): string | undefined {
     return undefined;
 }
 
-async function pullAndBuild(shell: Shell, root: string, state: UpdateState, rebuild: boolean): Promise<void> {
-    const blocked = state.behind ? updateBlocker(state) : undefined;
-    if (blocked) throw new Error(blocked);
+async function pullAndBuild(shell: Shell, root: string, pull: boolean, rebuild: boolean): Promise<void> {
     const before = (await shell.git(root, ['rev-parse', 'HEAD'])).trim();
-    if (state.behind) await shell.git(root, ['merge', '--ff-only', '--quiet', '@{upstream}']);
+    if (pull) await shell.git(root, ['merge', '--ff-only', '--quiet', '@{upstream}']);
     process.chdir(root);
     const lockChanged = Boolean((await shell.git(root, ['diff', '--name-only', before, 'HEAD', '--', 'package-lock.json'])).trim());
     if (lockChanged || rebuild) await shell.npm(root, ['ci', '--no-audit', '--no-fund']);
@@ -189,16 +191,51 @@ async function updateInputs(shell: Shell, root: string, state: UpdateState): Pro
     return [upstream, process.version, state.dirty, state.ahead > 0].join(' ');
 }
 
-async function runUpdate(shell: Shell, host: ServiceHost, root: string, record: InstallRecord, automatic: boolean): Promise<string> {
-    const state = await checkForUpdate(shell, root);
+async function fetchOrigin(shell: Shell, root: string): Promise<Error | undefined> {
+    return shell.git(root, ['fetch', '--quiet', 'origin']).then(
+        () => undefined,
+        (error: unknown) => (error instanceof Error ? error : new Error(String(error))),
+    );
+}
+
+interface UpdatePlan {
+    state: UpdateState;
+    pulled: boolean;
+    rebuild: boolean;
+    failed: string | undefined;
+    notes: string[];
+    refusal: Error | undefined;
+}
+
+async function planUpdate(shell: Shell, host: ServiceHost, root: string, record: InstallRecord): Promise<UpdatePlan> {
+    const fetchFailure = await fetchOrigin(shell, root);
+    const state = await readUpdateState(shell, root);
     const failed = await failedInputs(host.home);
-    const rebuild = record.nodeVersion !== process.version || failed !== undefined;
-    if (!state.behind && !rebuild) return `Discordinator is up to date (${state.current}).`;
+    const blocked = state.behind ? updateBlocker(state) : undefined;
+    return {
+        state,
+        failed,
+        pulled: state.behind > 0 && !blocked,
+        rebuild: record.nodeVersion !== process.version || failed !== undefined,
+        notes: [
+            fetchFailure ? `Discordinator could not fetch updates (${fetchFailure.message}), so it did not pull.` : '',
+            blocked ? `${blocked} It was rebuilt without pulling.` : '',
+        ].filter(Boolean),
+        refusal: fetchFailure ?? (blocked ? new Error(blocked) : undefined),
+    };
+}
+
+async function runUpdate(shell: Shell, host: ServiceHost, root: string, record: InstallRecord, automatic: boolean): Promise<string> {
+    const { state, failed, pulled, rebuild, notes, refusal } = await planUpdate(shell, host, root, record);
+    if (!pulled && !rebuild) {
+        if (refusal) throw refusal;
+        return `Discordinator is up to date (${state.current}).`;
+    }
     const inputs = await updateInputs(shell, root, state);
     if (automatic && failed === inputs)
         return 'Discordinator: last update failed for these inputs, skipping; run discordinator update to retry.';
     try {
-        await pullAndBuild(shell, root, state, rebuild);
+        await pullAndBuild(shell, root, pulled, rebuild);
     } catch (error) {
         await recordFailure(host.home, inputs);
         throw error;
@@ -207,9 +244,10 @@ async function runUpdate(shell: Shell, host: ServiceHost, root: string, record: 
     await writeFile(installRecordPath(root), `${JSON.stringify({ ...record, nodeVersion: process.version }, null, 2)}\n`, { mode: 0o600 });
     const service = await managedServiceStatus(host.platform, host.run, host.home);
     const restarted = service.active ? ` ${await restartService(host)}` : '';
-    return state.behind
+    const summary = pulled
         ? `Updated Discordinator from ${state.current} to ${state.latest}.${restarted}`
         : `Rebuilt Discordinator ${state.current} with Node.js ${process.version}.${restarted}`;
+    return [...notes, summary].join(' ');
 }
 
 export async function applyUpdate(shell: Shell, host: ServiceHost = localHost(), automatic = false): Promise<string> {

@@ -16,6 +16,8 @@ const hookTargets: Record<Manager, { path: string; mode: string }> = {
     'apt-get': { path: '/etc/apt/apt.conf.d/99discordinator-update', mode: '644' },
 };
 
+export const removablePaths = [updaterDirectory, ...Object.values(hookTargets).map((target) => target.path)];
+
 export function updaterScript(): string {
     return `#!/bin/sh
 exec 1>&2
@@ -27,7 +29,12 @@ node=$(sed -n 3p "$state")
 uid=$(id -u "$owner" 2>/dev/null) || exit 0
 home=$(getent passwd "$owner" | cut -d: -f6)
 if [ ! -f "$app/dist/src/cli.js" ]; then
-    echo "discordinator: $app is gone, skipping the update"
+    if [ -d "$home" ]; then
+        echo "discordinator: $app is gone, removing the update hook"
+        rm -rf ${removablePaths.join(' ')}
+    else
+        echo "discordinator: $app is gone, skipping the update"
+    fi
     exit 0
 fi
 cd "$app" || exit 0
@@ -58,7 +65,8 @@ done
 Operation = Install
 Operation = Upgrade
 Type = Package
-Target = *
+Target = nodejs
+Target = nodejs-lts-*
 
 [Action]
 Description = Updating Discordinator...
@@ -115,5 +123,5 @@ async function updateHookInstalled(): Promise<boolean> {
 
 export async function removeUpdateHook(elevated: Elevated): Promise<void> {
     if (!(await updateHookInstalled())) return;
-    await elevated.sudo(['rm', '-rf', updaterDirectory, ...Object.values(hookTargets).map((target) => target.path)]);
+    await elevated.sudo(['rm', '-rf', ...removablePaths]);
 }
