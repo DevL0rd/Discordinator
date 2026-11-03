@@ -9,7 +9,7 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/DevL0rd/Discordinator/actions/workflows/quality.yml"><img alt="Quality" src="https://img.shields.io/github/actions/workflow/status/DevL0rd/Discordinator/quality.yml?branch=main&style=for-the-badge&label=quality&logo=githubactions&logoColor=white"></a>
+  <a href="https://github.com/DevL0rd/Discordinator/actions/workflows/ci.yml"><img alt="CI" src="https://img.shields.io/github/actions/workflow/status/DevL0rd/Discordinator/ci.yml?branch=main&style=for-the-badge&label=ci&logo=githubactions&logoColor=white"></a>
   <img alt="Node.js 22.16+" src="https://img.shields.io/badge/Node.js-22.16%2B-43853d?style=for-the-badge&logo=nodedotjs&logoColor=white">
   <img alt="MCP" src="https://img.shields.io/badge/MCP-server-7967d8?style=for-the-badge">
   <a href="LICENSE"><img alt="MIT license" src="https://img.shields.io/badge/license-MIT-8a5cd6?style=for-the-badge"></a>
