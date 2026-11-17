@@ -1,18 +1,19 @@
 {
     "$schema": "https://unpkg.com/knip@6.39.0/schema.json",
     "entry": [
-        "src/main.ts",
-        "src/channel/bridge.ts",
-        "src/service.ts",
+        "src/main.ts!",
+        "src/channel/bridge.ts!",
+        "src/service.ts!",
         "scripts/validate.ts",
         "scripts/check-banner.ts",
         "scripts/check-quality.ts",
-        "src/cli.ts",
+        "src/cli.ts!",
         "scripts/check-settings-registry.ts"
     ],
     "project": [
-        "src/**/*.ts",
+        "src/**/*.ts!",
         "scripts/**/*.ts"
     ],
-    "includeEntryExports": true
+    "includeEntryExports": true,
+    "ignoreExportsUsedInFile": true
 }

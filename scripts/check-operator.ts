@@ -3,7 +3,7 @@ import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { tmpdir, homedir } from 'node:os';
 import { defaultOperatorConfig, readOperatorConfig, writeOperatorConfig } from '../src/operator/config.js';
-import { activationBlock, endpointError, publicEndpoint, timeoutError } from '../src/operator/setup-model.js';
+import { activationBlock, publicEndpoint } from '../src/operator/setup-model.js';
 import { parseServiceStatus, startBlocked } from '../src/operator/service-status.js';
 import { OperatorService } from '../src/operator/service.js';
 import { fixture } from './fixtures.js';
@@ -54,9 +54,7 @@ export async function checkOperator(): Promise<void> {
         'https://u:p@bot.example.com',
         'https://bot.example.com/?token=x',
     ])
-        assert.ok(endpointError(bad), bad);
-    assert.equal(timeoutError('600'), undefined);
-    for (const bad of ['0', '1801', '3.5', 'abc']) assert.ok(timeoutError(bad));
+        assert.throws(() => publicEndpoint(bad), Error, bad);
     const live = {
         gateway: 'ready',
         operator: { mode: 'disabled', activeEventId: null, appliedConfigAt: null },

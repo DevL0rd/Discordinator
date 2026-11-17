@@ -34,7 +34,7 @@ import {
 } from './codex-protocol.js';
 import { approvalResult, requestApproval, requestTool, controllerParams } from './codex-approvals.js';
 import { existingSession, resumedState, started, notification, reconcileThread } from './codex-state.js';
-export type { CodexTransport, CodexAdapterOptions } from './codex-protocol.js';
+export type { CodexAdapterOptions } from './codex-protocol.js';
 
 function assertEfforts(config: OperatorConfig): void {
     for (const effort of [config.codexEffort, config.workerCodexEffort])

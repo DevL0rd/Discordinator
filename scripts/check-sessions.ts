@@ -7,7 +7,7 @@ import { createHash } from 'node:crypto';
 import { tmpdir } from 'node:os';
 import { conversationExists, deliver, liveSession } from '../src/operator/claude-sessions.js';
 import { SessionRouter } from '../src/operator/session-router.js';
-import { SessionActivity, transcriptSteps } from '../src/operator/session-activity.js';
+import { SessionActivity } from '../src/operator/session-activity.js';
 import { fixture, socketPath } from './fixtures.js';
 
 function inbox(socket: string, onMessage: () => void = () => undefined): Promise<{ received: Promise<string>; close(): Promise<void> }> {
@@ -153,15 +153,6 @@ export async function checkSessionActivity(directory: string): Promise<void> {
     assert.equal(command([{ type: 'read', command: 'cat', name: 'a.ts', path: '/r/a.ts' }]), 'Reading a.ts');
     assert.equal(command([{ type: 'unknown', command: 'make' }]), 'Running a command', 'Codex commands never show their text');
     assert.equal(codexActivity({ type: 'mcpToolCall', server: 'github', tool: 'list_issues' }), 'Using list issues');
-    assert.deepEqual(transcriptSteps(tool('Bash', { command: 'npm test', description: 'Run the tests' })), ['Run the tests']);
-    assert.deepEqual(transcriptSteps(tool('Bash', { command: 'npm test' })), ['Running a command'], 'commands never show their text');
-    assert.deepEqual(
-        transcriptSteps(tool('mcp__plugin_x_server__list_open_issues', {})),
-        ['Using list open issues'],
-        'tools show in words',
-    );
-    assert.deepEqual(transcriptSteps(tool('mcp__discordinator__discord_send', {})), [], 'Discord replies are not echoed as activity');
-    assert.deepEqual(transcriptSteps('not json'), []);
     const path = join(directory, 'activity.jsonl');
     await writeFile(path, `${tool('Bash', { command: 'old' })}\n`);
     const trace = { posted: [] as string[], picked: [] as string[], replied: [] as string[], enabled: true };

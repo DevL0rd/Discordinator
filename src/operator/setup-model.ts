@@ -24,16 +24,6 @@ export function publicEndpoint(value: string): string {
     if (url.pathname === '/') url.pathname = '/mcp';
     return url.href;
 }
-export function endpointError(value: string): string | undefined {
-    try {
-        publicEndpoint(value);
-    } catch {
-        return 'Use a public HTTPS domain, e.g. bot.example.com. Not a local address.';
-    }
-}
-export function timeoutError(value: string): string | undefined {
-    if (!/^\d+$/.test(value) || Number(value) < 30 || Number(value) > 1800) return 'Use a whole number from 30 to 1800 seconds.';
-}
 export interface LiveSetupStatus {
     approvedPeopleRevision?: string;
     gateway: string;

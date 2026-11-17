@@ -59,11 +59,6 @@ function userText(entry: Entry): string {
         .join('\n');
 }
 
-export function transcriptSteps(line: string): string[] {
-    const entry = parse(line);
-    return entry ? steps(entry) : [];
-}
-
 export class SessionActivity {
     private path?: string;
     private offset = 0;

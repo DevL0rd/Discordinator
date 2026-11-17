@@ -2,7 +2,8 @@ import assert from 'node:assert/strict';
 import { roleInstructions } from '../src/operator/manager-guide.js';
 import { PassThrough, Writable } from 'node:stream';
 import { z } from 'zod';
-import { CodexAdapter, type CodexTransport } from '../src/operator/codex-adapter.js';
+import { CodexAdapter } from '../src/operator/codex-adapter.js';
+import type { CodexTransport } from '../src/operator/codex-protocol.js';
 import { defaultOperatorConfig } from '../src/operator/config.js';
 import type { ProviderEvent, ProviderApproval, ProviderTool } from '../src/operator/provider-adapter.js';
 

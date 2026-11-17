@@ -22,7 +22,7 @@
     "check:spelling": "typos",
     "check:duplicates": "jscpd --fail-on-empty src scripts eslint.config.js",
     "check:format": "prettier --check \"src/**/*.ts\" \"scripts/**/*.ts\" eslint.config.js",
-    "check:unused": "knip",
+    "check:unused": "knip --production && knip",
     "quality": "npm run check:length && npm run lint && npm run check:spelling && npm run check:duplicates && npm run check:format && npm run check:unused && npm run check",
     "setup:spelling": "npm rebuild @ocular-d/typos-bin --ignore-scripts=false",
     "oauth:password": "node --env-file-if-exists=.env --import tsx scripts/oauth-owner.ts",
